@@ -49,12 +49,11 @@ struct sp_scalar_test_function_impl : public ScalarFieldBase<SpSpace_::local_dim
         FirstDerivative_(const Derived_& xpr) noexcept : xpr_(xpr) { }
         // assembly evaluation
         constexpr Scalar operator()(const InputType& sp_packet) const { return sp_packet.test_dx; }
-        constexpr TestSpace& function_space() { return *(xpr_.sp_space_); }
         constexpr const TestSpace& function_space() const { return *(xpr_.sp_space_); }
         constexpr int input_size() const { return StaticInputSize; }
         constexpr const Derived& derived() const { return xpr_; }
        private:
-        typename internals::ref_select<const Derived>::type xpr_;
+        Derived xpr_;
     };
     template <typename Derived_>
     struct SecondDerivative_ : ScalarFieldBase<TestSpace::local_dim, SecondDerivative_<Derived_>> {
@@ -72,12 +71,11 @@ struct sp_scalar_test_function_impl : public ScalarFieldBase<SpSpace_::local_dim
         SecondDerivative_(const Derived_& xpr) noexcept : xpr_(xpr) { }
         // assembly evaluation
         constexpr Scalar operator()(const InputType& sp_packet) const { return sp_packet.test_ddx; }
-        constexpr TestSpace& function_space() { return *(xpr_.sp_space_); }
         constexpr const TestSpace& function_space() const { return *(xpr_.sp_space_); }
         constexpr int input_size() const { return StaticInputSize; }
         constexpr const Derived& derived() const { return xpr_; }
        private:
-        typename internals::ref_select<const Derived>::type xpr_;
+        Derived xpr_;
     };
    public:
     // expose derivative types
@@ -85,14 +83,13 @@ struct sp_scalar_test_function_impl : public ScalarFieldBase<SpSpace_::local_dim
     using SecondDerivative = SecondDerivative_<TestFunction<SpSpace_, spline_tag>>;
 
     constexpr sp_scalar_test_function_impl() noexcept = default;
-    constexpr sp_scalar_test_function_impl(SpSpace_& sp_space) noexcept : sp_space_(std::addressof(sp_space)) { }  
+    constexpr sp_scalar_test_function_impl(const SpSpace_& sp_space) noexcept : sp_space_(std::addressof(sp_space)) { }
     // assembly evaluation
     constexpr Scalar operator()(const InputType& sp_packet) const { return sp_packet.test_value; }
-    constexpr TestSpace& function_space() { return *sp_space_; }
     constexpr const TestSpace& function_space() const { return *sp_space_; }
     constexpr int input_size() const { return StaticInputSize; }
    private:
-    TestSpace* sp_space_;
+    const TestSpace* sp_space_;
 };
 
 template <typename SpSpace_>
@@ -124,12 +121,11 @@ struct sp_scalar_trial_function_impl :
         FirstDerivative_(const Derived_& xpr) noexcept : xpr_(xpr) { }
         // assembly evaluation
         constexpr Scalar operator()(const InputType& sp_packet) const { return sp_packet.trial_dx; }
-        constexpr TrialSpace& function_space() { return *(xpr_.sp_space_); }
         constexpr const TrialSpace& function_space() const { return *(xpr_.sp_space_); }
         constexpr int input_size() const { return StaticInputSize; }
         constexpr const Derived& derived() const { return xpr_; }
        private:
-        typename internals::ref_select<const Derived>::type xpr_;
+        Derived xpr_;
     };
     template <typename Derived_>
     struct SecondDerivative_ : ScalarFieldBase<TrialSpace::local_dim, SecondDerivative_<Derived_>> {
@@ -147,12 +143,11 @@ struct sp_scalar_trial_function_impl :
         SecondDerivative_(const Derived_& xpr) noexcept : xpr_(xpr) { }
         // assembly evaluation
         constexpr Scalar operator()(const InputType& sp_packet) const { return sp_packet.trial_ddx; }
-        constexpr TrialSpace& function_space() { return *(xpr_.sp_space_); }
         constexpr const TrialSpace& function_space() const { return *(xpr_.sp_space_); }
         constexpr int input_size() const { return StaticInputSize; }
         constexpr const Derived& derived() const { return xpr_; }
        private:
-        typename internals::ref_select<const Derived>::type xpr_;
+        Derived xpr_;
     };
    public:
     // expose derivative types
@@ -160,14 +155,13 @@ struct sp_scalar_trial_function_impl :
     using SecondDerivative = SecondDerivative_<TrialFunction<SpSpace_, spline_tag>>;
   
     constexpr sp_scalar_trial_function_impl() noexcept = default;
-    constexpr sp_scalar_trial_function_impl(SpSpace_& sp_space) noexcept : sp_space_(std::addressof(sp_space)) { }
+    constexpr sp_scalar_trial_function_impl(const SpSpace_& sp_space) noexcept : sp_space_(std::addressof(sp_space)) { }
     // assembly evaluation
     constexpr Scalar operator()(const InputType& sp_packet) const { return sp_packet.trial_value; }
-    constexpr TrialSpace& function_space() { return *sp_space_; }
     constexpr const TrialSpace& function_space() const { return *sp_space_; }
     constexpr int input_size() const { return StaticInputSize; }
    private:
-    TrialSpace* sp_space_;
+    const TrialSpace* sp_space_;
 };
 
 }   // namespace internals
@@ -177,7 +171,7 @@ template <typename SpSpace_>
 struct TestFunction<SpSpace_, spline_tag> : public internals::sp_scalar_test_function_impl<SpSpace_> {
     using Base = internals::sp_scalar_test_function_impl<SpSpace_>;
     constexpr TestFunction() = default;
-    constexpr TestFunction(SpSpace_& sp_space) : Base(sp_space) { }
+    constexpr TestFunction(const SpSpace_& sp_space) : Base(sp_space) { }
 };
 // partial derivatives of scalar test function
 template <typename SpSpace_>
@@ -197,7 +191,7 @@ struct PartialDerivative<TestFunction<SpSpace_, spline_tag>, 2> :
 template <typename SpSpace_> constexpr auto dx (const TestFunction<SpSpace_, spline_tag>& xpr) {
     return typename TestFunction<SpSpace_, spline_tag>::FirstDerivative(xpr);
 }
-template <typename SpSpace_> constexpr auto ddx(const TestFunction<SpSpace_, spline_tag>& xpr) {
+template <typename SpSpace_> constexpr auto dxx(const TestFunction<SpSpace_, spline_tag>& xpr) {
     return typename TestFunction<SpSpace_, spline_tag>::SecondDerivative(xpr);
 }
   
@@ -209,7 +203,7 @@ struct TrialFunction<SpSpace_, spline_tag> : public internals::sp_scalar_trial_f
     static constexpr int local_dim = SpSpace_::local_dim;
     static constexpr int embed_dim = SpSpace_::embed_dim;
     constexpr TrialFunction() = default;
-    constexpr TrialFunction(SpSpace_& sp_space) : Base(sp_space) { }
+    constexpr TrialFunction(const SpSpace_& sp_space) : Base(sp_space) { }
     // norm evaluation
     double l2_squared_norm() {
         TrialFunction u(*Base::sp_space_);
@@ -229,19 +223,19 @@ struct PartialDerivative<TrialFunction<SpSpace_, spline_tag>, 1> :
     public TrialFunction<SpSpace_, spline_tag>::FirstDerivative {
     PartialDerivative() = default;
     PartialDerivative(const TrialFunction<SpSpace_, spline_tag>& f, [[maybe_unused]] int i) :
-        TrialFunction<SpSpace_, spline_tag>::FirstDerivative(f, i) { }
+        TrialFunction<SpSpace_, spline_tag>::FirstDerivative(f) { }
 };
 template <typename SpSpace_>
 struct PartialDerivative<TrialFunction<SpSpace_, spline_tag>, 2> :
     public TrialFunction<SpSpace_, spline_tag>::SecondDerivative {
     PartialDerivative() = default;
     PartialDerivative(const TrialFunction<SpSpace_, spline_tag>& f, [[maybe_unused]] int i, [[maybe_unused]] int j) :
-        TrialFunction<SpSpace_, spline_tag>::SecondDerivative(f, i, j) { }
+        TrialFunction<SpSpace_, spline_tag>::SecondDerivative(f) { }
 };
 template <typename SpSpace_> constexpr auto dx (const TrialFunction<SpSpace_, spline_tag>& xpr) {
     return typename TrialFunction<SpSpace_, spline_tag>::FirstDerivative(xpr);
 }
-template <typename SpSpace_> constexpr auto ddx(const TrialFunction<SpSpace_, spline_tag>& xpr) {
+template <typename SpSpace_> constexpr auto dxx(const TrialFunction<SpSpace_, spline_tag>& xpr) {
     return typename TrialFunction<SpSpace_, spline_tag>::SecondDerivative(xpr);
 }
 

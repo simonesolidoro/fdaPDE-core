@@ -47,12 +47,12 @@ template <typename Triangulation_> class BsSpace {
     using ShapeFunctionType = subscript_t<BasisType>;
     using DofHandlerType = DofHandler<local_dim, embed_dim, spline_tag>;
     using discretization_category = spline_tag;
-    static constexpr int sobolev_regularity = 2;
+    constexpr int sobolev_regularity() const { return 2; }
     template <typename Triangulation__, typename Form__, int Options__, typename... Quadrature__>
     using bilinear_form_assembly_loop =
       internals::sp_bilinear_form_assembly_loop<Triangulation__, Form__, Options__, Quadrature__...>;
     template <typename Triangulation__, typename Form__, int Options__, typename... Quadrature__>
-    using linear_form_assembler_loop =
+    using linear_form_assembly_loop =
       internals::sp_linear_form_assembly_loop  <Triangulation__, Form__, Options__, Quadrature__...>;
 
     BsSpace() = default;

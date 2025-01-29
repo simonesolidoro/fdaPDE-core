@@ -27,10 +27,6 @@ template <typename Triangulation_, typename Form_, int Options_, typename... Qua
 class sp_linear_form_assembly_loop :
     public sp_assembler_base<Triangulation_, Form_, Options_, Quadrature_...>,
     public assembly_xpr_base<sp_linear_form_assembly_loop<Triangulation_, Form_, Options_, Quadrature_...>> {
-    // detect trial and test spaces from bilinear form
-    using TrialSpace = trial_space_t<Form_>;
-    using TestSpace  = test_space_t <Form_>;
-    static_assert(TrialSpace::local_dim == TestSpace::local_dim && TrialSpace::embed_dim == TestSpace::embed_dim);
     using Base = sp_assembler_base<Triangulation_, Form_, Options_, Quadrature_...>;
     using Form = typename Base::Form;
     using DofHandlerType = typename Base::DofHandlerType;

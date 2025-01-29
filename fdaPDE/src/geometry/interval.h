@@ -128,7 +128,7 @@ template <> class Triangulation<1, 1> : public TriangulationBase<1, 1, Triangula
             int h_min = 0, h_max = n_nodes_;
             while (true) {
                 int j = h_min + std::floor((h_max - h_min) / 2);
-                if (p >= nodes_(j, 0) && p < nodes_(j + 1, 0)) {
+                if (p >= nodes_(j, 0) && p <= nodes_(j + 1, 0)) {
                     return j;
                 } else {
                     if (p < nodes_(j, 0)) {

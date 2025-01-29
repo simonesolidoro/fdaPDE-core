@@ -122,15 +122,16 @@ template <typename... Ts> static constexpr bool all_equal_v = all_equal<Ts...>::
 
 // index of type in tuple
 template <typename T, typename Tuple> struct index_of;
-template <typename T, typename... Ts>
-    requires(unique_v<Ts...>)
-struct index_of<T, std::tuple<Ts...>> {
+template <typename T, typename... Ts> struct index_of<T, std::tuple<Ts...>> {
    private:
     template <std::size_t... idx> static constexpr int find_idx(std::index_sequence<idx...>) {
-        return -1 + ((std::is_same<T, Ts>::value ? idx + 1 : 0) + ...);
+        bool found = false;
+        int count = 0;
+        ((!found ? (++count, found = std::is_same_v<T, Ts>) : 0) + ...);
+        return found ? count - 1 : -1;
     }
    public:
-    static constexpr int index = find_idx(std::index_sequence_for<Ts...> {});
+    static constexpr int value = find_idx(std::index_sequence_for<Ts...> {});
 };
 
 // returns std::true_type if tuple contains type T

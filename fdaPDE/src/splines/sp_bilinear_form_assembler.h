@@ -27,6 +27,7 @@ template <typename Triangulation_, typename Form_, int Options_, typename... Qua
 class sp_bilinear_form_assembly_loop :
     public sp_assembler_base<Triangulation_, Form_, Options_, Quadrature_...>,
     public assembly_xpr_base<sp_bilinear_form_assembly_loop<Triangulation_, Form_, Options_, Quadrature_...>> {
+   public:
     // detect trial and test spaces from bilinear form
     using TrialSpace = trial_space_t<Form_>;
     using TestSpace  = test_space_t <Form_>;
@@ -44,6 +45,7 @@ class sp_bilinear_form_assembly_loop :
     static constexpr int embed_dim = Base::embed_dim;
     using Base::form_;
     using Base::test_space_;
+   private:
     // private data members
     const DofHandlerType* trial_dof_handler_;
     constexpr const DofHandlerType* test_dof_handler() const { return Base::dof_handler_; }

@@ -37,7 +37,7 @@ struct fe_scalar_test_function_impl :
     using TestSpace = std::decay_t<FeSpace_>;
 
     constexpr fe_scalar_test_function_impl() noexcept = default;
-    constexpr fe_scalar_test_function_impl(FeSpace_& fe_space) noexcept : fe_space_(std::addressof(fe_space)) { }
+    constexpr fe_scalar_test_function_impl(const FeSpace_& fe_space) noexcept : fe_space_(std::addressof(fe_space)) { }
     constexpr Scalar operator()(const InputType& fe_packet) const { return fe_packet.test_value(0); }
 
     // first partial derivative functor
@@ -94,7 +94,7 @@ struct fe_scalar_test_function_impl :
     constexpr const TestSpace& function_space() const { return *fe_space_; }
     constexpr int input_size() const { return StaticInputSize; }
    protected:
-    TestSpace* fe_space_;
+    const TestSpace* fe_space_;
 };
 
 template <typename FeSpace_>
@@ -111,7 +111,7 @@ struct fe_scalar_trial_function_impl :
     using TrialSpace = std::decay_t<FeSpace_>;
 
     constexpr fe_scalar_trial_function_impl() noexcept = default;
-    constexpr fe_scalar_trial_function_impl(FeSpace_& fe_space) noexcept : fe_space_(std::addressof(fe_space)) { }
+    constexpr fe_scalar_trial_function_impl(const FeSpace_& fe_space) noexcept : fe_space_(std::addressof(fe_space)) { }
     constexpr Scalar operator()(const InputType& fe_packet) const { return fe_packet.trial_value(0); }
 
     // first partial derivative functor
@@ -168,7 +168,7 @@ struct fe_scalar_trial_function_impl :
     constexpr const TrialSpace& function_space() const { return *fe_space_; }
     constexpr int input_size() const { return StaticInputSize; }
    protected:
-    TrialSpace* fe_space_;
+    const TrialSpace* fe_space_;
 };
 
 // vector finite element support
@@ -189,7 +189,7 @@ struct fe_vector_test_function_impl :
     using TestSpace = std::decay_t<FeSpace_>;
 
     constexpr fe_vector_test_function_impl() noexcept = default;
-    constexpr fe_vector_test_function_impl(FeSpace_& fe_space) noexcept : fe_space_(std::addressof(fe_space)) { }
+    constexpr fe_vector_test_function_impl(const FeSpace_& fe_space) noexcept : fe_space_(std::addressof(fe_space)) { }
     constexpr Scalar eval(int i, const typename Base::InputType& fe_packet) const { return fe_packet.test_value(i); }
     constexpr Scalar eval(int i, [[maybe_unused]] int j, const typename Base::InputType& fe_packet) const {
         return fe_packet.test_value(i);
@@ -245,7 +245,7 @@ struct fe_vector_test_function_impl :
     constexpr const FeSpace_& function_space() const { return *fe_space_; }
     constexpr int input_size() const { return StaticInputSize; }
    protected:
-    TestSpace* fe_space_;
+    const TestSpace* fe_space_;
 };
 
 template <typename FeSpace_>
@@ -265,7 +265,7 @@ struct fe_vector_trial_function_impl :
     using TrialSpace = std::decay_t<FeSpace_>;
 
     constexpr fe_vector_trial_function_impl() noexcept = default;
-    constexpr fe_vector_trial_function_impl(FeSpace_& fe_space) noexcept : fe_space_(std::addressof(fe_space)) { }
+    constexpr fe_vector_trial_function_impl(const FeSpace_& fe_space) noexcept : fe_space_(std::addressof(fe_space)) { }
     constexpr Scalar eval(int i, const typename Base::InputType& fe_packet) const { return fe_packet.trial_value(i); }
     constexpr Scalar eval(int i, [[maybe_unused]] int j, const typename Base::InputType& fe_packet) const {
         return fe_packet.trial_value(i);
@@ -321,7 +321,7 @@ struct fe_vector_trial_function_impl :
     constexpr const FeSpace_& function_space() const { return *fe_space_; }
     constexpr int input_size() const { return StaticInputSize; }
    protected:
-    TrialSpace* fe_space_;
+    const TrialSpace* fe_space_;
 };
 
 }   // namespace internals
@@ -337,7 +337,7 @@ struct TestFunction<FeSpace_, finite_element_tag> :
       FeSpace_::n_components == 1, internals::fe_scalar_test_function_impl<FeSpace_>,
       internals::fe_vector_test_function_impl<FeSpace_>>;
     constexpr TestFunction() = default;
-    constexpr TestFunction(FeSpace_& fe_space) : Base(fe_space) { }
+    constexpr TestFunction(const FeSpace_& fe_space) : Base(fe_space) { }
 };
 // partial derivatives of scalar test function
 template <typename FeSpace_>
@@ -388,7 +388,7 @@ struct TrialFunction<FeSpace_, finite_element_tag> :
     static constexpr int embed_dim = FeSpace_::embed_dim;
   
     constexpr TrialFunction() = default;
-    constexpr TrialFunction(FeSpace_& fe_space) : Base(fe_space) { }
+    constexpr TrialFunction(const FeSpace_& fe_space) : Base(fe_space) { }
     // norm evaluation
     double l2_squared_norm() {
         internals::fe_mass_assembly_loop<typename TrialSpace::FeType> assembler(Base::fe_space_->dof_handler());
