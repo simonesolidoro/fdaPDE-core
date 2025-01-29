@@ -83,9 +83,6 @@ class fe_mass_assembly_loop {
         lhs_dof_handler_(&dof_handler), rhs_dof_handler_(&dof_handler) { }
 
     Eigen::SparseMatrix<double> assemble() const {
-        if (!lhs_dof_handler_) lhs_dof_handler_->enumerate(LhsFeSpace {});
-        if (!rhs_dof_handler_) rhs_dof_handler_->enumerate(RhsFeSpace {});
-
         Eigen::SparseMatrix<double> assembled_mat(lhs_dof_handler_->n_dofs(), rhs_dof_handler_->n_dofs());
         std::vector<Eigen::Triplet<double>> triplet_list;
         Eigen::Matrix<int, Dynamic, 1> lhs_active_dofs;

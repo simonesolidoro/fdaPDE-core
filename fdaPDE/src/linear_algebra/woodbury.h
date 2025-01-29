@@ -41,7 +41,7 @@ template <typename SparseSolver_> struct Woodbury {
         fdapde_static_assert(internals::is_eigen_dense_xpr_v<RhsType>, THIS_METHOD_IS_ONLY_FOR_DENSE_EIGEN_RHS);
         MatrixType y = invA_->solve(b);
         MatrixType t = invG_ .solve((*V_) * y);
-        MatrixType v = invA_->solve((*U_) * t);   // v = A^{-1}*U*t = A^{-1}*U*(C^{-1} + V*A^{-1}*U)^{-1}*V*A^{-1}*b
+        MatrixType v = invA_->solve((*U_) * t);
         return y - v;
     }
    private:

@@ -187,6 +187,134 @@ int stoi(CharBuff&& str) {
     return sign * val;
 }
 
+// reader for table of values of type T
+template <typename T> class table_reader {
+   private:
+    template <typename CharBuff>
+        requires(internals::is_char_buff<CharBuff>)
+    T parse_value_(const CharBuff& token) const {
+        // check if token is recognized as na
+        if (std::find(na_values_.begin(), na_values_.end(), token) != na_values_.end()) {
+            return std::numeric_limits<T>::quiet_NaN();
+        }
+	// parse token as numeric
+        if constexpr (std::is_same_v<T, double>) { return internals::stod(token); }
+        if constexpr (std::is_same_v<T, int   >) { return internals::stoi(token); }
+        return T {};
+    }
+
+    std::string_view& skipquote_(bool skip_quote, std::string_view& token) const {
+        if (skip_quote) { [[likely]]
+            if (!token.empty() && token.front() == '"') token.remove_prefix(1);
+            if (!token.empty() && token.back()  == '"') token.remove_suffix(1);
+        }
+        return token;
+    }
+    // parsed data
+    std::vector<T> data_ {};
+    std::size_t n_cols_ = 0, n_rows_ = 0;
+    std::vector<std::string> colnames_ {};
+
+    std::vector<std::string> na_values_ = {"NA", "NaN", "nan"};
+   public:
+    table_reader() = default;
+    table_reader(
+      const char* filename, bool header, char sep, bool index_col, bool skip_quote = true, std::size_t chunksize = 4) :
+        n_cols_(0), n_rows_(0), colnames_() {
+        parse(filename, header, sep, index_col, skip_quote, chunksize);
+    }
+    table_reader(const char* filename, bool index_col, bool skip_quote = true, std::size_t chunksize = 4) :
+        table_reader(filename, true, ',', index_col, skip_quote, chunksize) { }
+    table_reader(const std::string& filename, bool index_col, bool skip_quote = true, std::size_t chunksize = 4) :
+        table_reader(filename.c_str(), index_col, skip_quote, chunksize) { }
+
+    // observers
+#ifdef __FDAPDE_HAS_EIGEN
+    Eigen::Map<const Eigen::Matrix<T, Dynamic, Dynamic, Eigen::RowMajor>> as_matrix() const {
+        return Eigen::Map<const Eigen::Matrix<T, Dynamic, Dynamic, Eigen::RowMajor>>(data_.data(), n_rows_, n_cols_);
+    }
+#endif
+
+    // extract data by column name
+    std::vector<T> col(const std::string& colname) {
+        std::vector<T> col_(n_rows_);
+        int i = 0;
+        {
+            std::string cmp = "";
+            for (; i < n_cols_ && cmp != colname; ++i) { cmp = colnames_[i]; }
+	    fdapde_assert(i < n_cols_ && cmp == colname);
+        }
+        for (int j = 0; j < n_rows_; ++j) { col_[i] = data_[i + j * n_cols_]; }
+	return col_;
+    }
+    // modifiers
+    void set_na_values(const std::vector<std::string>& na_values) { na_values_ = na_values; }
+    std::size_t cols() const { return n_cols_; }
+    std::size_t rows() const { return n_rows_; }
+    const std::vector<T>& data() const { return data_; }
+    const std::vector<std::string>& colnames() const { return colnames_; }
+    // parsing function
+    void parse(
+      const char* filename, bool header = true, char sep = ',', bool index_col = false, bool skip_quote = true,
+      std::size_t chunksize = 4) {
+        std::string filename_ = std::filesystem::current_path().string() + "/" + filename;
+        if (!std::filesystem::exists(filename_))
+            throw std::runtime_error("file " + std::string(filename_) + " not found.");
+        auto stream = batched_istream(filename_, chunksize); 
+        bool header_ = header;
+	std::size_t col_id = 0;
+        std::string last_token;
+
+        while (stream) {
+            stream.read();
+            const char* buff = stream.data();
+            // tokenize input stream
+            internals::token_stream token_stream_(buff, stream.size(), sep);
+
+	    // TODO: bug when file doesn't fit in chunksize
+	    
+            while (token_stream_) {
+                auto line = token_stream_.get_line();
+                if (header_) { [[unlikely]]   // header parsing logic
+                    header_ = false;
+                    while (line.has_token()) {
+                        std::string_view& token = skipquote_(skip_quote, line.get_token());
+                        if (index_col == false && n_cols_ != 0) { colnames_.push_back(std::string(token)); }
+                        n_cols_++;
+                        ++line;
+                    }
+                } else {   // data parsing logic
+                    while (line.has_token()) {
+                        if (index_col == false && col_id == 0) {   // skip first column
+                        } else {
+                            std::string_view& token = skipquote_(skip_quote, line.get_token());
+                            if (line.eof()) {   // skip parsing and wait for next block
+                                last_token = token;
+                            } else {
+                                if (!last_token.empty()) {
+                                    last_token = last_token + std::string(token);   // merge tokens
+                                    data_.push_back(parse_value_(last_token));
+                                    last_token.clear();
+                                } else if (!token.empty()) {
+                                    data_.push_back(parse_value_(token));
+                                }
+                            }
+                        }
+                        if (!line.eof() ) { col_id = (col_id + 1) % n_cols_; }
+                        ++line;
+                    }
+                }
+            }
+        }
+        // process evantual last token of the last block of the stream
+        if (!last_token.empty()) { data_.push_back(parse_value_(last_token)); }
+        if (index_col == false) n_cols_ = n_cols_ - 1;		
+        if (data_.size() % n_cols_ != 0) throw std::invalid_argument("parsing error.");
+        n_rows_ = data_.size() / n_cols_;
+        return;
+    }
+};
+
 }   // namespace internals
 }   // namespace fdapde
 

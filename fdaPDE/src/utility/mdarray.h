@@ -688,7 +688,7 @@ template <typename MdArray, int... Slicers> class MdArraySlice {
     }
     template <typename Dst>
         requires(internals::is_subscriptable<Dst, int>)
-    void assign_to(Dst& dst) const {
+    void assign_to(Dst&& dst) const {
         if constexpr (contiguous_access) {
             for (int i = 0, n = size(); i < n; ++i) { dst[i] = operator[](i); }
         } else {

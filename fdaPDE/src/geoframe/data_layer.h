@@ -21,7 +21,7 @@
 
 namespace fdapde {
 namespace internals {
-    enum dtype { flt64 = 0, flt32 = 1, int64 = 2, int32 = 3, bin = 4, str = 5 };    // runtime data type identification
+  enum class dtype : int { flt64 = 0, flt32 = 1, int64 = 2, int32 = 3, bin = 4, str = 5 };    // runtime data type id
 }   // namespace internals
 
 namespace data_t {
@@ -37,15 +37,26 @@ struct str_   : std::type_identity<std::string > { internals::dtype type_id = in
 
 namespace internals {
 
-template <typename FieldDescriptor_, typename F_, typename... Args>
-void dispatch_to_dtype(const FieldDescriptor_& t, F_&& f, Args&&... args) {
+template <typename T> constexpr auto dtype_from_static_type() {
+    using T_ = std::decay_t<T>;
+    if constexpr (std::is_same_v<T_, double      >) return data_t::flt64;
+    if constexpr (std::is_same_v<T_, float       >) return data_t::flt32;
+    if constexpr (std::is_same_v<T_, std::int64_t>) return data_t::int64;
+    if constexpr (std::is_same_v<T_, std::int32_t>) return data_t::int32;
+    if constexpr (std::is_same_v<T_, bool        >) return data_t::bin;
+    if constexpr (std::is_same_v<T_, std::string >) return data_t::str;
+}
+
+template <typename FieldDType_, typename F_, typename... Args>
+    requires(std::is_same_v<FieldDType_, internals::dtype>)
+void dispatch_to_dtype(const FieldDType_& field_dtype, F_&& f, Args&&... args) {
     using dtypes =
       std::tuple<data_t::flt64_, data_t::flt32_, data_t::int64_, data_t::int32_, data_t::bin_, data_t::str_>;
     std::apply(
       [&](const auto&... ts) {
           (
             [&]() {
-                if (t.type_id == ts.type_id) {
+                if (field_dtype == ts.type_id) {
                     f.template operator()<typename std::decay_t<decltype(ts)>::type>(std::forward<Args>(args)...);
                 }
             }(),
@@ -59,7 +70,7 @@ template <typename DataLayer> struct plain_row_view {
     using size_t = typename DataLayer::size_t;
     using storage_t = std::conditional_t<
       std::is_const_v<DataLayer>, std::add_const_t<typename DataLayer::storage_t>, typename DataLayer::storage_t>;
-    static constexpr int Order = DataLayer::Order;
+    static constexpr int StorageOrder = DataLayer::StorageOrder;
     template <typename T> using reference = typename DataLayer::reference<T>;
     template <typename T> using const_reference = typename DataLayer::const_reference<T>;
   
@@ -71,11 +82,29 @@ template <typename DataLayer> struct plain_row_view {
     size_t size() const { return data_->cols(); }
     index_t id() const { return row_; }
     const auto& field_descriptors() const { return data_->field_descriptors(); }
+    BinaryMatrix<1, Dynamic> nan() const {
+        BinaryMatrix<1, Dynamic> nan_cols(cols());
+        index_t i = 0;
+        for (const auto& f : field_descriptors()) {
+            internals::dispatch_to_dtype(
+              f.type_id,
+              [&]<typename T>(const plain_row_view& src, BinaryMatrix<1, Dynamic>& dst) mutable {
+                  if constexpr (std::is_same_v<T, std::string>) {
+                      const std::string& value = src.get<T>(f.colname);
+                      if (value == "nan" || value == "NaN" || value == "NA") { dst.set(i); }
+                  } else {
+                      if (std::isnan(src.get<T>(f.colname))) { dst.set(i); }
+                  }
+              },
+              *this, nan_cols);
+            i++;
+        }
+        return nan_cols;
+    }
     // accessors
     template <typename T> reference<T> get(const std::string& colname) {
         return data_->template data<T>()(row_, data_->field_descriptor(colname).col_id);
     }
-  
     template <typename T> const_reference<T> get(const std::string& colname) const {
         return data_->template data<T>()(row_, data_->field_descriptor(colname).col_id);
     }
@@ -85,8 +114,8 @@ template <typename DataLayer> struct plain_row_view {
     plain_row_view& operator=(const plain_row_view& src) {
         for (const auto& f : field_descriptors()) {
             internals::dispatch_to_dtype(
-              f, [&]<typename T>(plain_row_view& dst) mutable { dst.get<T>(f.colname) = src.get<T>(f.colname); },
-              *this);
+              f.type_id,
+              [&]<typename T>(plain_row_view& dst) mutable { dst.get<T>(f.colname) = src.get<T>(f.colname); }, *this);
         }
         return *this;
     }
@@ -150,16 +179,17 @@ template <typename DataLayer> struct plain_row_view {
     template <typename T> using mapped_type_t = typename mapped_type<T>::type;
     DataLayer* data_;
     index_t row_;
-};
+    };
 
 template <typename Scalar_, typename DataLayer> struct plain_col_view {
     using Scalar = Scalar_;
     using index_t = typename DataLayer::index_t;
     using size_t = typename DataLayer::size_t;
-    static constexpr int Order = DataLayer::Order;
+    static constexpr int StorageOrder = DataLayer::StorageOrder;
     using storage_t = std::conditional_t<
-      std::is_const_v<DataLayer>, MdArraySlice<std::add_const_t<MdArray<Scalar, full_dynamic_extent_t<Order>>>, 1>,
-      MdArraySlice<MdArray<Scalar, full_dynamic_extent_t<Order>>, 1>>;
+      std::is_const_v<DataLayer>,
+      MdArraySlice<std::add_const_t<MdArray<Scalar, full_dynamic_extent_t<StorageOrder>>>, 1>,
+      MdArraySlice<MdArray<Scalar, full_dynamic_extent_t<StorageOrder>>, 1>>;
     using reference = typename DataLayer::reference<Scalar>;
     using const_reference = typename DataLayer::const_reference<Scalar>;
 
@@ -183,12 +213,12 @@ template <typename Scalar_, typename DataLayer> struct plain_col_view {
     // accessors
     template <typename... Idxs>
         requires(std::is_convertible_v<Idxs, index_t> && ...) &&
-                (sizeof...(Idxs) == Order - 1 && !std::is_const_v<DataLayer>)
+                (sizeof...(Idxs) == StorageOrder - 1 && !std::is_const_v<DataLayer>)
     reference operator()(Idxs&&... idxs) {
         return slice_(static_cast<index_t>(idxs)...);
     }
     template <typename... Idxs>
-        requires(std::is_convertible_v<Idxs, index_t> && ...) && (sizeof...(Idxs) == Order - 1)
+        requires(std::is_convertible_v<Idxs, index_t> && ...) && (sizeof...(Idxs) == StorageOrder - 1)
     const_reference operator()(Idxs&&... idxs) const {
         return slice_(static_cast<index_t>(idxs)...);
     }
@@ -219,7 +249,7 @@ template <typename Scalar_, typename DataLayer> struct filtered_col_view : publi
     using Base = plain_col_view<Scalar_, DataLayer>;
     using index_t = typename Base::index_t;
     using size_t = typename Base::size_t;
-    static constexpr int Order = Base::Order;
+    static constexpr int StorageOrder = Base::StorageOrder;
     using reference = typename Base::reference;
     using const_reference = typename Base::const_reference;
 
@@ -235,12 +265,12 @@ template <typename Scalar_, typename DataLayer> struct filtered_col_view : publi
     // accessors
     template <typename... Idxs>
         requires(std::is_convertible_v<Idxs, index_t> && ...) &&
-                (sizeof...(Idxs) == Order - 1 && !std::is_const_v<DataLayer>)
+                (sizeof...(Idxs) == StorageOrder - 1 && !std::is_const_v<DataLayer>)
     reference operator()(Idxs&&... idxs) {
         return Base::operator()(static_cast<index_t>(idxs_[idxs])...);
     }
     template <typename... Idxs>
-        requires(std::is_convertible_v<Idxs, index_t> && ...) && (sizeof...(Idxs) == Order - 1)
+        requires(std::is_convertible_v<Idxs, index_t> && ...) && (sizeof...(Idxs) == StorageOrder - 1)
     const_reference operator()(Idxs&&... idxs) const {
         return Base::operator()(static_cast<index_t>(idxs_[idxs])...);
     }
@@ -256,7 +286,7 @@ template <typename DataLayer> struct plain_row_filter {
     using const_row_view = typename DataLayer::const_row_view;
     using storage_t = std::conditional_t<
       std::is_const_v<DataLayer>, std::add_const<typename DataLayer::storage_t>, typename DataLayer::storage_t>;
-    static constexpr int Order = DataLayer::Order;
+    static constexpr int StorageOrder = DataLayer::StorageOrder;
 
     plain_row_filter() noexcept = default;
     template <typename Iterator>
@@ -343,9 +373,171 @@ template <typename DataLayer> struct plain_row_filter {
     std::vector<index_t> idxs_;
 };
 
+// a convinient heterogeneous structure for populating a plain_data_layer
+struct hetero_data_vector {
+   private:
+    using index_t = int;
+    template <template <typename...> typename T, typename U> struct strip_tuple_into;
+    template <template <typename...> typename T, typename... Us>
+    struct strip_tuple_into<T, std::tuple<Us...>> : std::type_identity<T<Us...>> { };
+    // storage type definition
+    using types = std::tuple<double, float, std::int64_t, std::int32_t, bool, std::string>;
+    template <typename... Ts> using data_map_ = std::tuple<std::vector<std::pair<std::string, std::vector<Ts>>>...>;
+    using storage_t = typename strip_tuple_into<data_map_, types>::type;
+    template <typename T>
+    static constexpr bool is_type_supported_v = internals::has_type<std::decay_t<T>, types>::value;
+    template <typename T> struct mapped_type {
+        using type = std::decay_t<decltype([](T) {
+            if constexpr (internals::is_integer_v<T> && !std::is_same_v<T, std::int64_t>) {
+                return std::int32_t();   // map integral, not 64 bit and not boolean types, to 32 bit int
+            } else {
+                return T();   // do not map other types
+            }
+        }(T()))>;
+    };
+    template <typename T> using mapped_type_t = typename mapped_type<T>::type;
+    template <typename T>
+    struct is_valid_pair {
+      using colname_type = std::tuple_element_t<0, T>;
+      using value_type   = mapped_type_t<std::tuple_element_t<1, T>>;
+      static constexpr bool value =
+        (std::is_same_v<colname_type, std::string> || std::is_same_v<colname_type, const char*>) &&
+        is_type_supported_v<value_type>;
+    };
+    template <typename T> static constexpr bool is_valid_pair_v = is_valid_pair<T>::value;
+    // internal getters based on type
+    template <typename T, typename U> auto& fetch_(U& u) { return std::get<index_of<T, types>::index>(u); }
+    template <typename T, typename U> const auto& fetch_(const U& u) const {
+        return std::get<index_of<T, types>::index>(u);
+    }
+    storage_t data_;
+    int size_ = 0;
+    int n_cols_ = 0;
+   public:
+    hetero_data_vector() = default;
+    hetero_data_vector(const std::vector<std::pair<std::string, dtype>>& column_descriptors) : size_(0), n_cols_(0) {
+        for (const auto& col_descriptor : column_descriptors) {
+            const auto& [colname, type_id] = col_descriptor;
+            internals::dispatch_to_dtype(
+              type_id,
+              [&]<typename T>(hetero_data_vector& dst) mutable {
+                  dst.get<T>().push_back(std::make_pair(colname, std::vector<T> {}));
+              },
+              *this);
+            n_cols_++;
+        }
+    }
+    // induce dtype from actual static types
+    template <typename... Ts>
+        requires(
+          (std::contiguous_iterator<typename Ts::iterator> && is_type_supported_v<typename Ts::value_type>) && ...)
+    hetero_data_vector(const std::vector<std::string>& colnames, const Ts&... data) {
+        fdapde_assert(colnames.size() == sizeof...(Ts));
+        internals::for_each_index_and_args<sizeof...(Ts)>(
+          [&, this]<int Ns, typename T>([[maybe_unused]] const T& t) {
+              internals::dispatch_to_dtype(
+                internals::dtype_from_static_type<T>(),
+                [&]<typename T_>(hetero_data_vector& dst) mutable {
+                    dst.get<T_>().push_back(std::make_pair(colnames[Ns], std::vector<T_> {}));
+                },
+                *this);
+          },
+          data...);
+        n_cols_ = colnames.size();
+    }
+    // observers
+    template <typename T> auto& get() { return fetch_<T>(data_); }
+    template <typename T> const auto& get() const { return fetch_<T>(data_); }
+    int size() const { return size_; }
+    // modifiers
+    template <typename DataLayer> void push_back(const plain_row_view<DataLayer>& row) {
+        for (const auto& f : row.field_descriptors()) {
+            internals::dispatch_to_dtype(
+              f.type_id,
+              [&]<typename T>(hetero_data_vector& dst) mutable {
+                  auto& typed_data = dst.template get<T>();
+                  for (auto& [colname, data] : typed_data) {
+                      if (colname == f.colname) { data.push_back(row.template get<T>(f.colname)); }
+                  }
+              },
+              *this);
+        }
+        size_++;
+        return;
+    }
+    template <typename... DataT>
+        requires(
+          ([]() {
+              if constexpr (internals::is_pair_v<std::decay_t<DataT>>) {
+                  return is_valid_pair_v<std::decay_t<DataT>>;
+              } else if constexpr (requires(DataT data, index_t i) {
+                                       { data[i] };
+                                   }) {
+                  using subscript_t = std::decay_t<decltype(std::declval<DataT>()[std::declval<index_t>()])>;
+                  if constexpr (internals::is_pair_v<subscript_t>) {   // check if subscripting DataT returns a tuple
+                      return is_valid_pair_v<subscript_t>;
+                  } else {
+                      return false;
+                  }
+              } else {
+                  return false;
+              }
+          }()) &&
+          ...)
+    void push_back(DataT&&... data) {
+        int cols_ = 0;
+        auto push_column = [&, this]<typename T>(const std::string& src_colname, const T& src_data) {
+            auto& typed_data = get<std::tuple_element_t<1, T>>();
+            bool inserted = false;
+            for (auto& [dst_colname, dst_data] : typed_data) {   // search insertion column
+                if (src_colname == dst_colname) {
+                    dst_data.push_back(src_data);
+                    inserted = true;
+		    cols_++;
+		    break;
+                }
+            }
+            if (!inserted) { throw std::runtime_error("GeoFrame: column not found."); }
+        };
+        // perform insertion
+        internals::for_each_index_and_args<sizeof...(DataT)>(
+          [&]<int Ns, typename T>(const T& t) {
+              if constexpr (internals::is_pair_v<T>) {
+                  push_column(std::get<0>(t), std::get<1>(t));
+              } else { // vector of pairs
+                  for (const auto& [src_colname, src_data] : t) { push_column(src_colname, src_data); }
+              }
+          },
+          data...);
+        if (cols_ != n_cols_) { throw std::runtime_error("GeoFrame: invalid number of columns."); }
+        size_++;
+        return;
+    }
+    template <typename F_>
+        requires(std::is_invocable_v<F_, int>)
+    void push_back(F_&& f) {   // push for each column the result of F_<T> for each T in types
+        std::apply(
+          [&, this](auto&... ts) {
+              (
+                [&]() {
+                    if (!ts.empty()) {
+                        for (auto& [colname, vec] : ts) {
+                            using value_type = typename std::decay_t<decltype(vec)>::value_type;
+                            vec.push_back(f.template operator()<value_type>(value_type {}));
+                        }
+                    }
+                }(),
+                ...);
+          },
+          data_);
+        size_++;
+        return;
+    }
+};
+  
 // heterogeneous container
-template <int Order_> class plain_data_layer {
-    fdapde_static_assert(Order_ > 1, ORDER_MUST_BE_STRICTLY_GREATER_THAN_ONE);
+/*template <int Rows, int Cols>*/ class scalar_data_layer {
+  // static constexpr std::array<int, 2> Shape {Rows, Cols};
     using types = std::tuple<
       double,         // data_t::flt64
       float,          // data_t::flt32
@@ -364,20 +556,14 @@ template <int Order_> class plain_data_layer {
         }(T()))>;
     };
     template <typename T> using mapped_type_t = typename mapped_type<T>::type;
+   public:
+    static constexpr int StorageOrder = 2;   // MdArray order
     template <typename T> static constexpr bool is_type_supported_v  = has_type<T, types>::value;
     template <typename T> static constexpr bool is_dtype_supported_v = is_type_supported_v<typename T::type>;
-    template <typename T> constexpr auto dtype_from_static_type() const {
-        using T_ = std::decay_t<T>;
-        if constexpr (std::is_same_v<T_, double      >) return data_t::flt64;
-        if constexpr (std::is_same_v<T_, float       >) return data_t::flt32;
-        if constexpr (std::is_same_v<T_, std::int64_t>) return data_t::int64;
-        if constexpr (std::is_same_v<T_, std::int32_t>) return data_t::int32;
-        if constexpr (std::is_same_v<T_, bool        >) return data_t::bin;
-        if constexpr (std::is_same_v<T_, std::string >) return data_t::str;
-    }
-    template <typename T> using data_table = MdArray<T, full_dynamic_extent_t<Order_>>;
-    template <typename... Ts> using data_map_ = std::tuple<MdArray<Ts, full_dynamic_extent_t<Order_>>...>;
-    using This = plain_data_layer<Order_>;
+   private:
+    template <typename T> using data_table = MdArray<T, full_dynamic_extent_t<StorageOrder>>;
+    template <typename... Ts> using data_map_ = std::tuple<MdArray<Ts, full_dynamic_extent_t<StorageOrder>>...>;
+    using This = scalar_data_layer;
     template <typename T, typename U>
         requires(is_type_supported_v<T>)
     auto& fetch_(U& u) {
@@ -389,21 +575,32 @@ template <int Order_> class plain_data_layer {
         return std::get<index_of<T, types>::index>(u);
     }
     bool has_column_(const std::string& colname) const { return colname_to_field_.contains(colname); }
+    template <typename T> bool has_column_of_type_(const std::string& colname) const {
+        auto col_dtype = internals::dtype_from_static_type<T>();
+        for (const auto& field : fields_) {
+            if (field.type_id == col_dtype.type_id && field.colname == colname) { return true; }
+        }
+        return false;
+    }
     struct field {
         std::string colname;
         int col_id;   // column position in MdArray
         internals::dtype type_id;
 
+        field(const std::string& colname_, internals::dtype type_id_) : colname(colname_), type_id(type_id_) { }
         field(const std::string& colname_, int col_id_, internals::dtype type_id_) :
             colname(colname_), col_id(col_id_), type_id(type_id_) { }
     };
     template <typename T>
-    static constexpr bool is_valid_pair_v =
-      (std::is_same_v<std::tuple_element_t<0, std::decay_t<T>>, std::string> ||
-       std::is_same_v<std::tuple_element_t<0, std::decay_t<T>>, const char*>) &&
-      internals::is_subscriptable<std::tuple_element_t<1, std::decay_t<T>>, int> &&
-      is_type_supported_v<mapped_type_t<
-        std::decay_t<decltype(std::declval<std::tuple_element_t<1, std::decay_t<T>>>()[std::declval<int>()])>>>;
+    struct is_valid_pair {
+      using colname_type = std::tuple_element_t<0, std::decay_t<T>>;
+      using value_type   = mapped_type_t<std::tuple_element_t<1, std::decay_t<T>>>;
+      static constexpr bool value =
+        (std::is_same_v<colname_type, std::string> || std::is_same_v<colname_type, const char*>) &&
+        (internals::is_subscriptable<value_type, int> &&
+         is_type_supported_v<mapped_type_t<std::decay_t<decltype(std::declval<value_type>()[std::declval<int>()])>>>);
+    };
+    template <typename T> static constexpr bool is_valid_pair_v = is_valid_pair<T>::value;
     // moves std::tuple<Ts...> to T<Ts...>
     template <template <typename...> typename T, typename U> struct strip_tuple_into;
     template <template <typename...> typename T, typename... Us>
@@ -414,23 +611,21 @@ template <int Order_> class plain_data_layer {
     using storage_t = typename strip_tuple_into<data_map_, types>::type;
     using index_t = int;
     using size_t = std::size_t;
-    using row_view = plain_row_view<plain_data_layer<Order_>>;
-    using const_row_view = plain_row_view<const plain_data_layer<Order_>>;
-    static constexpr int Order = Order_;
+    using row_view = plain_row_view<scalar_data_layer>;
+    using const_row_view = plain_row_view<const scalar_data_layer>;
 
-    plain_data_layer() noexcept : rows_(0), cols_(0) { }
+    scalar_data_layer() noexcept : rows_(0), cols_(0) { }
     template <typename... DataT>
         requires(
           ([]() {
-              if constexpr (internals::is_pair_v<std::decay_t<DataT>>) {   // DataT is a pair-like structure
-                  return is_valid_pair_v<std::decay_t<std::decay_t<DataT>>>;
-              } else if constexpr (requires(DataT data, index_t i) {   // DataT is a vector of pairs
+              if constexpr (internals::is_pair_v<std::decay_t<DataT>>) {
+                  return is_valid_pair_v<std::decay_t<DataT>>;
+              } else if constexpr (requires(DataT data, index_t i) {
                                        { data[i] };
                                    }) {
-                  if constexpr (internals::is_pair_v<   // check if subscripting DataT returns a tuple
-                                  std::decay_t<decltype(std::declval<DataT>()[std::declval<index_t>()])>>) {
-                      // check the tuple is indeed ammisible for plain_data_layer
-                      return is_valid_pair_v<decltype(std::declval<std::decay_t<DataT>>()[std::declval<index_t>()])>;
+                  using subscript_t = std::decay_t<decltype(std::declval<DataT>()[std::declval<index_t>()])>;
+                  if constexpr (internals::is_pair_v<subscript_t>) {   // check if subscripting DataT returns a tuple
+                      return is_valid_pair_v<subscript_t>;
                   } else {
                       return false;
                   }
@@ -439,7 +634,7 @@ template <int Order_> class plain_data_layer {
               }
           }()) &&
           ...)
-    plain_data_layer(DataT&&... data) {
+    scalar_data_layer(DataT&&... data) {
         // for each type id, the number of columns of that type
         std::unordered_map<dtype, int> type_id_cnt {
           {dtype::flt64, 0},
@@ -461,7 +656,7 @@ template <int Order_> class plain_data_layer {
             }
             using MappedT = mapped_type_t<std::decay_t<decltype(std::declval<T>()[std::declval<index_t>()])>>;
             // add field descriptor
-            auto dtype_ = dtype_from_static_type<MappedT>();
+            auto dtype_ = internals::dtype_from_static_type<MappedT>();
             fields_.emplace_back(colname, type_id_cnt[dtype_.type_id], dtype_.type_id);
             type_id_cnt[dtype_.type_id]++;
             colname_to_field_[colname] = fields_.size() - 1;
@@ -490,7 +685,7 @@ template <int Order_> class plain_data_layer {
                       return std::get<1>(t[0]);
                   }
               }().operator[](std::declval<index_t>()))>>;
-              auto dtype_ = dtype_from_static_type<MappedT>();
+              auto dtype_ = internals::dtype_from_static_type<MappedT>();
               fetch_<MappedT>(data_).resize(rows_, type_id_cnt[dtype_.type_id]);
               if constexpr (internals::is_pair_v<T>) {
                   fetch_<MappedT>(data_)
@@ -505,9 +700,58 @@ template <int Order_> class plain_data_layer {
               }
           },
           data...);
+        extract_nan_pattern_();
+    }
+    template <typename... DataT>
+        requires(
+          (std::contiguous_iterator<typename DataT::iterator> && is_type_supported_v<typename DataT::value_type>) &&
+          ...)
+    scalar_data_layer(const std::vector<std::string>& colnames, const DataT&... data) {
+        fdapde_assert(colnames.size() == sizeof...(data));
+        // for each type id, the number of columns of that type
+        std::unordered_map<dtype, int> type_id_cnt {
+          {dtype::flt64, 0},
+          {dtype::flt32, 0},
+          {dtype::int64, 0},
+          {dtype::int32, 0},
+          {dtype::bin,   0},
+          {dtype::str,   0}
+        };
+        std::unordered_map<dtype, int> type_id_col = type_id_cnt;
+        // push column descriptors
+        internals::for_each_index_and_args<sizeof...(DataT)>(
+          [&]<int Ns_, typename T>(T t) {
+              if (has_column_(colnames[Ns_]) || colnames[Ns_].size() == 0) {
+                  throw std::runtime_error("GeoFrame: duplicated or empty column names.");
+              }
+              if (rows_ == 0) {
+                  rows_ = t.size();
+              } else if (rows_ != 0 && rows_ != t.size()) {
+                  throw std::runtime_error("GeoFrame: columns of different size.");
+              }
+              using MappedT = mapped_type_t<std::decay_t<decltype(std::declval<T>()[std::declval<index_t>()])>>;
+              // add field descriptor
+              auto dtype_ = internals::dtype_from_static_type<MappedT>();
+              fields_.emplace_back(colnames[Ns_], type_id_cnt[dtype_.type_id], dtype_.type_id);
+              type_id_cnt[dtype_.type_id]++;
+              colname_to_field_[colnames[Ns_]] = fields_.size() - 1;
+              cols_++;
+          },
+          data...);
+        // reserve space for all types in pack, copy data in internal storage
+        internals::for_each_index_and_args<sizeof...(DataT)>(
+          [&]<int Ns_, typename T>(const T& t) {
+              using MappedT = mapped_type_t<std::decay_t<decltype(std::declval<T>()[std::declval<index_t>()])>>;
+              auto dtype_ = internals::dtype_from_static_type<MappedT>();
+              fetch_<MappedT>(data_).resize(rows_, type_id_cnt[dtype_.type_id]);
+              fetch_<MappedT>(data_).template slice<1>(type_id_col[dtype_.type_id]).assign_inplace_from(t);
+              type_id_col[dtype_.type_id]++;
+          },
+          data...);
+        extract_nan_pattern_();
     }
     template <typename LayerType>
-    plain_data_layer(const plain_row_filter<LayerType>& row_filter, const std::vector<std::string>& cols) {
+    scalar_data_layer(const plain_row_filter<LayerType>& row_filter, const std::vector<std::string>& cols) {
         fdapde_assert(cols.size() > 0);
         // for each type id, the number of columns of that type
         std::unordered_map<dtype, int> type_id_cnt {
@@ -533,7 +777,7 @@ template <int Order_> class plain_data_layer {
               (
                 [&]() {
                     using T = std::decay_t<decltype(ts)>;
-                    auto dtype_ = dtype_from_static_type<T>();
+                    auto dtype_ = internals::dtype_from_static_type<T>();
 		    int col_id_ = 0;
                     if (type_id_cnt[dtype_.type_id] != 0) {
                         fetch_<T>(data_).resize(rows_, type_id_cnt[dtype_.type_id]);
@@ -551,14 +795,20 @@ template <int Order_> class plain_data_layer {
                 ...);
           },
           types {});
+	extract_nan_pattern_();
     }
     template <typename LayerType>
-    plain_data_layer(const plain_row_filter<LayerType>& row_filter) :
-        plain_data_layer(row_filter, row_filter.colnames()) { }
+    scalar_data_layer(const plain_row_filter<LayerType>& row_filter) :
+        scalar_data_layer(row_filter, row_filter.colnames()) { }
+    scalar_data_layer(const hetero_data_vector& data) :
+        scalar_data_layer(
+          data.get<double>(), data.get<float>(), data.get<std::int64_t>(), data.get<std::int32_t>(),
+          data.get<std::string>()) { }
 
     // observers
     const field& field_descriptor(const std::string& colname) const { return fields_[colname_to_field_.at(colname)]; }
     const std::vector<field>& field_descriptors() const { return fields_; }
+    const std::array<int, 2> shape() const { return shape_; }
     std::vector<std::string> colnames() const {
         std::vector<std::string> colnames_;
         for (int i = 0, n = fields_.size(); i < n; ++i) { colnames_.push_back(fields_[i].colname); }
@@ -570,65 +820,75 @@ template <int Order_> class plain_data_layer {
         }
         return false;
     }
+    // nan pattern relative to columns supplied as arguments
+    BinaryMatrix<Dynamic, Dynamic> nan_pattern(const std::vector<std::string>& colnames) const {
+        size_t n_rows = rows_;
+        size_t n_cols = colnames.size();
+        BinaryMatrix<Dynamic, Dynamic> nan_mask(n_rows, n_cols);
+        for (int i = 0; i < n_cols; ++i) { nan_mask.col(i) = nan_pattern_.at(colnames[i]); }
+        return nan_mask;
+    }
+    auto nan_pattern(const std::string& colname) const { return nan_pattern_.at(colname); }
     size_t rows() const { return rows_; }
     size_t cols() const { return cols_; }
     // accessors
     // column access
-    template <typename T> plain_col_view<T, plain_data_layer<Order>> col(size_t col) {
+    template <typename T> plain_col_view<T, scalar_data_layer> col(size_t col) {
         if (col > cols_) { throw std::runtime_error("GeoFrame: out of bound access."); }
-        return plain_col_view<T, plain_data_layer<Order>>(this, fields_[col]);
+        return plain_col_view<T, scalar_data_layer>(this, fields_[col]);
     }
-    template <typename T> plain_col_view<T, const plain_data_layer<Order>> col(size_t col) const {
+    template <typename T> plain_col_view<T, const scalar_data_layer> col(size_t col) const {
         if (col > cols_) { throw std::runtime_error("GeoFrame: out of bound access."); }
-        return plain_col_view<T, const plain_data_layer<Order>>(this, fields_[col]);
+        return plain_col_view<T, const scalar_data_layer>(this, fields_[col]);
     }
-    template <typename T> plain_col_view<T, plain_data_layer<Order>> col(const std::string& colname) {
+    template <typename T> plain_col_view<T, scalar_data_layer> col(const std::string& colname) {
         if (!has_column_(colname)) { throw std::runtime_error("GeoFrame: column not found."); }
         return col<T>(colname_to_field_.at(colname));
     }
-    template <typename T> plain_col_view<T, const plain_data_layer<Order>> col(const std::string& colname) const {
+    template <typename T> plain_col_view<T, const scalar_data_layer> col(const std::string& colname) const {
         if (!has_column_(colname)) { throw std::runtime_error("GeoFrame: column not found."); }
 	return col<T>(colname_to_field_.at(colname));
     }
     // row access
-    plain_row_view<plain_data_layer<Order>> row(size_t row) {
-        if (row > rows_) { throw std::runtime_error("GeoFrame: out of bound access."); }
-        return plain_row_view<plain_data_layer<Order>>(this, row);
+    plain_row_view<scalar_data_layer> row(size_t row) {
+        if (row >= rows_) { throw std::runtime_error("GeoFrame: out of bound access."); }
+        return plain_row_view<scalar_data_layer>(this, row);
     }
-    plain_row_view<const plain_data_layer<Order>> row(size_t row) const {
-        if (row > rows_) { throw std::runtime_error("GeoFrame: out of bound access."); }
-        return plain_row_view<const plain_data_layer<Order>>(this, row);
+    plain_row_view<const scalar_data_layer> row(size_t row) const {
+        if (row >= rows_) { throw std::runtime_error("GeoFrame: out of bound access."); }
+        return plain_row_view<const scalar_data_layer>(this, row);
     }
     // row filtering operations
     template <typename Iterator>
         requires(internals::is_integer_v<typename Iterator::value_type>)
-    plain_row_filter<plain_data_layer<Order>> operator()(Iterator begin, Iterator end) {
-        return plain_row_filter<plain_data_layer<Order>>(this, begin, end);
+    plain_row_filter<scalar_data_layer> operator()(Iterator begin, Iterator end) {
+        return plain_row_filter<scalar_data_layer>(this, begin, end);
     }
     template <typename T>
         requires(std::is_convertible_v<T, index_t>)
-    plain_row_filter<plain_data_layer<Order>> operator()(const std::initializer_list<T>& idxs) {
-        return plain_row_filter<plain_data_layer<Order>>(this, idxs.begin(), idxs.end());
+    plain_row_filter<scalar_data_layer> operator()(const std::initializer_list<T>& idxs) {
+        return plain_row_filter<scalar_data_layer>(this, idxs.begin(), idxs.end());
     }
     template <typename Filter>
         requires(requires(Filter f, index_t i) {
             { f(i) } -> std::same_as<bool>;
         })
-    plain_row_filter<plain_data_layer<Order>> operator()(Filter&& f) {
-        return plain_row_filter<plain_data_layer<Order>>(this, std::forward<Filter>(f));
+    plain_row_filter<scalar_data_layer> operator()(Filter&& f) {
+        return plain_row_filter<scalar_data_layer>(this, std::forward<Filter>(f));
     }
     template <typename LogicalVec>
         requires(requires(LogicalVec vec, int i) {
             { vec.size() } -> std::convertible_to<size_t>;
             { vec[i] } -> std::convertible_to<bool>;
         })
-    plain_row_filter<plain_data_layer<Order>> operator()(LogicalVec&& logical_vec) {
-        return plain_row_filter<plain_data_layer<Order>>(this, logical_vec);
+    plain_row_filter<scalar_data_layer> operator()(LogicalVec&& logical_vec) {
+        return plain_row_filter<scalar_data_layer>(this, logical_vec);
     }
   
     template <typename T> const data_table<T>& data() const { return fetch_<mapped_type_t<T>>(data_); }
     template <typename T> data_table<T>& data() { return fetch_<mapped_type_t<T>>(data_); }
     // modifiers
+    void reshape(int out_rows, int out_cols) { shape_ = {out_rows, out_cols}; }
     void set_colnames(const std::vector<std::string>& colnames) {
         if (colnames.size() != fields_.size()) { throw std::runtime_error("GeoFrame: wrong number of columns."); }
         std::vector<std::string> tmp = colnames;
@@ -641,6 +901,21 @@ template <int Order_> class plain_data_layer {
         }
         for (size_t i = 0; i < colnames.size(); ++i) { fields_[i].colname = colnames[i]; }
         return;
+    }
+    template <typename BinXprType>
+    void set_nan(const std::string& colname, const BinMtxBase<Dynamic, 1, BinXprType>& nan_pattern) {
+        auto colnames_ = colnames();
+        if (std::find(colnames_.begin(), colnames_.end(), colname) == colnames_.end()) {
+            throw std::runtime_error("GeoFrame: column not found.");
+        }
+        nan_pattern_[colname] = nan_pattern;
+	return;
+    }
+    void set_nan(const std::vector<std::string>& colnames, const BinaryMatrix<Dynamic, Dynamic>& nan_pattern) {
+        if (nan_pattern.cols() != cols_ || nan_pattern.cols() != colnames.size()) {
+            throw std::runtime_error("GeoFrame: invalid nan pattern.");
+        }
+        for (std::size_t i = 0; i < colnames.size(); ++i) { set_nan(colnames[i], nan_pattern.col(i)); }
     }
     template <typename Src>
         requires(
@@ -655,7 +930,7 @@ template <int Order_> class plain_data_layer {
 	using MappedSrcType = mapped_type_t<SrcType>;
 	if constexpr (!std::is_pointer_v<Src>) { fdapde_assert(src.size() == fetch_<MappedSrcType>(data_).extent(0)); }
         // add field descriptor
-        auto dtype_ = dtype_from_static_type<MappedSrcType>();
+        auto dtype_ = internals::dtype_from_static_type<MappedSrcType>();
         int col = 0;
         for (const field& f : fields_) {
             if (f.type_id == dtype_.type_id) { col++; }
@@ -664,7 +939,7 @@ template <int Order_> class plain_data_layer {
 	colname_to_field_[name] = fields_.size() - 1;
         // resize space if column doesn't fit current size (double number of columns, amortized constant time insertion)
         if (col == fetch_<SrcType>(data_).extent(1)) {
-            internals::apply_index_pack<Order>([&]<int... Ns_>() {
+            internals::apply_index_pack<StorageOrder>([&]<int... Ns_>() {
                 conservative_resize(
                   dtype_,
                   (Ns_ == 1 ? (2 * fetch_<SrcType>(data_).extent(Ns_)) : fetch_<SrcType>(data_).extent(Ns_))...);
@@ -676,7 +951,7 @@ template <int Order_> class plain_data_layer {
         return;
     }  
     // output stream
-    friend std::ostream& operator<<(std::ostream& os, const plain_data_layer& data) {
+    friend std::ostream& operator<<(std::ostream& os, const scalar_data_layer& data) {
         std::vector<std::vector<std::string>> out;
         std::vector<std::size_t> max_size(data.field_descriptors().size(), 0);
 	int n_rows = std::min(size_t(8), data.rows());
@@ -687,9 +962,11 @@ template <int Order_> class plain_data_layer {
               out.push_back(typestring);
               auto col = data.col<T>(colname);
               if constexpr (!std::is_same_v<T, std::string>) {
-                  for (int i = 0; i < n_rows; ++i) { out.push_back(std::to_string(col(i))); }
+                  for (int i = 0; i < n_rows; ++i) {
+                      out.push_back(data.nan_pattern(colname)[i] ? "NA" : std::to_string(col(i)));
+                  }
               } else {
-                  for (int i = 0; i < n_rows; ++i) { out.push_back(col(i)); }
+                  for (int i = 0; i < n_rows; ++i) { out.push_back(data.nan_pattern(colname)[i] ? "NA" : col(i)); }
               }
           };
         for (int i = 0, n = data.cols(); i < n; ++i) {
@@ -723,23 +1000,52 @@ template <int Order_> class plain_data_layer {
     // resize mdarray storage, preserving old values
     template <typename dtype, typename... Extents_>
         requires(std::is_convertible_v<Extents_, index_t> && ...) &&
-                (sizeof...(Extents_) == Order && is_type_supported_v<typename dtype::type>)
+                (sizeof...(Extents_) == StorageOrder && is_type_supported_v<typename dtype::type>)
     void conservative_resize(dtype, Extents_... exts) {
-        using mem_t = MdArray<typename dtype::type, full_dynamic_extent_t<Order_>>;
+        using mem_t = MdArray<typename dtype::type, full_dynamic_extent_t<StorageOrder>>;
         mem_t& data = fetch_<typename dtype::type>(data_);
         // exts coincide with current size, skip resizing
-        if (internals::apply_index_pack<Order>([&]<int... Ns_>() { return ((exts == data.extent(Ns_)) && ...); })) {
+        if (internals::apply_index_pack<StorageOrder>(
+              [&]<int... Ns_>() { return ((exts == data.extent(Ns_)) && ...); })) {
             return;
         }
         auto tmp = data.block(static_cast<index_t>(exts)...);
         data.resize(static_cast<index_t>(exts)...);
         data = tmp;
         return;
-    }  
+    }
+    // extract nan_pattern from data
+    void extract_nan_pattern_() {
+        // allocate room for each column
+        for (const std::string& colname : colnames()) { nan_pattern_[colname] = BinaryMatrix<Dynamic, 1>(rows_); }
+        for (const field& f : fields_) {
+            internals::dispatch_to_dtype(
+              f.type_id,
+              [&]<typename T>(std::unordered_map<std::string, BinaryMatrix<Dynamic, 1>>& dst) mutable {
+                  auto& col_nan_   = dst.at(f.colname);
+                  const auto& col_ = col<T>(f.colname);
+                  if constexpr (std::is_same_v<T, double> || std::is_same_v<T, float>) {
+                      for (int i = 0; i < rows_; ++i) {
+                          if (std::isnan(col_(i))) { col_nan_.set(i); }
+                      }
+                  } else if constexpr (std::is_same_v<T, std::string>) {
+                      for (int i = 0; i < rows_; ++i) {
+                          if (col_(i) == "NaN" || col_(i) == "nan" || col_(i) == "NA") { col_nan_.set(i); }
+                      }
+                  } else {
+                      // for other integer types, there is no nan encoding. Do nothing
+                  }
+              },
+              nan_pattern_);
+        }
+	return;
+    }
     storage_t data_;
     std::vector<field> fields_;
     std::unordered_map<std::string, int> colname_to_field_;
+    std::unordered_map<std::string, BinaryMatrix<Dynamic, 1>> nan_pattern_;
     int rows_ = 0, cols_ = 0;
+    std::array<int, 2> shape_;
 };
 
 }   // namespace internals

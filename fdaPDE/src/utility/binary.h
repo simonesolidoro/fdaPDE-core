@@ -53,8 +53,11 @@ template <int Rows, int Cols = Rows> class BinaryMatrix : public BinMtxBase<Rows
         data_.resize(1 + std::ceil((n_rows_ * n_cols_) / PackSize), 0);
     }
     // vector constructor
-    explicit BinaryMatrix(int n_rows) requires(is_dynamic_sized<This>::value) : BinaryMatrix(n_rows, 1) {
-        fdapde_static_assert(Rows == Dynamic && Cols == 1, THIS_METHOD_IS_ONLY_FOR_VECTORS);
+    explicit BinaryMatrix(int n)
+        requires(is_dynamic_sized<This>::value)
+        : BinaryMatrix(Rows == Dynamic ? n : 1, Cols == Dynamic ? n : 1) {
+        fdapde_static_assert(
+          (Rows == Dynamic && Cols == 1) || (Rows == 1 && Cols == Dynamic), THIS_METHOD_IS_ONLY_FOR_VECTORS);
     }
     // construct from expression
     template <int Rows_, int Cols_, typename Rhs_> BinaryMatrix(const BinMtxBase<Rows_, Cols_, Rhs_>& rhs) {
@@ -102,7 +105,8 @@ template <int Rows, int Cols = Rows> class BinaryMatrix : public BinMtxBase<Rows
         }
     }
     template <typename Iterator> BinaryMatrix(Iterator begin, Iterator end, int n_rows) : BinaryMatrix(n_rows, 1) {
-        fdapde_static_assert(Rows == Dynamic && Cols == 1, THIS_METHOD_IS_ONLY_FOR_VECTORS);
+        fdapde_static_assert(
+          (Rows == Dynamic && Cols == 1) || (Rows == 1 && Cols == Dynamic), THIS_METHOD_IS_ONLY_FOR_VECTORS);
         resize(n_rows);   // reserve space
         int i = 0;
         for (Iterator it = begin; it != end || i < n_rows; ++it, ++i) {
@@ -122,7 +126,8 @@ template <int Rows, int Cols = Rows> class BinaryMatrix : public BinMtxBase<Rows
         return Ones(Rows, Cols);
     }
     static BinaryMatrix<Rows, Cols> Ones(int i) {   // vector-like factory
-        fdapde_static_assert(Rows == Dynamic && Cols == 1, THIS_METHOD_IS_ONLY_FOR_VECTORS);
+        fdapde_static_assert(
+          (Rows == Dynamic && Cols == 1) || (Rows == 1 && Cols == Dynamic), THIS_METHOD_IS_ONLY_FOR_VECTORS);
         BinaryMatrix<Rows, 1> result(i);
         for (int k = 0; k < result.bitpacks(); ++k) { result.bitpack(k) = -1; }
         return result;
@@ -159,7 +164,7 @@ template <int Rows, int Cols = Rows> class BinaryMatrix : public BinMtxBase<Rows
         return (data_[pack_of(i, j)] & BitPackType(1) << ((i * Base::n_cols_ + j) % PackSize)) != 0;
     }
     bool operator[](int i) const {   // vector-like (subscript) access
-        fdapde_static_assert(Cols == 1, THIS_METHOD_IS_ONLY_VECTORS);
+        fdapde_static_assert(Cols == 1 || Rows == 1, THIS_METHOD_IS_ONLY_VECTORS);
         return operator()(i, 0);
     }
     BitPackType bitpack(int i) const { return data_[i]; }
@@ -170,7 +175,7 @@ template <int Rows, int Cols = Rows> class BinaryMatrix : public BinMtxBase<Rows
         data_[pack_of(i, j)] |= (BitPackType(1) << ((i * Base::n_cols_ + j) % PackSize));
     }
     void set(int i) {
-        fdapde_static_assert(Cols == 1, THIS_METHOD_IS_ONLY_FOR_VECTORS);
+        fdapde_static_assert(Cols == 1 || Rows == 1, THIS_METHOD_IS_ONLY_FOR_VECTORS);
         set(i, 0);
     }
     void set() {   // sets all coeffients in the matrix
@@ -185,7 +190,7 @@ template <int Rows, int Cols = Rows> class BinaryMatrix : public BinMtxBase<Rows
         data_[pack_of(i, j)] &= ~(BitPackType(1) << ((i * Base::n_cols_ + j) % PackSize));
     }
     void clear(int i) {
-        fdapde_static_assert(Cols == 1, THIS_METHOD_IS_ONLY_FOR_VECTORS);
+        fdapde_static_assert(Cols == 1 || Rows == 1, THIS_METHOD_IS_ONLY_FOR_VECTORS);
         clear(i, 0);
     }
     void clear() {   // clears all coeffients in the matrix
@@ -545,7 +550,7 @@ template <int Rows, int Cols, typename XprType> class BinMtxBase {
         return get().operator()(i, j);
     }
     bool operator[](int i) const {
-        fdapde_static_assert(Cols == 1, THIS_METHOD_IS_ONLY_FOR_VECTORS);
+        fdapde_static_assert(Cols == 1 || Rows == 1, THIS_METHOD_IS_ONLY_FOR_VECTORS);
         return get().operator()(i, 0);
     }
     // returns all the indices (in row-major order) having coefficients equal to b

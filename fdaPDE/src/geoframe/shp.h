@@ -433,14 +433,14 @@ class dbf_reader {
     }
 };
 
-class ShapeFile {
+class SHPFile {
    private:
     shp_reader shp_;
     dbf_reader dbf_;
     std::string gcs_ = "UNDEFINED";   // geographic coordinate system (GCS)
     std::string filename_;
    public:
-    ShapeFile(std::string filename) : filename_() {
+    SHPFile(std::string filename) : filename_() {
         std::filesystem::path filepath(filename);
         if (!std::filesystem::exists(filepath)) { throw std::runtime_error("File " + filename + " not found."); }
         if (filepath.extension() == ".shp") {
@@ -482,7 +482,7 @@ class ShapeFile {
     // accessor
     template <typename T> std::vector<T> get(std::string colname) const { return dbf_.get_as<T>(colname); }
     // output stream
-    friend std::ostream& operator<<(std::ostream& os, const ShapeFile& sf) {
+    friend std::ostream& operator<<(std::ostream& os, const SHPFile& sf) {
         os << "file:              " << sf.filename_ << std::endl;
 	std::string shape_type;
 	if(sf.shp().shape_type() == shp_reader::shape_t::Point)      shape_type = "POINT";
@@ -503,8 +503,8 @@ class ShapeFile {
     }
 };
 
-ShapeFile read_shp(const std::string& filename) {
-    ShapeFile shp(filename);
+SHPFile read_shp(const std::string& filename) {
+    SHPFile shp(filename);
     return shp;
 }
 

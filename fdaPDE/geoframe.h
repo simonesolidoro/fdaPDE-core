@@ -33,21 +33,23 @@
 #include "src/geoframe/parsing.h"
 #include "src/geoframe/csv.h"
 #include "src/geoframe/shp.h"
+#include "src/geoframe/txt.h"
 
 // define basic symbols
 namespace fdapde {
-namespace layer_t {
 
-struct point_t { } point;
-struct areal_t { } areal;
-
-}   // namespace layer_t
+struct areal_layer_tag {} gf_areal;
+struct point_layer_tag {} gf_point;
+enum class ltype : int { point = 0, areal = 1 };
+static constexpr int gf_mesh_nodes = -1;
+  
 }   // namespace fdapde
 
 // data structure
 #include "src/geoframe/data_layer.h"
 #include "src/geoframe/areal_layer.h"
 #include "src/geoframe/point_layer.h"
+#include "src/geoframe/geo_layer.h"
 #include "src/geoframe/geoframe.h"
 
 

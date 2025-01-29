@@ -16,4 +16,4 @@ spack:
   - mumps
   view: true
   concretizer:
-    unify: true
+    unify: when_possible

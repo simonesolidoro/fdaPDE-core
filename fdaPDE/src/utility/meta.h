@@ -143,6 +143,12 @@ template <typename T, typename... Args> struct has_type<T, std::tuple<T, Args...
     static constexpr bool value = true;
 };
 
+// detect if T is same to at least one of the types in Tuple
+template <typename T, typename Tuple> struct is_any_same {
+    static constexpr bool value = has_type<T, Tuple>::value;
+};
+template <typename T, typename Tuple> static constexpr bool is_any_same_v = is_any_same<T, Tuple>::value;
+
 // heterogeneous value list
 template <auto... Vs> struct value_list { };
 
