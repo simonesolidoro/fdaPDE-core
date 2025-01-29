@@ -406,9 +406,9 @@ struct hetero_data_vector {
     };
     template <typename T> static constexpr bool is_valid_pair_v = is_valid_pair<T>::value;
     // internal getters based on type
-    template <typename T, typename U> auto& fetch_(U& u) { return std::get<index_of<T, types>::index>(u); }
+    template <typename T, typename U> auto& fetch_(U& u) { return std::get<index_of<T, types>::value>(u); }
     template <typename T, typename U> const auto& fetch_(const U& u) const {
-        return std::get<index_of<T, types>::index>(u);
+        return std::get<index_of<T, types>::value>(u);
     }
     storage_t data_;
     int size_ = 0;
@@ -567,12 +567,12 @@ struct hetero_data_vector {
     template <typename T, typename U>
         requires(is_type_supported_v<T>)
     auto& fetch_(U& u) {
-        return std::get<index_of<T, types>::index>(u);
+        return std::get<index_of<T, types>::value>(u);
     }
     template <typename T, typename U>
         requires(is_type_supported_v<T>)
     const auto& fetch_(const U& u) const {
-        return std::get<index_of<T, types>::index>(u);
+        return std::get<index_of<T, types>::value>(u);
     }
     bool has_column_(const std::string& colname) const { return colname_to_field_.contains(colname); }
     template <typename T> bool has_column_of_type_(const std::string& colname) const {

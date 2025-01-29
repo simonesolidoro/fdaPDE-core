@@ -327,31 +327,26 @@ struct GeoLayer {
         fdapde_assert(i < n_rows_);
 	using internals::apply_index_pack;
         if constexpr (Order == 1) {
-            return apply_index_pack<Order>([&]<int... Ns>() { return std::make_tuple((geometry<Ns>()[i])...); });
+            return apply_index_pack<Order>([&]<int... Ns>() { return std::make_tuple(geometry<Ns>()[i]...); });
         } else {
             // move index i to tensorized index (i_1, i_2, ..., i_Order)
             std::array<int, Order> index {};
             int k = i;
             for (int j = 0; j < Order - 1; ++j) {
-                while (k > 0) {
-                    k -= strides_[Order - 1 - j];
+                while ((k - strides_[Order - 1 - j]) >= 0) {
+                    k = k - strides_[Order - 1 - j];
                     index[Order - 1 - j]++;
                 }
-                k = k - index[Order - 1 - j] * strides_[Order - 1 - j];
             }
 	    index[0] = k;
-
-	    for(int i = 0; i < Order; ++i) std::cout << index[i] << ", ";
-	    std::cout << std::endl;
-	    
             return apply_index_pack<Order>([&]<int... Ns>() { return std::make_tuple(geometry<Ns>()[index[Ns]]...); });
         }
     }
 
     // output stream
     friend std::ostream& operator<<(std::ostream& os, const GeoLayer& data) {
-      	int n_rows = std::min(size_t(80), data.rows());
-	int n_cols = Order + data.cols();
+      	int n_rows = std::min(size_t(8), data.rows());
+        int n_cols = Order + data.cols();
         std::vector<std::vector<std::string>> out;
         out.resize(n_cols);
         std::vector<std::size_t> max_size(n_cols, 0);
