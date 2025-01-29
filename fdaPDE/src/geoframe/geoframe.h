@@ -302,7 +302,7 @@ template <typename... Triangulation_> struct GeoFrame {
         return;
     }
 
-    const std::array<ltype, Order>& layer_category(int layer_id) const { layers_[layer_id].layer_category_; }
+    const std::array<ltype, Order>& layer_category(int layer_id) const { return layers_[layer_id].layer_category_; }
 
     // getters
 
@@ -517,9 +517,9 @@ template <typename... Triangulation_> struct GeoFrame {
     // std::optional<ltype> layer_category(int idx) const { return layer_category(idx_to_layer_name_.at(idx)); }
     int n_layers() const { return n_layers_; }
     // indexed access
-    const internals::scalar_data_layer& operator[](int idx) const {
+    const layer_t& operator[](int idx) const {
         geoframe_assert(idx < n_layers_, "out of bound access.");	
-	return *reinterpret_cast<const internals::scalar_data_layer*>(layers_[idx].data_);
+	return layers_[idx];
     }
     const layer_t& operator[](const std::string& colname) const { return layers_[layer_name_to_idx_.at(colname)]; }
 
