@@ -157,7 +157,7 @@ struct GeoLayer {
         fdapde_assert(coords.cols() == full_embed_dim);
         int offset = 0;
         internals::for_each_index_in_pack<Order>([&]<int Ns_>() {
-            Eigen::Matrix<double, Dynamic, Dynamic> coords_ = coords.middleCols(offset, embed_dim[Ns_]);	    
+            Eigen::Matrix<double, Dynamic, Dynamic> coords_ = coords.middleCols(offset, embed_dim[Ns_]);
             std::get<Ns_>(geo_data_) = std::tuple_element_t<Ns_, geo_storage_t>(std::get<Ns_>(triangulation_), coords_);
             offset += embed_dim[Ns_];
         });
