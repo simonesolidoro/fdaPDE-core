@@ -917,6 +917,45 @@ struct hetero_data_vector {
         }
         for (std::size_t i = 0; i < colnames.size(); ++i) { set_nan(colnames[i], nan_pattern.col(i)); }
     }
+    template <typename Scalar, typename... Extents_>   // reserve memory for rows x cols Scalar
+        requires(std::is_convertible_v<Extents_, index_t> && ...) &&
+                (sizeof...(Extents_) == StorageOrder && is_type_supported_v<Scalar>)
+    void resize(Extents_... exts) {
+        auto& data = fetch_<Scalar>(data_);
+        // exts coincide with current size, skip resizing
+        if (internals::apply_index_pack<StorageOrder>(
+              [&]<int... Ns_>() { return ((exts == data.extent(Ns_)) && ...); })) {
+            return;
+        }
+        data.resize(static_cast<index_t>(exts)...);   // resize storage discarding old values
+	rows_ = data.extent(0);
+        return;
+    }
+    // resize mdarray storage, preserving old values
+    template <typename Scalar, typename... Extents_>
+        requires(std::is_convertible_v<Extents_, index_t> && ...) &&
+                (sizeof...(Extents_) == StorageOrder && is_type_supported_v<Scalar>)
+    void conservative_resize(Extents_... exts) {
+        using mem_t = MdArray<Scalar, full_dynamic_extent_t<StorageOrder>>;
+        if (fetch_<Scalar>(data_).size() != 0) {
+            std::array<index_t, StorageOrder> exts_;
+            internals::for_each_index_and_args<StorageOrder>(
+              [&]<int Ns, typename Ts>(const Ts& ts) {
+                  exts_[Ns] = std::min(ts, fetch_<Scalar>(data_).extent(Ns)) - 1;
+              },
+              exts...);
+            mem_t tmp = internals::apply_index_pack<StorageOrder>(   // copy old values
+              [&, this]<int... Ns>() { return fetch_<Scalar>(data_).block(std::make_pair(0, exts_[Ns])...); });
+            resize<Scalar>(exts...);
+            fetch_<Scalar>(data_)
+              .block(std::make_pair(0, exts_[0]), std::make_pair(0, exts_[1]))
+              .assign_inplace_from(tmp);
+        } else {   // nothing to copy
+            resize<Scalar>(exts...);
+        }
+        return;
+    }
+  
     template <typename Src>
         requires(
           (std::is_pointer_v<Src> && is_type_supported_v<std::remove_pointer_t<Src>>) ||
@@ -924,38 +963,45 @@ struct hetero_data_vector {
            requires(Src src) {
                { src.size() } -> std::convertible_to<size_t>;
            } && is_type_supported_v<std::decay_t<decltype(std::declval<Src>()[index_t()])>>))
-    void add_column(const std::string& name, const Src& src) {
+    void append_column(const std::string& colname, const Src& src) {
         using SrcType = std::conditional_t<
           std::is_pointer_v<Src>, std::remove_pointer_t<Src>, std::decay_t<decltype(std::declval<Src>()[index_t()])>>;
-	using MappedSrcType = mapped_type_t<SrcType>;
-	if constexpr (!std::is_pointer_v<Src>) { fdapde_assert(src.size() == fetch_<MappedSrcType>(data_).extent(0)); }
+        using SrcType_ = mapped_type_t<SrcType>;
+        if constexpr (!std::is_pointer_v<Src>) {
+            fdapde_assert(fetch_<SrcType_>(data_).extent(0) == 0 || src.size() == fetch_<SrcType_>(data_).extent(0));
+        }
         // add field descriptor
-        auto dtype_ = internals::dtype_from_static_type<MappedSrcType>();
+        auto dtype_ = internals::dtype_from_static_type<SrcType_>();
         int col = 0;
         for (const field& f : fields_) {
             if (f.type_id == dtype_.type_id) { col++; }
         }
-        fields_.emplace_back(name, col, dtype_.type_id);
-	colname_to_field_[name] = fields_.size() - 1;
+        fields_.emplace_back(colname, col, dtype_.type_id);
+        colname_to_field_[colname] = fields_.size() - 1;
         // resize space if column doesn't fit current size (double number of columns, amortized constant time insertion)
-        if (col == fetch_<SrcType>(data_).extent(1)) {
+        if (col == 0) {
+            resize<SrcType_>(src.size(), 1);
+        } else if (col == fetch_<SrcType>(data_).extent(1)) {
             internals::apply_index_pack<StorageOrder>([&]<int... Ns_>() {
-                conservative_resize(
-                  dtype_,
-                  (Ns_ == 1 ? (2 * fetch_<SrcType>(data_).extent(Ns_)) : fetch_<SrcType>(data_).extent(Ns_))...);
+                conservative_resize<SrcType_>(
+                  (Ns_ == 1 ? (2 * fetch_<SrcType_>(data_).extent(Ns_)) : fetch_<SrcType_>(data_).extent(Ns_))...);
             });
+	    std::cout << "resize: " << fetch_<SrcType_>(data_).extent(0) << ", " << fetch_<SrcType_>(data_).extent(1)  << std::endl;
         }
         // copy src into data_
-        fetch_<SrcType>(data_).template slice<1>(col).assign_inplace_from(src);
-	cols_++;
+        fetch_<SrcType_>(data_).template slice<1>(col).assign_inplace_from(src);
+        cols_++;
+        extract_nan_pattern_(colname);   // nan pattern update
         return;
-    }  
+    }
+
     // output stream
     friend std::ostream& operator<<(std::ostream& os, const scalar_data_layer& data) {
         std::vector<std::vector<std::string>> out;
         std::vector<std::size_t> max_size(data.field_descriptors().size(), 0);
 	int n_rows = std::min(size_t(8), data.rows());
-        out.resize(data.cols());
+	int n_cols = data.cols();
+        out.resize(n_cols);
         auto print =
           [&]<typename T>(std::vector<std::string>& out, const std::string& typestring, const std::string& colname) {
               out.push_back(colname);
@@ -969,7 +1015,7 @@ struct hetero_data_vector {
                   for (int i = 0; i < n_rows; ++i) { out.push_back(data.nan_pattern(colname)[i] ? "NA" : col(i)); }
               }
           };
-        for (int i = 0, n = data.cols(); i < n; ++i) {
+        for (int i = 0, n = n_cols; i < n; ++i) {
             const std::string& colname = data.field_descriptors()[i].colname;
             dtype coltype = data.field_descriptors()[i].type_id;
             if (coltype == dtype::flt64) { print.template operator()<double      >(out[i], "<flt64>", colname); }
@@ -980,64 +1026,53 @@ struct hetero_data_vector {
             if (coltype == dtype::str)   { print.template operator()<std::string >(out[i], "<str>"  , colname); }
         }
         // pretty format
-        for (int i = 0, n = data.cols(); i < n; ++i) {
+        for (int i = 0, n = n_cols; i < n; ++i) {
             for (int j = 0, m = out[i].size(); j < m; ++j) { max_size[i] = std::max(max_size[i], out[i][j].size()); }
         }
-        for (int i = 0, n = data.cols(); i < n; ++i) {
+        for (int i = 0, n = n_cols; i < n; ++i) {
             for (int j = 0, m = out[i].size(); j < m; ++j) {
-                out[i][j].append(max_size[i] - out[i][j].size() + 1, ' ');
+                if (j < 2) {   // keep first two rows left aligned
+                    out[i][j].append(max_size[i] - out[i][j].size() + 1, ' ');
+                } else {
+                    out[i][j].insert(0, max_size[i] - out[i][j].size() + (i == 0 ? 0 : 1), ' ');
+                }
             }
         }
 	// send to output stream
         for (int j = 0, m = out[0].size(); j < m - 1; ++j) {
-            for (int i = 0, n = data.cols(); i < n; ++i) { os << out[i][j]; }
+            for (int i = 0, n = n_cols; i < n; ++i) { os << out[i][j]; }
             os << std::endl;
         }
-        for (int i = 0, n = data.cols(); i < n; ++i) { os << out[i][out[0].size() - 1]; }
+        for (int i = 0, n = n_cols; i < n; ++i) { os << out[i][out[0].size() - 1]; }
         return os;
     }
    private:
-    // resize mdarray storage, preserving old values
-    template <typename dtype, typename... Extents_>
-        requires(std::is_convertible_v<Extents_, index_t> && ...) &&
-                (sizeof...(Extents_) == StorageOrder && is_type_supported_v<typename dtype::type>)
-    void conservative_resize(dtype, Extents_... exts) {
-        using mem_t = MdArray<typename dtype::type, full_dynamic_extent_t<StorageOrder>>;
-        mem_t& data = fetch_<typename dtype::type>(data_);
-        // exts coincide with current size, skip resizing
-        if (internals::apply_index_pack<StorageOrder>(
-              [&]<int... Ns_>() { return ((exts == data.extent(Ns_)) && ...); })) {
-            return;
-        }
-        auto tmp = data.block(static_cast<index_t>(exts)...);
-        data.resize(static_cast<index_t>(exts)...);
-        data = tmp;
+    // extract nan_pattern from data
+    void extract_nan_pattern_(const std::string& colname) {
+        nan_pattern_[colname] = BinaryMatrix<Dynamic, 1>(rows_);
+        field f = fields_[colname_to_field_[colname]];
+        internals::dispatch_to_dtype(
+          f.type_id,
+          [&]<typename T>(std::unordered_map<std::string, BinaryMatrix<Dynamic, 1>>& dst) mutable {
+              auto& col_nan_ = dst.at(f.colname);
+              const auto& col_ = col<T>(f.colname);
+              if constexpr (std::is_same_v<T, double> || std::is_same_v<T, float>) {
+                  for (int i = 0; i < rows_; ++i) {
+                      if (std::isnan(col_(i))) { col_nan_.set(i); }
+                  }
+              } else if constexpr (std::is_same_v<T, std::string>) {
+                  for (int i = 0; i < rows_; ++i) {
+                      if (col_(i) == "NaN" || col_(i) == "nan" || col_(i) == "NA") { col_nan_.set(i); }
+                  }
+              } else {
+                  // for other integer types, there is no nan encoding. Do nothing
+              }
+          },
+          nan_pattern_);
         return;
     }
-    // extract nan_pattern from data
     void extract_nan_pattern_() {
-        // allocate room for each column
-        for (const std::string& colname : colnames()) { nan_pattern_[colname] = BinaryMatrix<Dynamic, 1>(rows_); }
-        for (const field& f : fields_) {
-            internals::dispatch_to_dtype(
-              f.type_id,
-              [&]<typename T>(std::unordered_map<std::string, BinaryMatrix<Dynamic, 1>>& dst) mutable {
-                  auto& col_nan_   = dst.at(f.colname);
-                  const auto& col_ = col<T>(f.colname);
-                  if constexpr (std::is_same_v<T, double> || std::is_same_v<T, float>) {
-                      for (int i = 0; i < rows_; ++i) {
-                          if (std::isnan(col_(i))) { col_nan_.set(i); }
-                      }
-                  } else if constexpr (std::is_same_v<T, std::string>) {
-                      for (int i = 0; i < rows_; ++i) {
-                          if (col_(i) == "NaN" || col_(i) == "nan" || col_(i) == "NA") { col_nan_.set(i); }
-                      }
-                  } else {
-                      // for other integer types, there is no nan encoding. Do nothing
-                  }
-              },
-              nan_pattern_);
-        }
+        for (const std::string& colname : colnames()) { extract_nan_pattern_(colname); }
 	return;
     }
     storage_t data_;

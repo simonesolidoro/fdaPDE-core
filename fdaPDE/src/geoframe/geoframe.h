@@ -157,11 +157,11 @@ template <typename... Triangulation_> struct GeoFrame {
     std::unordered_map<std::string, int> layer_name_to_idx_;
 };
 
-template <typename... GeoInfo, typename DataLayer> auto geo_cast(DataLayer&& data_layer) {
-    return reinterpret_cast<GeoLayer<typename std::decay_t<DataLayer>::Triangulation, std::tuple<GeoInfo...>>*>(
+template <typename... GeoInfo, typename DataLayer> auto& geo_cast(DataLayer&& data_layer) {
+    return *reinterpret_cast<GeoLayer<typename std::decay_t<DataLayer>::Triangulation, std::tuple<GeoInfo...>>*>(
       data_layer.layer_.get());
 }
-  
+
 }   // namespace fdapde
 
 #endif // __FDAPDE_GEOFRAME_H__

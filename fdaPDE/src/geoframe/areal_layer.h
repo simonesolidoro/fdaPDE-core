@@ -33,8 +33,10 @@ template <typename Triangulation_> struct areal_layer {
      areal_layer() : triangulation_(nullptr), regions_() { }
      template <typename SubregionsType>
          requires(std::is_same_v<SubregionsType, std::vector<MultiPolygon<local_dim, embed_dim>>>)
-     areal_layer(Triangulation_ triangulation, const /*std::shared_ptr<*/SubregionsType/*>*/& regions) noexcept :
-       triangulation_(triangulation)/*, regions_(regions)*/ { }
+     areal_layer(Triangulation_* triangulation, const SubregionsType& regions) noexcept :
+       triangulation_(triangulation) {
+         regions_ = std::make_shared<std::decay_t<SubregionsType>>(regions);
+     }
       // observers
       size_t n_regions() const { return regions_->size(); }
      //  std::vector<std::string> colnames() const { return data_.colnames(); }
@@ -131,10 +133,8 @@ template <typename Triangulation_> struct areal_layer {
      //      return plain_row_filter<areal_layer<GeoFrame>>(this, logical_vec);
      //  }
       private:
-     // data members
-     Triangulation_* triangulation_;
+     Triangulation* triangulation_;
      std::shared_ptr<std::vector<MultiPolygon<local_dim, embed_dim>>> regions_;
-    //  storage_t data_;
 };
   
 }   // namespace internals

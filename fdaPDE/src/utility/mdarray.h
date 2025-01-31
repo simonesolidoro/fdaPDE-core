@@ -345,7 +345,7 @@ template <typename MdArray, typename BlkExtents> class MdArrayBlock {
         constexpr friend bool operator==(const iterator& lhs, const iterator& rhs) { return lhs.index_ == rhs.index_; }
         constexpr friend bool operator!=(const iterator& lhs, const iterator& rhs) { return lhs.index_ != rhs.index_; }
        private:
-        template <typename IndexType> constexpr const Scalar& fetch_at_(IndexType&& index) const {
+        template <typename IndexType> constexpr decltype(auto) fetch_at_(IndexType&& index) const {
             return internals::apply_index_pack<Order>(
               [&]<int... Ns_>() -> decltype(auto) { return mdarray_->operator()(((void)Ns_, index[Ns_])...); });
         }
@@ -403,12 +403,18 @@ template <typename MdArray, typename BlkExtents> class MdArrayBlock {
             return (((static_cast<index_t>(idxs) + offset_[Ns_]) * mdarray_->mapping().stride(Ns_)) + ... + 0);
         }));
     }
-    template <typename IndexPack>   // access via index-pack object
-        requires(internals::is_subscriptable<IndexPack, index_t>)
-    constexpr reference operator()(IndexPack&& index_pack) {
-        return internals::apply_index_pack<Order>(
-          [&]<int... Ns_>() -> decltype(auto) { return operator()(index_pack[Ns_]...); });
-    }
+    template <typename Src>
+        requires(
+          std::is_pointer_v<Src> || (internals::is_subscriptable<Src, int> &&
+	  requires(Src src) {
+	    { src.size() } -> std::convertible_to<size_t>;
+	  }))
+    constexpr MdArrayBlock& assign_inplace_from(Src&& src) {
+        if constexpr (!std::is_pointer_v<Src>) fdapde_assert(src.size() == size());
+        int i = 0;
+        for (auto& v : *this) v = src[i++]; // --------------------- if src is an mdarray, this is not the correct indexing
+        return *this;
+    }  
    private:
     std::array<index_t, Order> offset_ {};
     extents_t extents_;
@@ -429,7 +435,7 @@ constexpr auto submdarray(MdArray&& mdarray, Slicers... slicers) {
               fdapde_constexpr_assert(s < static_cast<index_t>(mdarray.extent(Ns_)));
           } else if constexpr (internals::is_pair_v<Slicer_>) {
               fdapde_constexpr_assert(
-                std::get<0>(s) != full_extent && std::get<1>(s) != full_extent && std::get<1>(s) > std::get<0>(s) &&
+                std::get<0>(s) != full_extent && std::get<1>(s) != full_extent && std::get<1>(s) >= std::get<0>(s) &&
                 std::get<1>(s) < static_cast<index_t>(mdarray.extent(Ns_)));
           }
       },
@@ -1066,7 +1072,6 @@ template <typename Scalar_, typename Extents_, typename LayoutPolicy_ = internal
                   extents_t::static_extents[i] == block_t::static_extents[i]);
             }
         }
-        extents_ = other.extents();
         if constexpr (extents_t::DynamicOrder > 0) {
             if (size() != other.size()) {
                 internals::apply_index_pack<Order>(
@@ -1075,6 +1080,7 @@ template <typename Scalar_, typename Extents_, typename LayoutPolicy_ = internal
             }
             mapping_ = mapping_t(extents_);
         } else {
+            extents_ = other.extents();
             mapping_ = other.mapping();
         }
         // copy data from block
