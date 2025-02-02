@@ -409,7 +409,7 @@ class dbf_reader {
                 std::string tmp = v;
                 tmp.erase(tmp.find_last_not_of(" \n\r\t") + 1);   // trim the string
                 if (tmp.empty()) {
-                    values.push_back("<NA>");
+                    values.push_back("NA");
                 } else {
                     values.push_back(tmp);
                 }

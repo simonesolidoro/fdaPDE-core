@@ -23,13 +23,77 @@ namespace fdapde {
 
 namespace internals {
 
-struct point_tag {
+struct point_tag {   // change name, point_layer_traits ?
     using layer_tag = point_layer_tag;
-    template <int LocalDim, int EmbedDim> using element_type = Eigen::Matrix<double, LocalDim, 1>;
+    template <int LocalDim, int EmbedDim> using value_type = double;
 };
 struct polygon_tag {
     using layer_tag = areal_layer_tag;
-    template <int LocalDim, int EmbedDim> using element_type = MultiPolygon<LocalDim, EmbedDim>;
+    template <int LocalDim, int EmbedDim> using value_type = MultiPolygon<LocalDim, EmbedDim>;
+};
+
+template <typename GeoLayer>
+struct geo_row_view :
+    public plain_row_view<std::conditional_t<
+      std::is_const_v<GeoLayer>, std::add_const_t<typename GeoLayer::storage_t>, typename GeoLayer::storage_t>> {
+    using Base = plain_row_view<std::conditional_t<
+      std::is_const_v<GeoLayer>, std::add_const_t<typename GeoLayer::storage_t>, typename GeoLayer::storage_t>>;
+    using GeoInfo = typename GeoLayer::GeoInfo;
+    static constexpr int Order = GeoLayer::Order;
+
+    geo_row_view() noexcept = default;
+    geo_row_view(GeoLayer* geo_data, int row) : Base(std::addressof(geo_data->data()), row), geo_data_(geo_data) {
+        fdapde_assert(row < geo_data_->rows());
+    }
+    // observers
+    template <int N> auto geometry() const {
+        fdapde_static_assert(N < Order, OUT_OF_BOUND_ACCESS);
+        return std::get<N>(geo_data_->geometry(this->id()));
+    }
+    const GeoLayer& geo_data() const { return *geo_data_; }
+   private:
+    GeoLayer* geo_data_;
+};
+
+// an indexed set of rows coupled with geometric information
+template <typename GeoLayer>
+struct geo_row_filter :
+    public plain_row_filter<std::conditional_t<
+      std::is_const_v<GeoLayer>, std::add_const_t<typename GeoLayer::storage_t>, typename GeoLayer::storage_t>> {
+    using Base = plain_row_filter<std::conditional_t<
+      std::is_const_v<GeoLayer>, std::add_const_t<typename GeoLayer::storage_t>, typename GeoLayer::storage_t>>;
+    using GeoInfo = typename GeoLayer::GeoInfo;
+    using size_t = typename GeoLayer::size_t;
+    using index_t = typename GeoLayer::index_t;
+    static constexpr int Order = GeoLayer::Order;
+
+    geo_row_filter() noexcept = default;
+    // index-based filtering mode (inherited from plain_data_layer)
+    template <typename Iterator>
+    geo_row_filter(GeoLayer* geo_data, Iterator begin, Iterator end) :
+        Base(std::addressof(geo_data->data()), begin, end), geo_data_(geo_data) {
+        fdapde_assert(
+          std::all_of(begin FDAPDE_COMMA end FDAPDE_COMMA [this](index_t i) { return i < geo_data_->rows(); }));
+    }
+    template <typename Filter>
+        requires(requires(Filter f, index_t i) {
+                    { f(i) } -> std::same_as<bool>;
+                })
+    geo_row_filter(GeoLayer* geo_data, Filter&& f) : Base(std::addressof(geo_data->data()), f), geo_data_(geo_data) { }
+    template <typename LogicalVec>
+        requires(requires(LogicalVec vec, int i) {
+                    { vec.size() } -> std::convertible_to<size_t>;
+                    { vec[i] } -> std::convertible_to<bool>;
+                })
+    geo_row_filter(GeoLayer* geo_data, const LogicalVec& vec) :
+        Base(std::addressof(geo_data->data()), vec), geo_data_(geo_data) {
+        fdapde_assert(vec.size() < geo_data_->rows());
+    }
+    // observers
+    auto geometry(int i) const { return geo_data_->geometry(this->idxs_[i]); }
+    const GeoLayer& geo_data() const { return *geo_data_; }
+   private:
+    GeoLayer* geo_data_;
 };
 
 }   // namespace internals
@@ -39,7 +103,7 @@ using POLYGON = internals::polygon_tag;
 using POINT   = internals::point_tag;
 
 // geometrical layer, a plain_data_layer coupled with geometrical indexing
-template </*int Rows, int Cols, */ typename Triangulation_, typename GeoInfo_>
+template <typename Triangulation_, typename GeoInfo_>
     requires(
       internals::is_tuple_v<GeoInfo_> && internals::is_tuple_v<Triangulation_> &&
       std::tuple_size_v<Triangulation_> == std::tuple_size_v<GeoInfo_>)
@@ -58,6 +122,9 @@ struct GeoLayer {
         using type = std::tuple<std::add_pointer_t<Us>...>;
     };
     using triangulation_t = typename triangulation_storage<Triangulation_>::type;
+    using This = GeoLayer<Triangulation_, GeoInfo_>;
+    template <int N, typename GeoTag>
+    static constexpr bool is_geo_v = std::is_same_v<std::tuple_element_t<N, GeoInfo_>, GeoTag>;
    public:
     using storage_t = internals::scalar_data_layer;
     using geo_storage_t = typename geo_storage_t_impl<GeoInfo_, Triangulation_>::type;
@@ -79,14 +146,49 @@ struct GeoLayer {
         return value_;
     }();
 
-    // static constexpr std::array<index_t, 2> Shape {Rows, Cols};
-
+   public:
+    // constructor
     GeoLayer(triangulation_t triangulation) :
         triangulation_(triangulation), data_(), geo_data_(), n_rows_(0), strides_(), extents_() {
-        std::fill(strides_.begin(), strides_.end(), 1);   // default: unstructured layer
+        std::fill(strides_.begin(), strides_.end(), 1);   // default to unstructured layer
     }
+    template <typename LayerType>
+        requires(LayerType::Order == Order && std::is_same_v<typename LayerType::GeoInfo, GeoInfo>)
+    GeoLayer(const internals::geo_row_filter<LayerType>& row_filter, const std::vector<std::string>& cols) :
+        triangulation_(row_filter.geo_data().triangulation()),
+        data_(row_filter, cols),
+        n_rows_(row_filter.rows()),
+        strides_(),
+        extents_() {
+        fdapde_assert(cols.size() > 0);
+        std::fill(strides_.begin(), strides_.end(), 1);   // unstructured layer by construction
+	// collect geometry from filtering predicate
+        using mem_t = decltype(internals::apply_index_pack<Order>([]<int... Ns>() {
+            return std::tuple<std::vector<
+              typename std::tuple_element_t<Ns, GeoInfo>::template value_type<local_dim[Ns], embed_dim[Ns]>>...> {};
+        }));
+        mem_t geo_data;
+        for (int i = 0; i < row_filter.rows(); ++i) {
+            auto geometry = row_filter.geometry(i);
+            internals::for_each_index_in_pack<Order>([&]<int Ns>() {
+                if constexpr (is_geo_v<Ns, POINT>) {
+                    for (int i = 0; i < embed_dim[Ns]; ++i) {
+                        std::get<Ns>(geo_data).push_back(std::get<Ns>(geometry)[i]);
+                    };
+                }
+                if constexpr (is_geo_v<Ns, POLYGON>) { std::get<Ns>(geo_data).push_back(std::get<Ns>(geometry)); }
+            });
+        }
+	// initialize geo indexes
+        internals::for_each_index_in_pack<Order>([&, this]<int Ns>() {
+            std::get<Ns>(geo_data_) =
+              std::tuple_element_t<Ns, geo_storage_t>(std::get<Ns>(triangulation_), std::get<Ns>(geo_data));
+        });
+    }
+    template <typename LayerType>
+        requires(LayerType::Order == Order && std::is_same_v<typename LayerType::GeoInfo, GeoInfo>)
+    GeoLayer(const internals::geo_row_filter<LayerType>& row_filter) : GeoLayer(row_filter, row_filter.colnames()) { }
     // observers
-    // const std::array<int, 2>& shape() const { return Shape; }
     size_t rows() const { return n_rows_; }
     size_t cols() const { return data_.cols(); }
     size_t size() const { return rows() * cols(); }
@@ -109,27 +211,36 @@ struct GeoLayer {
 	
         constexpr int full_embed_dim = std::accumulate(embed_dim.begin(), embed_dim.end(), 0);
         using point_t = std::array<double, full_embed_dim>;
+	// compute unique coordinates along direction Ns_
+        auto insert_unique_ = [this]<int Ns_, typename T>(const T& coords) {
+            auto& layer = std::get<Ns_>(geo_data_);
+            // unique coordinates
+            std::unordered_set<Eigen::Matrix<double, embed_dim[Ns_], 1>, internals::eigen_matrix_hash> coords_set;
+            std::vector<int> coords_idx;
+            for (int i = 0; i < coords.rows(); ++i) {
+                Eigen::Matrix<double, embed_dim[Ns_], 1> p(coords.row(i));
+                if (!coords_set.contains(p)) {
+                    coords_set.insert(p);
+                    coords_idx.push_back(i);
+                }
+            }
+            Eigen::Matrix<double, Dynamic, Dynamic> coords_unique(coords_set.size(), embed_dim[Ns_]);
+            int i = 0;
+            for (int idx : coords_idx) { coords_unique.row(i++) = coords.row(idx); }
+            // push in layer
+            std::get<Ns_>(geo_data_) =
+              std::tuple_element_t<Ns_, geo_storage_t>(std::get<Ns_>(triangulation_), coords_unique);
+            extents_[Ns_] = std::get<Ns_>(geo_data_).rows();
+            return;
+        };
         // compute full point set for each layer direction
         internals::for_each_index_and_args<Order>(
-          [&, this]<int Ns_, typename T>(T coords) mutable {
-              auto& layer = std::get<Ns_>(geo_data_);
-              // unique coordinates
-              std::unordered_set<Eigen::Matrix<double, embed_dim[Ns_], 1>, internals::eigen_matrix_hash> coords_set;
-              std::vector<int> coords_idx;
-              for (int i = 0; i < coords.rows(); ++i) {
-                  Eigen::Matrix<double, embed_dim[Ns_], 1> p(coords.row(i));
-                  if (!coords_set.contains(p)) {
-                      coords_set.insert(p);
-                      coords_idx.push_back(i);
-                  }
+          [&, this]<int Ns_, typename T>(const T& coords) mutable {
+              if constexpr (std::is_same_v<T, std::string>) {   // parse file
+                  insert_unique_<Ns_>(parse_file_<double>(coords));
+              } else {
+                  insert_unique_<Ns_>(coords);
               }
-              Eigen::Matrix<double, Dynamic, Dynamic> coords_unique(coords_set.size(), embed_dim[Ns_]);
-              int i = 0;
-              for (int idx : coords_idx) { coords_unique.row(i++) = coords.row(idx); }
-              // push in layer
-              std::get<Ns_>(geo_data_) =
-                std::tuple_element_t<Ns_, geo_storage_t>(std::get<Ns_>(triangulation_), coords_unique);
-              extents_[Ns_] = std::get<Ns_>(geo_data_).rows();
           },
           geo_entity...);
         // overall number of points in structured grid
@@ -141,19 +252,6 @@ struct GeoLayer {
         }
         return;
     }
-
-    // template <typename... GeoEntity>
-    //     requires(
-    //       sizeof...(GeoEntity) == Order &&
-    //       (sizeof...(GeoEntity) != 1 ||
-    //        !std::is_same_v<std::decay_t<GeoEntity>, Eigen::Matrix<double, Dynamic, Dynamic>>))
-    // void push_back(GeoEntity&&... geo_entity) {
-    //   internals::for_each_index_and_args<sizeof...(GeoEntity)>([&, this]<int Ns_, typename T>(T t) {
-    // 	  if constexpr()
-    // 	});
-    //     // if GeoEntity is either a matrix or a vector, gridify
-    //     // if not vector nor matrix (like a polygon - point pair, push back single line)
-    // }
     void push_back(const Eigen::Matrix<double, Dynamic, Dynamic>& coords) {
         fdapde_static_assert(is_full_geo_point, THIS_METHOD_IS_FOR_FULL_POINT_LAYERS_ONLY);
         constexpr int full_embed_dim = std::accumulate(embed_dim.begin(), embed_dim.end(), 0);
@@ -167,13 +265,24 @@ struct GeoLayer {
         n_rows_ = coords.rows();
         return;
     }
+    // for each cell of the triangulation, polygons is a vector indicating to which polygon each cell belongs to
+    // template <typename PolygonT>
+    //     requires(internals::is_polygonal_subdivision_v<PolygonT>)
+    // void push_back(const PolygonT& polygons) {
+    //     fdapde_static_assert(
+    //       Order == 1 &&
+    //         std::is_same_v<std::tuple_element_t<0 FDAPDE_COMMA GeoInfo> FDAPDE_COMMA internals::polygon_tag>,
+    //       THIS_METHOD_IS_FOR_POLYGONAL_ORDER_ONE_LAYERS_ONLY);
+    //     fdapde_assert(polygons.size() != 0 && polygons.size() == std::get<0>(triangulation_)->n_cells());
+    // 	std::get<0>(geo_data_) = std::tuple_element_t<0, geo_storage_t>(std::get<0>(triangulation_), polygons);
+    // 	n_rows_ = std::get<0>(geo_data_).n_regions();
+    // 	return;
+    // }
     // load coordinates from external file
     void push_back(const std::string& filename, bool header = true, bool index_col = false) {
         fdapde_static_assert(is_full_geo_point, THIS_METHOD_IS_FOR_FULL_POINT_LAYERS_ONLY);
-        std::filesystem::path filepath(filename);
-        if (!std::filesystem::exists(filepath)) { throw std::runtime_error("file " + filename + " not found."); }
-        if (filepath.extension() == ".csv") { push_back(read_csv<double>(filename, header, index_col).as_matrix()); }
-	if (filepath.extension() == ".txt") { push_back(read_txt<double>(filename, header, index_col).as_matrix()); }
+	push_back(parse_file_<double>(filename, header, index_col));
+	return;
     }
 
     void gridify() {
@@ -336,8 +445,15 @@ struct GeoLayer {
   // erase column
   
     // geometry access
-    template <int N> auto& geometry() { return std::get<N>(geo_data_); }
-    template <int N> const auto& geometry() const { return std::get<N>(geo_data_); }
+    const triangulation_t& triangulation() const { return triangulation_; }
+    template <int N> auto& geometry() {
+        fdapde_static_assert(N < Order, OUT_OF_BOUND_ACCESS);
+        return std::get<N>(geo_data_);
+    }
+    template <int N> const auto& geometry() const {
+        fdapde_static_assert(N < Order, OUT_OF_BOUND_ACCESS);
+        return std::get<N>(geo_data_);
+    }
     auto geometry(int i) const {
         fdapde_assert(i < n_rows_);
 	using internals::apply_index_pack;
@@ -355,6 +471,28 @@ struct GeoLayer {
 	    index[0] = i;
             return apply_index_pack<Order>([&]<int... Ns>() { return std::make_tuple(geometry<Ns>()[index[Ns]]...); });
         }
+    }
+
+    // row access
+    internals::geo_row_view<This> row(size_t row) { return internals::geo_row_view<This>(this, row); }
+    const internals::geo_row_view<This> row(size_t row) const { return internals::geo_row_view<This>(this, row); }
+    // row filtering operations
+    template <typename Iterator>
+        requires(internals::is_integer_v<typename Iterator::value_type>)
+    internals::geo_row_filter<This> select(Iterator begin, Iterator end) {
+        return internals::geo_row_filter<This>(this, begin, end);
+    }
+    template <typename T>
+        requires(std::is_convertible_v<T, index_t>)
+    internals::geo_row_filter<const This> select(const std::initializer_list<T>& idxs) const {
+        return internals::geo_row_filter<const This>(this, idxs.begin(), idxs.end());
+    }
+    template <typename LogicalPred>
+        requires(
+	  requires(LogicalPred pred, index_t i) { { pred(i) } -> std::convertible_to<bool>; } ||
+          requires(LogicalPred pred, index_t i) { { pred[i] } -> std::convertible_to<bool>; })
+    internals::geo_row_filter<This> select(const LogicalPred& pred) {
+        return internals::geo_row_filter<This>(this, pred);
     }
 
     // output stream
@@ -386,7 +524,7 @@ struct GeoLayer {
                 out[Ns].push_back("<POINT>");
                 for (int i = 0; i < n_rows; ++i) {
                     auto coord = std::get<Ns>(data.geometry(i));
-                    std::string coord_str = "(";
+                    std::string coord_str = "";
                     for (int j = 0; j < coord.size() - 1; ++j) { coord_str += std::to_string(coord[j]) + ", "; }
                     coord_str += std::to_string(coord[coord.size() - 1]) + ")";
                     out[Ns].push_back(coord_str);
@@ -432,11 +570,9 @@ struct GeoLayer {
         }
         for (int i = 0, n = n_cols; i < n; ++i) {
             for (int j = 0, m = out[i].size(); j < m; ++j) {
-                if (j < 2) {   // keep first two rows left aligned
-                    out[i][j].append(max_size[i] - out[i][j].size() + 1, ' ');
-                } else {
-                    out[i][j].insert(0, max_size[i] - out[i][j].size() + (i == 0 ? 0 : 1), ' ');
-                }
+                out[i][j].insert(0, max_size[i] - out[i][j].size() + (i == 0 ? 0 : 1), ' ');   // first pad with spaces
+		if (i == 0 && j < 2) { out[i][j].insert(0, 1, ' '); }
+                if (i == 0 && j > 1) { out[i][j].insert(0, 1, '('); }
             }
         }
 	// send to output stream
@@ -462,6 +598,20 @@ struct GeoLayer {
         n_rows_ = data_.rows();
 	return;
     }
+    template <typename Scalar>
+    Eigen::Matrix<Scalar, Dynamic, Dynamic>
+    parse_file_(const std::string& filename, bool header, bool index_col) const {
+        std::filesystem::path filepath(filename);
+        if (!std::filesystem::exists(filepath)) { throw std::runtime_error("file " + filename + " not found."); }
+	// check if able to parse
+        std::set<std::string> supported_extensions({".csv", ".txt"});
+        if (!supported_extensions.contains(filepath.extension())) { throw std::runtime_error("not supported format."); }
+	// read file
+        Eigen::Matrix<Scalar, Dynamic, Dynamic> data;
+        if (filepath.extension() == ".csv") data = read_csv<Scalar>(filename, header, index_col).as_matrix();
+	if (filepath.extension() == ".txt") data = read_txt<Scalar>(filename, header, index_col).as_matrix();
+	return data;
+    }
 
     storage_t data_;
     geo_storage_t geo_data_;
@@ -471,6 +621,39 @@ struct GeoLayer {
     std::array<int, Order> extents_;
 };
 
+// geo_filter outstream
+template <typename GeoLayer>
+std::ostream& operator<<(std::ostream& os, const internals::geo_row_filter<GeoLayer>& data) {
+    return operator<<(os, GeoLayer(data));
+}
+template <typename GeoLayer>
+std::ostream& operator<<(std::ostream& os, const internals::geo_row_view<GeoLayer>& data) {
+    return operator<<(os, data.geo_data().select({data.id()}));
+}
+
+    // template <typename... GeoEntity>
+    //     requires(
+    //       sizeof...(GeoEntity) == Order ||
+    //       (sizeof...(GeoEntity) == 1 &&
+    //        !std::is_same_v<std::decay_t<GeoEntity>, Eigen::Matrix<double, Dynamic, Dynamic>>))
+    // void push_back(GeoEntity&&... geo_entity) {
+    //   // compute size of each geometric entity
+    //   std::array<size_t, sizeof...(GeoEntity)> sizes;
+    //   internals::for_each_index_and_args<sizeof...(GeoEntity)>([&, this]<int Ns_, typename T>([[maybe_unused]] T t) {
+    //       if constexpr (internals::is_eigen_dense_xpr<T>) {
+    //           sizes[Ns_] = t.rows();
+    //       } else if constexpr (internals::is_stl_container<T>) {
+    //           sizes[Ns_] = t.size();
+    //       } else {
+    //           sizes[Ns_] = 1;
+    //       }
+    //   });
+      
+    //   // if GeoEntity is either a matrix or a vector, <- no gridify here... here you either push a single line or
+    //   // nothing if not vector nor matrix (like a polygon - point pair, push back single line)
+    // }
+
+  
 }   // namespace fdapde
 
 #endif // __FDAPDE_GEO_LAYER_H__

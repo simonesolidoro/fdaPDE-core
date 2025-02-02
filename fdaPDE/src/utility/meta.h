@@ -230,6 +230,21 @@ template <typename XprType> struct ref_select_impl<XprType, false> {
 template <typename XprType> struct ref_select : ref_select_impl<XprType, has_nest_as_ref_bit<XprType>> { };
 template <typename XprType> using ref_select_t = ref_select<XprType>::type;
 
+// concept for STL container
+template <typename T>
+concept is_stl_container = requires(T t) {
+    requires std::same_as<typename T::reference, typename T::value_type &>;
+    requires std::same_as<typename T::const_reference, const typename T::value_type &>;
+    requires std::forward_iterator<typename T::iterator>;
+    requires std::forward_iterator<typename T::const_iterator>;
+    { t.begin() } -> std::same_as<typename T::iterator>;
+    { t.end() } -> std::same_as<typename T::iterator>;
+    { t.cbegin() } -> std::same_as<typename T::const_iterator>;
+    { t.cend() } -> std::same_as<typename T::const_iterator>;
+    { t.size() } -> std::convertible_to<std::size_t>;
+    { t.empty() } -> std::same_as<bool>;
+};
+
 }   // namespace internals
 }   // namespace fdapde
 

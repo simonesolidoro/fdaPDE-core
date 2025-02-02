@@ -31,24 +31,66 @@ template <typename Triangulation_> struct point_layer {
 
     point_layer() : triangulation_(nullptr), coords_(), locs_at_mesh_nodes_(false) { }
     template <typename GeoDescriptor>
-    point_layer(Triangulation_* triangulation, GeoDescriptor data) noexcept :
-        triangulation_(triangulation) {
-        if constexpr (std::is_same_v<GeoDescriptor, int>) {
-            fdapde_assert(data == gf_mesh_nodes);
-            locs_at_mesh_nodes_ = true;
-        } else {
-            coords_ = std::make_shared<std::decay_t<GeoDescriptor>>(data);
-            locs_at_mesh_nodes_ = false;
+        requires(internals::is_eigen_dense_xpr_v<GeoDescriptor> || internals::is_stl_container<GeoDescriptor>)
+    point_layer(Triangulation_* triangulation, const GeoDescriptor& coords) noexcept :
+        triangulation_(triangulation), locs_at_mesh_nodes_(false) {
+        if constexpr (internals::is_eigen_dense_xpr_v<GeoDescriptor>) {
+            coords_.reserve(coords.size());
+            for (int i = 0; i < coords.rows(); ++i) {
+                for (int j = 0; j < coords.cols(); ++j) { coords_.push_back(coords(i, j)); }
+            }
+            n_rows_ = coords.rows();
+        } else if constexpr(internals::is_stl_container<GeoDescriptor>) {
+            fdapde_assert(coords.size() % embed_dim == 0);
+            coords_.reserve(coords.size());
+            std::copy(coords.begin(), coords.end(), coords_.data());
+            n_rows_ = coords.size() / embed_dim;
+	}
+    }
+    // geometrical coordinates coincidint with triangulation nodes
+    point_layer(Triangulation_* triangulation) noexcept : triangulation_(triangulation), locs_at_mesh_nodes_(true) {
+        coords_.reserve(triangulation_->n_nodes() * embed_dim);
+        const auto& coords = triangulation_->nodes();
+        for (int i = 0; i < coords.rows(); ++i) {
+            for (int j = 0; j < coords.cols(); ++j) { coords_.push_back(coords(i, j)); }
         }
+	n_rows_ = triangulation_->n_nodes();
     }
     // observers
     geometry_type coord(int i) const { return coordinates().row(i); }
     geometry_type operator[](int i) const { return coord(i); }
-    int rows() const { return coordinates().rows(); }
+    int rows() const { return n_rows_; }
     bool locs_at_mesh_nodes() const { return locs_at_mesh_nodes_; }
+    // modifiers
+    template <typename... CoordsT>
+        requires(sizeof...(CoordsT) == embed_dim) && (std::is_convertible_v<CoordsT, double> && ...)
+    void push_back(CoordsT... coords) {
+        internals::for_each_index_and_args<embed_dim>(
+          [&, this]<int Ns, typename T>(T t) { coords_.push_back(t); }, coords...);
+	n_rows_++;
+	return;
+    }
+    template <typename CoordsT>
+        requires(internals::is_eigen_dense_xpr_v<CoordsT> || internals::is_stl_container<CoordsT>)
+    void push_back(const CoordsT& coords) {
+        if constexpr (internals::is_eigen_dense_xpr_v<CoordsT>) {
+            for (int i = 0; i < coords.rows(); ++i) {
+                for (int j = 0; j < coords.cols(); ++j) { coords_.push_back(coords(i, j)); }
+            }
+            n_rows_ += coords.rows();
+        } else if constexpr (internals::is_stl_container<CoordsT>) {
+            fdapde_assert(coords.size() % embed_dim == 0);
+	    coords_.insert(coords_.end(), coords.begin(), coords.end());
+	    n_rows_ += coords.size() / embed_dim;
+        }
+	return;
+    }
     // geometry
-    const Eigen::Matrix<double, Dynamic, Dynamic>& coordinates() const {
-        return coords_ ? *coords_ : triangulation().nodes();
+    Triangulation& triangulation() { return *triangulation_; }
+    const Triangulation& triangulation() const { return *triangulation_; }
+    Eigen::Map<const Eigen::Matrix<double, Dynamic, Dynamic, Eigen::RowMajor>> coordinates() const {
+        return Eigen::Map<const Eigen::Matrix<double, Dynamic, Dynamic, Eigen::RowMajor>>(
+          coords_.data(), n_rows_, embed_dim);
     }
     // O(n) unique coordinates extraction
     Eigen::Matrix<double, Dynamic, Dynamic> unique_coordinates() const {
@@ -56,26 +98,28 @@ template <typename Triangulation_> struct point_layer {
         // find unique coordinates
         std::unordered_set<geometry_type, eigen_matrix_hash> coords_set;
         std::vector<int> coords_idx;
-        for (int i = 0; i < coords_->rows(); ++i) {
-            Eigen::Matrix<double, embed_dim, 1> p(coords_->row(i));
+        auto coords_view = coordinates();   // map coords_ vector into a RowMajor format matrix
+        for (int i = 0; i < n_rows_; ++i) {
+            Eigen::Matrix<double, embed_dim, 1> p(coords_view.row(i));
             if (!coords_set.contains(p)) {
                 coords_set.insert(p);
                 coords_idx.push_back(i);
             }
         }
-	Eigen::Matrix<double, Dynamic, Dynamic> coords_unique(coords_set.size(), embed_dim);
+        Eigen::Matrix<double, Dynamic, Dynamic> coords_unique(coords_set.size(), embed_dim);
         int i = 0;
-        for (int idx : coords_idx) { coords_unique.row(i++) = coords_->row(idx); }
+        for (int idx : coords_idx) { coords_unique.row(i++) = coords_view.row(idx); }
         return coords_unique;
-    };
-    // geometry
-    Triangulation& triangulation() { return *triangulation_; }
-    const Triangulation& triangulation() const { return *triangulation_; }
-    Eigen::Matrix<int, Dynamic, 1> locate() const { return triangulation_.locate(*coords_); }
+    }
+    Eigen::Matrix<int, Dynamic, 1> locate() const {
+	Eigen::Matrix<double, Dynamic, Dynamic> coords = coordinates();
+	return triangulation_->locate(coords);
+    }
    private:
     bool locs_at_mesh_nodes_ = false;
     Triangulation* triangulation_;
-    std::shared_ptr<Eigen::Matrix<double, Dynamic, Dynamic>> coords_;
+    std::vector<double> coords_;
+    int n_rows_ = 0;
 };
 
 }   // namespace internals

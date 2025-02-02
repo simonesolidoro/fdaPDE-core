@@ -179,7 +179,7 @@ template <typename DataLayer> struct plain_row_view {
     template <typename T> using mapped_type_t = typename mapped_type<T>::type;
     DataLayer* data_;
     index_t row_;
-    };
+};
 
 template <typename Scalar_, typename DataLayer> struct plain_col_view {
     using Scalar = Scalar_;
@@ -291,7 +291,7 @@ template <typename DataLayer> struct plain_row_filter {
     plain_row_filter() noexcept = default;
     template <typename Iterator>
     plain_row_filter(DataLayer* data, Iterator begin, Iterator end) : data_(data), idxs_(begin, end) {
-      fdapde_assert(*begin >= 0 && *begin < data->rows() && *(end - 1) >= *begin && *(end - 1) < data->rows());
+        fdapde_assert(*begin >= 0 && *begin < data->rows() && *(end - 1) >= *begin && *(end - 1) < data->rows());
     }
     template <typename Filter>
         requires(requires(Filter f, index_t i) {
@@ -368,7 +368,7 @@ template <typename DataLayer> struct plain_row_filter {
     };
     iterator begin() { return iterator(0, this); }
     iterator end() { return iterator(idxs_.size(), this); }
-   private:
+   protected:
     DataLayer* data_;
     std::vector<index_t> idxs_;
 };
@@ -831,6 +831,7 @@ struct hetero_data_vector {
     auto nan_pattern(const std::string& colname) const { return nan_pattern_.at(colname); }
     size_t rows() const { return rows_; }
     size_t cols() const { return cols_; }
+    size_t size() const { return rows_* cols_; }
     // accessors
     // column access
     template <typename T> plain_col_view<T, scalar_data_layer> col(size_t col) {
@@ -861,28 +862,20 @@ struct hetero_data_vector {
     // row filtering operations
     template <typename Iterator>
         requires(internals::is_integer_v<typename Iterator::value_type>)
-    plain_row_filter<scalar_data_layer> operator()(Iterator begin, Iterator end) {
+    plain_row_filter<scalar_data_layer> select(Iterator begin, Iterator end) {
         return plain_row_filter<scalar_data_layer>(this, begin, end);
     }
     template <typename T>
         requires(std::is_convertible_v<T, index_t>)
-    plain_row_filter<scalar_data_layer> operator()(const std::initializer_list<T>& idxs) {
+    plain_row_filter<scalar_data_layer> select(const std::initializer_list<T>& idxs) {
         return plain_row_filter<scalar_data_layer>(this, idxs.begin(), idxs.end());
     }
-    template <typename Filter>
-        requires(requires(Filter f, index_t i) {
-            { f(i) } -> std::same_as<bool>;
-        })
-    plain_row_filter<scalar_data_layer> operator()(Filter&& f) {
-        return plain_row_filter<scalar_data_layer>(this, std::forward<Filter>(f));
-    }
-    template <typename LogicalVec>
-        requires(requires(LogicalVec vec, int i) {
-            { vec.size() } -> std::convertible_to<size_t>;
-            { vec[i] } -> std::convertible_to<bool>;
-        })
-    plain_row_filter<scalar_data_layer> operator()(LogicalVec&& logical_vec) {
-        return plain_row_filter<scalar_data_layer>(this, logical_vec);
+    template <typename LogicalPred>
+        requires(
+	  requires(LogicalPred pred, index_t i) { { pred(i) } -> std::convertible_to<bool>; } ||
+          requires(LogicalPred pred, index_t i) { { pred[i] } -> std::convertible_to<bool>; })
+    plain_row_filter<scalar_data_layer> select(LogicalPred&& pred) {
+        return plain_row_filter<scalar_data_layer>(this, std::forward<LogicalPred>(pred));
     }
   
     template <typename T> const data_table<T>& data() const { return fetch_<mapped_type_t<T>>(data_); }
@@ -986,7 +979,6 @@ struct hetero_data_vector {
                 conservative_resize<SrcType_>(
                   (Ns_ == 1 ? (2 * fetch_<SrcType_>(data_).extent(Ns_)) : fetch_<SrcType_>(data_).extent(Ns_))...);
             });
-	    std::cout << "resize: " << fetch_<SrcType_>(data_).extent(0) << ", " << fetch_<SrcType_>(data_).extent(1)  << std::endl;
         }
         // copy src into data_
         fetch_<SrcType_>(data_).template slice<1>(col).assign_inplace_from(src);
@@ -1031,11 +1023,7 @@ struct hetero_data_vector {
         }
         for (int i = 0, n = n_cols; i < n; ++i) {
             for (int j = 0, m = out[i].size(); j < m; ++j) {
-                if (j < 2) {   // keep first two rows left aligned
-                    out[i][j].append(max_size[i] - out[i][j].size() + 1, ' ');
-                } else {
-                    out[i][j].insert(0, max_size[i] - out[i][j].size() + (i == 0 ? 0 : 1), ' ');
-                }
+                out[i][j].insert(0, max_size[i] - out[i][j].size() + (i == 0 ? 0 : 1), ' ');
             }
         }
 	// send to output stream
