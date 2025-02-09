@@ -21,7 +21,7 @@
 
 // include Eigen linear algebra library
 #include <Eigen/Eigen>
-#define __FDAPDE_HAS_EIGEN
+#define __FDAPDE_HAS_EIGEN__
 
 // include required modules
 #include "utility.h"

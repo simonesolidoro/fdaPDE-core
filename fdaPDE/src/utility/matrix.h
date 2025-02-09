@@ -394,7 +394,7 @@ class Matrix : public MatrixBase<Rows_, Cols_, Matrix<Scalar_, Rows_, Cols_, Nes
 	data_ = {x, y, z};
     }
   
-#ifdef __FDAPDE_HAS_EIGEN
+#ifdef __FDAPDE_HAS_EIGEN__
     // conversion from Eigen matrix
     template <typename Scalar__, int Rows__, int Cols__>
     explicit Matrix(const Eigen::Matrix<Scalar__, Rows__, Cols__>& other) {
@@ -455,7 +455,7 @@ class Matrix : public MatrixBase<Rows_, Cols_, Matrix<Scalar_, Rows_, Cols_, Nes
         return *this;
     }
 
-#ifdef __FDAPDE_HAS_EIGEN
+#ifdef __FDAPDE_HAS_EIGEN__
     // assignment from Eigen matrix
     template <typename Derived>
     Matrix<Scalar_, Rows_, Cols_, NestAsRefBit_>& operator=(const Eigen::MatrixBase<Derived>& rhs) {

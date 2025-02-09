@@ -78,7 +78,7 @@ template <int Rows, int Cols = Rows> class BinaryMatrix : public BinMtxBase<Rows
         for (int i = 0; i < rhs.bitpacks(); ++i) { data_[i] = rhs.bitpack(i); }
     }
 
-#ifdef __FDAPDE_HAS_EIGEN
+#ifdef __FDAPDE_HAS_EIGEN__
     // construct from Eigen dense matrix
     template <typename Derived> BinaryMatrix(const Eigen::MatrixBase<Derived>& mtx) : Base(mtx.rows(), mtx.cols()) {
         fdapde_static_assert(
@@ -220,7 +220,7 @@ template <int Rows, int Cols = Rows> class BinaryMatrix : public BinMtxBase<Rows
         return *this;
     }
 
-#ifdef __FDAPDE_HAS_EIGEN
+#ifdef __FDAPDE_HAS_EIGEN__
     // assignment from Eigen dense expression
     template <typename Derived> BinaryMatrix& operator=(const Eigen::MatrixBase<Derived>& mtx) {
         fdapde_static_assert(
@@ -613,7 +613,7 @@ template <int Rows, int Cols, typename XprType> class BinMtxBase {
     inline bool any() const { return visit_apply_<any_visitor<XprType>, linear_bitpack_visit>(); }
     inline int count() const { return visit_apply_<count_visitor<XprType>, linear_bit_visit>(); }
   
-#ifdef __FDAPDE_HAS_EIGEN
+#ifdef __FDAPDE_HAS_EIGEN__
     // selection on eigen expressions
     template <typename ExprType>
     Eigen::Matrix<typename ExprType::Scalar, Dynamic, Dynamic> select(const Eigen::MatrixBase<ExprType>& mtx) const {

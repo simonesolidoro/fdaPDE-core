@@ -61,11 +61,11 @@ namespace fdapde {
 
 }   // namespace fdapde
 
+#include "src/utility/numeric.h"
 #include "src/utility/matrix.h"
 #include "src/utility/binary.h"
 #include "src/utility/mdarray.h"
 #include "src/utility/binary_tree.h"
-#include "src/utility/numeric.h"
 #include "src/utility/type_erasure.h"
 
 // clang-format on

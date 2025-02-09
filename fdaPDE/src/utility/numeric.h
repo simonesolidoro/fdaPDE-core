@@ -57,6 +57,9 @@ constexpr std::vector<int> combinations(int k, int n) {
     return result;
 }
 
+// unsigned integer division with round up
+constexpr int int_ceil(unsigned int a, unsigned int b) { return a / b + (a % b != 0); }
+
 // test for floating point equality
 [[maybe_unused]] constexpr double double_tolerance = 50 * std::numeric_limits<double>::epsilon();   // approx 10^-14
 [[maybe_unused]] constexpr double machine_epsilon  = 10 * std::numeric_limits<double>::epsilon();
