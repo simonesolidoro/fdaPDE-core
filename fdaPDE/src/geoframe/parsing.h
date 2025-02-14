@@ -229,7 +229,7 @@ template <typename T> class table_reader {
         table_reader(filename.c_str(), index_col, skip_quote, chunksize) { }
 
     // observers
-#ifdef __FDAPDE_HAS_EIGEN
+#ifdef __FDAPDE_HAS_EIGEN__
     Eigen::Map<const Eigen::Matrix<T, Dynamic, Dynamic, Eigen::RowMajor>> as_matrix() const {
         return Eigen::Map<const Eigen::Matrix<T, Dynamic, Dynamic, Eigen::RowMajor>>(data_.data(), n_rows_, n_cols_);
     }

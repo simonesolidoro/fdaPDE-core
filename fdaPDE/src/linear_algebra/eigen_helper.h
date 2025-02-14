@@ -21,30 +21,6 @@
 
 namespace fdapde {
 namespace internals {
-
-// Eigen type detection traits
-template <typename XprType> struct is_eigen_dense_xpr {
-  static constexpr bool value = std::is_base_of<Eigen::MatrixBase<XprType>, XprType>::value;
-};
-template <typename XprType> constexpr bool is_eigen_dense_xpr_v = is_eigen_dense_xpr<XprType>::value;
-template <typename XprType> class is_eigen_dense_vector {
-   private:
-    static constexpr bool check_() {
-        if constexpr (is_eigen_dense_xpr_v<XprType>) {
-            if constexpr (XprType::ColsAtCompileTime == 1) { return true; }
-            return false;
-        }
-        return false;
-    }
-   public:
-    static constexpr bool value = check_();
-};
-template <typename XprType> constexpr bool is_eigen_dense_vector_v = is_eigen_dense_vector<XprType>::value;
-
-template <typename XprType> struct is_eigen_sparse_xpr {
-    static constexpr bool value = std::is_base_of_v<Eigen::SparseMatrixBase<XprType>, XprType>;
-};
-template <typename XprType> constexpr bool is_eigen_sparse_xpr_v = is_eigen_sparse_xpr<XprType>::value;
   
 template <int Rows, typename Scalar = double> struct static_dynamic_eigen_vector_selector {
     using type = std::conditional_t<Rows == Dynamic, Eigen::Matrix<Scalar, Dynamic, 1>, Eigen::Matrix<Scalar, Rows, 1>>;

@@ -41,11 +41,57 @@ namespace fdapde {
 struct areal_layer_tag {} gf_areal;
 struct point_layer_tag {} gf_point;
 enum class ltype : int { point = 0, areal = 1 };
-static constexpr int gf_mesh_nodes = -1;
+
+namespace internals {
+  enum class dtype : int { flt64 = 0, flt32 = 1, int64 = 2, int32 = 3, bin = 4, str = 5 };    // runtime data type id
+}   // namespace internals
+
+namespace data_t {
+
+struct flt64_ : std::type_identity<double      > { internals::dtype type_id = internals::dtype::flt64; } flt64;
+struct flt32_ : std::type_identity<float       > { internals::dtype type_id = internals::dtype::flt32; } flt32;
+struct int64_ : std::type_identity<std::int64_t> { internals::dtype type_id = internals::dtype::int64; } int64;
+struct int32_ : std::type_identity<std::int32_t> { internals::dtype type_id = internals::dtype::int32; } int32;
+struct bin_   : std::type_identity<bool        > { internals::dtype type_id = internals::dtype::bin;   } bin;
+struct str_   : std::type_identity<std::string > { internals::dtype type_id = internals::dtype::str;   } str;
   
+}   // namespace data_t
+
+namespace internals {
+
+template <typename T> constexpr auto dtype_from_static_type() {
+    using T_ = std::decay_t<T>;
+    if constexpr (std::is_same_v<T_, double      >) return data_t::flt64;
+    if constexpr (std::is_same_v<T_, float       >) return data_t::flt32;
+    if constexpr (std::is_same_v<T_, std::int64_t>) return data_t::int64;
+    if constexpr (std::is_same_v<T_, std::int32_t>) return data_t::int32;
+    if constexpr (std::is_same_v<T_, bool        >) return data_t::bin;
+    if constexpr (std::is_same_v<T_, std::string >) return data_t::str;
+}
+
+template <typename FieldDType_, typename F_, typename... Args>
+    requires(std::is_same_v<FieldDType_, internals::dtype>)
+void dispatch_to_dtype(const FieldDType_& field_dtype, F_&& f, Args&&... args) {
+    using dtypes =
+      std::tuple<data_t::flt64_, data_t::flt32_, data_t::int64_, data_t::int32_, data_t::bin_, data_t::str_>;
+    std::apply(
+      [&](const auto&... ts) {
+          (
+            [&]() {
+                if (field_dtype == ts.type_id) {
+                    f.template operator()<typename std::decay_t<decltype(ts)>::type>(std::forward<Args>(args)...);
+                }
+            }(),
+            ...);
+      },
+      dtypes {});
+}
+
+}   // namespace internals
 }   // namespace fdapde
 
 // data structure
+#include "src/geoframe/hetero_vector.h"
 #include "src/geoframe/data_layer.h"
 #include "src/geoframe/areal_layer.h"
 #include "src/geoframe/point_layer.h"

@@ -37,6 +37,7 @@ template <typename... Triangulation_> struct GeoFrame {
 
     struct layer_t {
         using Triangulation = std::tuple<std::decay_t<Triangulation_>...>;
+        using storage_t = internals::scalar_data_layer;
         static constexpr int Order = sizeof...(Triangulation_);
 
         layer_t() noexcept : geo_data_(), data_(), category_(), name_() { }
@@ -47,20 +48,34 @@ template <typename... Triangulation_> struct GeoFrame {
             name_(name) {
             geoframe_assert(category.size() == Order, "bad layer construction, no matching order.");
             std::copy(category.begin(), category.end(), category_.begin());
+	    // store pointers to spatial indexes
+            internals::for_each_index_in_pack<Order>([&, this]<int Ns>() {
+                geo_index_[Ns] = reinterpret_cast<void*>(
+                  std::addressof(reinterpret_cast<LayerType*>(geo_data_.get())->template geometry<Ns>()));
+            });
         }
         // observers
         const std::string& name() const { return name_; }
-        const internals::scalar_data_layer& data() const { return *data_; }
-        internals::scalar_data_layer& data() { return *data_; }
+        const storage_t& data() const { return *data_; }
+        storage_t& data() { return *data_; }
         void* geo_data() { return geo_data_.get(); }
         const void* geo_data() const { return geo_data_.get(); }
         const std::array<ltype, Order>& category() const { return category_; }
         int rows() const { return data_->rows(); }
         int cols() const { return data_->cols(); }
         int size() const { return data_->size(); }
+        void* geo_index(int n) const { return geo_index_.at(n); }
+        // accessors
+        template <typename T> decltype(auto) col(size_t col) { return data_->template col<T>(col); }
+        template <typename T> decltype(auto) col(size_t col) const { return data_->template col<T>(col); }
+        template <typename T> decltype(auto) col(const std::string& colname) { return data_->template col<T>(colname); }
+        template <typename T> decltype(auto) col(const std::string& colname) const {
+            return data_->template col<T>(colname);
+        }
        private:
-        std::shared_ptr<void> geo_data_;   // type erase layer's geometric details
-        internals::scalar_data_layer* data_;
+        std::shared_ptr<void> geo_data_;       // type erased geometric layer
+        std::array<void*, Order> geo_index_;   // pointers to (type-erased) geometric indexes
+        storage_t* data_;
         std::array<ltype, Order> category_;
         std::string name_;
     };
@@ -160,11 +175,22 @@ template <typename... Triangulation_> struct GeoFrame {
     std::unordered_map<std::string, int> layer_name_to_idx_;
 };
 
+// casts a GeoFrame layer to an instance of GeoLayer<GeoInfo...>
 template <typename... GeoInfo, typename DataLayer> decltype(auto) geo_cast(DataLayer&& data_layer) {
     using DataLayer_ = std::remove_reference_t<DataLayer>;
     using GeoLayer_ = GeoLayer<typename std::decay_t<DataLayer>::Triangulation, std::tuple<GeoInfo...>>;
     return *reinterpret_cast<std::conditional_t<std::is_const_v<DataLayer_>, std::add_const_t<GeoLayer_>, GeoLayer_>*>(
       data_layer.geo_data());
+}
+
+// retrieve and casts a GeoFrame layer index
+template <typename GeoInfo, int N, typename DataLayer> decltype(auto) geo_index(DataLayer&& data_layer) {
+    fdapde_static_assert(N < std::decay_t<DataLayer>::Order, OUT_OF_BOUND_ACCESS);
+    using DataLayer_ = std::remove_reference_t<DataLayer>;
+    using IndexT = internals::layer_type_from_layer_tag<
+      GeoInfo, std::tuple_element_t<N, typename std::decay_t<DataLayer>::Triangulation>>;
+    return *reinterpret_cast<std::conditional_t<std::is_const_v<DataLayer_>, std::add_const_t<IndexT>, IndexT>*>(
+      data_layer.geo_index(N));
 }
 
 }   // namespace fdapde

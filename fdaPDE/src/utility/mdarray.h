@@ -57,7 +57,23 @@ struct md_traits<MdMap<Scalar_, Extents_, LayoutPolicy_>> {
     using reference = std::add_lvalue_reference_t<Scalar>;
     using const_reference = std::add_const_t<reference>;
 };
-  
+
+template <typename T, int Order, typename IndexT> class is_indexable {
+    using T_ = std::decay_t<T>;
+   public:
+    static constexpr bool value = []() {
+        return internals::apply_index_pack<Order>([]<int... Ns_>() {
+            if constexpr (requires(T_ t) { t(((void)Ns_, IndexT())...); }) {
+                return true;
+            } else {
+                return false;
+            }
+        });
+    }();
+};
+template <typename T, int Order, typename IndexT>
+static constexpr bool is_indexable_v = is_indexable<T, Order, IndexT>::value;
+
 template <typename Extent, typename Idx>
 constexpr bool is_index_in_extent(Extent ext, Idx idx)
     requires(std::is_convertible_v<Extent, int> && std::is_convertible_v<Idx, int>) {
@@ -235,9 +251,9 @@ struct layout_left {   // corresponds to a ColMajor storage for order 2 mdarrays
             return internals::apply_index_pack<Order>(
               [&]<int... Ns_>() { return ((static_cast<index_t>(idx) * strides_[Ns_]) + ... + 0); });
         }
-        template <int IndexSize, typename IndexType>   // array index to mdarray memory index
-            requires(std::is_convertible_v<IndexType, index_t> && IndexSize == Order)
-        constexpr index_t operator()(const std::array<IndexType, IndexSize>& arr) {
+        template <typename IndexPack>   // index-pack to memory index
+            requires(internals::is_subscriptable<IndexPack, index_t>)
+        constexpr index_t operator()(IndexPack&& arr) const {
             index_t idx = 0;
             for (order_t i = 0; i < Order; ++i) { idx += static_cast<index_t>(arr[i]) * strides_[i]; }
             return idx;
@@ -286,9 +302,9 @@ struct layout_right {   // corresponds to a RowMajor storage for order 2 mdarray
             return internals::apply_index_pack<Order>(
               [&]<int... Ns_>() { return ((static_cast<index_t>(idx) * strides_[Ns_]) + ... + 0); });
         }
-        template <int IndexSize, typename IndexType>   // array index to mdarray memory index
-            requires(std::is_convertible_v<IndexType, index_t> && IndexSize == Order)
-        constexpr index_t operator()(const std::array<IndexType, IndexSize>& arr) {
+        template <typename IndexPack>   // index-pack to memory index
+            requires(internals::is_subscriptable<IndexPack, index_t>)
+        constexpr index_t operator()(IndexPack&& arr) const {
             index_t idx = 0;
             for (order_t i = 0; i < Order; ++i) { idx += static_cast<index_t>(arr[i]) * strides_[i]; }
             return idx;
@@ -314,6 +330,7 @@ struct layout_right {   // corresponds to a RowMajor storage for order 2 mdarray
 template <typename MdArray_, typename BlkExtents_> class MdArrayBlock { 
    public:
     using extents_t = BlkExtents_;
+    using layout_t  = typename MdArray_::layout_t;
     using mapping_t = typename MdArray_::mapping_t;
     using index_t = typename extents_t::index_t;
     using order_t = typename extents_t::order_t;
@@ -347,6 +364,17 @@ template <typename MdArray_, typename BlkExtents_> class MdArrayBlock {
     constexpr const extents_t& extents() const { return extents_; }
     constexpr const mapping_t& mapping() const { return mdarray_->mapping(); }
     constexpr order_t order() const { return Order; }
+    // pointer to first memory address mapped by this block (NB: blocks are not necessarily contiguous in memory)
+    constexpr const Scalar* data() const {
+        int off_ = internals::apply_index_pack<Order>(
+          [&]<int... Ns_>() { return ((offset_[Ns_] * mdarray_->mapping().stride(Ns_)) + ... + 0); });
+        return mdarray_->data() + off_;
+    }
+    constexpr Scalar* data() requires(!std::is_const_v<MdArray_>) {
+        int off_ = internals::apply_index_pack<Order>(
+          [&]<int... Ns_>() { return ((offset_[Ns_] * mdarray_->mapping().stride(Ns_)) + ... + 0); });
+        return mdarray_->data() + off_;
+    }
     // iterator
     template <typename MdArrayBlock_> struct iterator {
         constexpr iterator() noexcept = default;
@@ -367,6 +395,7 @@ template <typename MdArray_, typename BlkExtents_> class MdArrayBlock {
             return *this;
         }
         constexpr const std::array<index_t, Order>& index() const { return index_; }
+        constexpr index_t mapped_index() const { return mdarray_->mapping()(index_); }
         // const access
         constexpr const_reference operator*() const { return fetch_at_(index_); }
         constexpr const Scalar* operator->() const { return std::addressof(fetch_at(index_)); }
@@ -445,29 +474,49 @@ template <typename MdArray_, typename BlkExtents_> class MdArrayBlock {
     }
     template <typename Src>
         requires(
-          std::is_pointer_v<Src> || (internals::is_subscriptable<Src, int> &&
-	  requires(Src src) {
-	    { src.size() } -> std::convertible_to<size_t>;
-	  }))
+#ifdef __FDAPDE_HAS_EIGEN__
+          !internals::is_eigen_dense_xpr_v<Src> &&
+#endif
+          (std::is_pointer_v<Src> || internals::is_subscriptable<Src, int>) &&
+          !internals::is_indexable_v<Src, Order, index_t>)
     constexpr MdArrayBlock& assign_inplace_from(Src&& src) {
         if constexpr (!std::is_pointer_v<Src>) { fdapde_assert(src.size() == size()); }
         int i = 0;
-        for (auto& v : *this) v = src[i++];
+        for (reference v : *this) {
+            if constexpr (std::is_same_v<Scalar, bool>) {
+	      if (src[i++]) { v.set(); }
+            } else {
+                v = src[i++];
+            }
+        }
         return *this;
     }
+#ifdef __FDAPDE_HAS_EIGEN__
+    template <typename Src>
+        requires(internals::is_eigen_dense_xpr_v<Src>)
+    constexpr MdArrayBlock& assign_inplace_from(Src&& src) {      
+        fdapde_static_assert(Order == 2, THIS_METHOD_IS_FOR_ORDER_TWO_MDARRAYS_ONLY);
+        fdapde_assert(src.rows() == extent(0) && src.cols() == extent(1));
+        for (int i = 0; i < extent(0); ++i) {
+            for (int j = 0; j < extent(1); ++j) { operator()(i, j) = src(i, j); }
+        }
+        return *this;
+    }
+#endif
+
     template <typename Scalar_, typename Extents_, typename LayoutPolicy_>
         requires(std::is_same_v<Scalar_, Scalar> && Extents_::Order == Order)
     constexpr MdArrayBlock& assign_inplace_from(const MdArray<Scalar_, Extents_, LayoutPolicy_>& src) {
-      for(int i = 0; i < Order; ++i) { fdapde_assert(extent(i) == src.extent(i)); }
-      iterator jt = begin();
-      for (auto it = src.begin(); it != src.end(); ++it, ++jt) { *jt = *it; }
-      return *this;
+        for (int i = 0; i < Order; ++i) { fdapde_assert(extent(i) == src.extent(i)); }
+        iterator jt = begin();
+        for (auto it = src.begin(); it != src.end(); ++it, ++jt) { *jt = *it; }
+        return *this;
     }
     template <typename Dst>
         requires(internals::is_subscriptable<Dst, int>)
     void assign_to(Dst&& dst) const {
         int i = 0;
-        for (auto& v : *this) dst[i++] = v;
+        for (auto& v : *this) { dst[i++] = v; }
     }
    private:
     std::array<index_t, Order> offset_ {};
@@ -617,6 +666,8 @@ template <typename MdArray, int... Slicers> class MdArraySlice {
             }
             return *this;
         }
+        constexpr const std::array<index_t, Order>& index() const { return index_; }
+        constexpr index_t mapped_index() const { return mdarray_->mapping()(index_); }
         // const access
         constexpr const Scalar& operator*()  const { return fetch_at_(index_); }
         constexpr const Scalar* operator->() const { return std::addressof(fetch_at(index_)); }
@@ -747,10 +798,8 @@ template <typename MdArray, int... Slicers> class MdArraySlice {
     }
     template <typename Src>
         requires(
-          std::is_pointer_v<Src> || (internals::is_subscriptable<Src, int> &&
-	  requires(Src src) {
-	    { src.size() } -> std::convertible_to<size_t>;
-	  }))
+          (std::is_pointer_v<Src> || internals::is_subscriptable<Src, int>) &&
+          !internals::is_indexable_v<Src, Order, index_t>)
     constexpr MdArraySlice& assign_inplace_from(Src&& src) {
         if constexpr (!std::is_pointer_v<Src>) fdapde_assert(src.size() == size());
         if constexpr (contiguous_access) {
@@ -839,6 +888,7 @@ template <typename Derived> class md_handler_base {
     // observers
     constexpr size_t size() const { return extents_.size(); }
     constexpr size_t extent(order_t r) const { return extents_.extent(r); }
+    constexpr const extents_t& extents() const { return extents_; }
     constexpr size_t rows() const {
         fdapde_static_assert(Order == 1 || Order == 2, THIS_METHOD_IS_FOR_MATRIX_LIKE_MDARRAY_ONLY);
         return extent(0);
@@ -868,6 +918,7 @@ template <typename Derived> class md_handler_base {
             return *this;
         }
         const std::array<index_t, Order>& index() const { return index_; }
+        index_t mapped_index() const { return mdarray_->mapping()(index_); }
         // const access
         constexpr const_reference operator*() const { return fetch_at_(index_); }
         constexpr const Scalar* operator->() const { return std::addressof(fetch_at_(index_)); }
@@ -1203,15 +1254,14 @@ class MdArray : public internals::md_handler_base<MdArray<Scalar_, Extents_, Lay
                   extents_t::static_extents[i] == OtherDerived::static_extents[slice_t::free_extents_idxs_[i]]);
             }
         }
-        // to avoid aliasing, first copy data, then update mapping
         if constexpr (extents_t::DynamicOrder > 0) {
             if (Base::size() != other.size()) { data_.resize(other.size()); }
         }
+        // to avoid aliasing, first copy data, then update mapping
         if constexpr (internals::slices_to_contiguous_memory<typename OtherDerived::mapping_t, OtherSlicers...>()) {
             for (int i = 0, n = other.size(); i < n; ++i) { data_[i] = other[i]; }   // copy from contiguous memory
         } else {
-            int i = 0;
-            for (const auto& value : other) { data_[i++] = value; }
+            for (auto it = other.begin(); it != other.end(); ++it) { data_[it.mapped_index()] = *it; }
         }
         if constexpr (extents_t::DynamicOrder > 0) {
             if (Base::size() != other.size()) {
@@ -1236,8 +1286,7 @@ class MdArray : public internals::md_handler_base<MdArray<Scalar_, Extents_, Lay
         if constexpr (extents_t::DynamicOrder > 0) {
             // to avoid aliasing, first copy data, then update mapping
             if (Base::size() != other.size()) { data_.resize(other.size()); }
-            int i = 0;
-            for (const auto& value : other) { data_[i++] = value; }
+            for (auto it = other.begin(); it != other.end(); ++it) { data_[it.mapped_index()] = *it; }
 
             if (Base::size() != other.size()) {
                 internals::apply_index_pack<Order>(
@@ -1246,7 +1295,7 @@ class MdArray : public internals::md_handler_base<MdArray<Scalar_, Extents_, Lay
             mapping_ = mapping_t(extents_);	    
         } else {
             int i = 0;
-            for (const auto& value : other) { data_[i++] = value; }
+            for (auto it = other.begin(); it != other.end(); ++it) { data_[it.mapped_index()] = *it; }
             extents_ = other.extents();
             mapping_ = other.mapping();
         }
@@ -1276,17 +1325,20 @@ template <typename Extents_, typename LayoutPolicy_> struct md_traits<MdArray<bo
    public:
     using layout_t = LayoutPolicy_;
     using mapping_t = typename layout_t::mapping<extents_t>;
+   private:
     // struct to proxy the behaviour of reference to a single bit of the MdArray
+    template <typename BitPackT>
+        requires(std::is_same_v<std::decay_t<BitPackT>, bitpack_t>)
     struct bit_proxy {
         constexpr bit_proxy() noexcept : data_(nullptr), pack_id_(0), bitmask_(0) { }
         template <typename... Idxs>
             requires(std::is_convertible_v<Idxs, index_t> && ...) && (sizeof...(Idxs) == extents_t::Order)
-        constexpr bit_proxy(bitpack_t* data, Idxs... idxs) : data_(data), pack_id_(), bitmask_() {
+        explicit constexpr bit_proxy(BitPackT* data, Idxs... idxs) : data_(data), pack_id_(), bitmask_() {
             auto [pack_id, bit_off] = pack_of_(idxs...);
             pack_id_ = pack_id;
             bitmask_ = bitpack_t(1) << bit_off;
         }
-        constexpr bit_proxy(bitpack_t* data, index_t i) :
+        explicit constexpr bit_proxy(BitPackT* data, index_t i) :
             data_(data), pack_id_(i / PackSize), bitmask_(bitpack_t(1) << i % PackSize) { }
         // modifiers
         constexpr void set()   { data_[pack_id_] |=  bitmask_; }
@@ -1294,7 +1346,6 @@ template <typename Extents_, typename LayoutPolicy_> struct md_traits<MdArray<bo
         template <typename T>
             requires(std::is_convertible_v<T, bool>)
         constexpr bit_proxy& operator=(T b) {
-	  std::cout << "b: " << b << std::endl;
             b ? set() : clear();
 	    return *this;
         }
@@ -1302,24 +1353,34 @@ template <typename Extents_, typename LayoutPolicy_> struct md_traits<MdArray<bo
         constexpr operator bool() const { return (data_[pack_id_] & bitmask_) != 0; }
         constexpr operator bool() { return (data_[pack_id_] & bitmask_) != 0; }
        private:
-        bitpack_t* data_;
+        BitPackT* data_;
         index_t pack_id_;
         bitpack_t bitmask_;
     };
-    using Scalar = bit_proxy;
-    using reference = bit_proxy;
-    using const_reference = const reference;
+   public:
+    using Scalar = bool;
+    using reference = bit_proxy<bitpack_t>;
+    using const_reference = bit_proxy<const bitpack_t>;
+   private:
     // struct to proxy the behaviour of a bool*
-    class storage_t {
-        bitpack_t* data_;
+    template <typename BitPackT>
+        requires(std::is_same_v<std::decay_t<BitPackT>, bitpack_t>)
+    class storage_t_impl {
+        BitPackT* data_;
        public:
-        storage_t() noexcept : data_(nullptr) { }
-        storage_t(bitpack_t* data) : data_(data) { }
-        bit_proxy operator[](int i) { return bit_proxy(data_, i); }
+        storage_t_impl() noexcept : data_(nullptr) { }
+        storage_t_impl(BitPackT* data) : data_(data) { }
+        reference operator[](int i) requires(!std::is_const_v<BitPackT>) { return reference(data_, i); }
+        const_reference operator[](int i) const requires(std::is_const_v<BitPackT>) {
+	    return const_reference(data_, i);
+	}
         // raw data access
         bitpack_t& operator*() { return *data_; }
         const bitpack_t& operator*() const { return *data_; }
     };
+   public:
+    using storage_t = storage_t_impl<bitpack_t>;
+    using const_storage_t = storage_t_impl<const bitpack_t>;
 };
 
 }   // namespace internals
@@ -1340,8 +1401,9 @@ class MdArray<bool, Extents_, LayoutPolicy_> :
     using extents_t = Extents_;
     using mapping_t = typename traits::mapping_t;
     using storage_t = typename traits::storage_t;
+    using const_storage_t = typename traits::const_storage_t;
     using reference = typename traits::reference;
-    using Scalar = reference;
+    using Scalar = typename traits::Scalar;
     using const_reference = typename traits::const_reference;
     static constexpr int PackSize = traits::PackSize;
     static constexpr int Order = Base::Order;
@@ -1353,7 +1415,9 @@ class MdArray<bool, Extents_, LayoutPolicy_> :
     constexpr MdArray()
         requires(std::is_default_constructible_v<data_t>)
         : Base(), data_() {
-        std::fill_n(data_.begin(), data_.end(), 0);
+        if constexpr (DynamicOrder == 0) {
+            std::fill_n(data_.begin(), std::size_t(std::ceil(extents_t::StaticSize / PackSize)), 0);
+        }
     }
     template <typename... Exts_>
         requires(extents_t::DynamicOrder != 0 && extents_t::DynamicOrder == sizeof...(Exts_)) &&
@@ -1417,7 +1481,7 @@ class MdArray<bool, Extents_, LayoutPolicy_> :
         std::for_each(data_.begin(), data_.end(), [](auto& b) { b = 0; });
     }
     // observers
-    constexpr const storage_t data() const { return storage_t(data_.data()); }
+    constexpr const_storage_t data() const { return const_storage_t(data_.data()); }
     constexpr storage_t data() { return storage_t(data_.data()); }
     constexpr size_t bitpacks() const { return data_.size(); }
    private:
@@ -1482,7 +1546,6 @@ class MdArray<bool, Extents_, LayoutPolicy_> :
             mapping_ = other.mapping();
         } 
     }
-
     data_t data_ {};
 };
 
