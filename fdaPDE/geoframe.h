@@ -87,11 +87,20 @@ void dispatch_to_dtype(const FieldDType_& field_dtype, F_&& f, Args&&... args) {
       dtypes {});
 }
 
+template <typename F_, typename... Args> void foreach_dtype(F_&& f, Args&&... args) {
+    using dtypes =
+      std::tuple<data_t::flt64_, data_t::flt32_, data_t::int64_, data_t::int32_, data_t::bin_, data_t::str_>;
+    std::apply(
+      [&](const auto&... ts) {
+          (f.template operator()<typename std::decay_t<decltype(ts)>::type>(std::forward<Args>(args)...), ...);
+      },
+      dtypes {});
+}
+  
 }   // namespace internals
 }   // namespace fdapde
 
 // data structure
-#include "src/geoframe/hetero_vector.h"
 #include "src/geoframe/data_layer.h"
 #include "src/geoframe/areal_layer.h"
 #include "src/geoframe/point_layer.h"

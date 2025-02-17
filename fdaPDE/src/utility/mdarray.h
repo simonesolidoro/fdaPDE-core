@@ -669,17 +669,21 @@ template <typename MdArray, int... Slicers> class MdArraySlice {
         constexpr const std::array<index_t, Order>& index() const { return index_; }
         constexpr index_t mapped_index() const { return mdarray_->mapping()(index_); }
         // const access
-        constexpr const Scalar& operator*()  const { return fetch_at_(index_); }
+        constexpr const_reference operator*() const { return fetch_at_(index_); }
         constexpr const Scalar* operator->() const { return std::addressof(fetch_at(index_)); }
         // non-const access
-        constexpr Scalar& operator*()  requires(!std::is_const_v<MdArraySlice_>) { return fetch_at_(index_); }
-        constexpr Scalar* operator->() requires(!std::is_const_v<MdArraySlice_>) {
+        constexpr reference operator*() requires(!std::is_const_v<MdArraySlice_>) { return fetch_at_(index_); }
+        constexpr Scalar* operator->()  requires(!std::is_const_v<MdArraySlice_>) {
             return std::addressof(fetch_at(index_));
         }
         // comparison
         constexpr friend bool operator==(const iterator& lhs, const iterator& rhs) { return lhs.index_ == rhs.index_; }
         constexpr friend bool operator!=(const iterator& lhs, const iterator& rhs) { return lhs.index_ != rhs.index_; }
        private:
+        template <typename IndexType> constexpr decltype(auto) fetch_at_(IndexType&& index) {
+            return internals::apply_index_pack<Order>(
+              [&]<int... Ns_>() -> decltype(auto) { return mdarray_->operator()(((void)Ns_, index[Ns_])...); });
+        }
         template <typename IndexType> constexpr decltype(auto) fetch_at_(IndexType&& index) const {
             return internals::apply_index_pack<Order>(
               [&]<int... Ns_>() -> decltype(auto) { return mdarray_->operator()(((void)Ns_, index[Ns_])...); });
@@ -689,8 +693,9 @@ template <typename MdArray, int... Slicers> class MdArraySlice {
     };
     // const iterators
     constexpr iterator<const MdArraySlice<MdArray, Slicers...>> begin() const noexcept {
-        return internals::apply_index_pack<Order>(
-          [&]<int... Ns_> { return iterator<const MdArraySlice<MdArray, Slicers...>> {this, ((void)Ns_, 0)...}; });
+        return internals::apply_index_pack<Order>([&]<int... Ns_> {
+            return iterator<const MdArraySlice<MdArray, Slicers...>> {this, ((void)Ns_, 0)...};
+        });
     }
     constexpr iterator<const MdArraySlice<MdArray, Slicers...>> end() const noexcept {
         return internals::apply_index_pack<Order - 1>([&]<int... Ns_> {
@@ -811,6 +816,18 @@ template <typename MdArray, int... Slicers> class MdArraySlice {
         }
         return *this;
     }
+    template <typename MdArray_, int... Slicers_>
+    constexpr MdArraySlice& assign_inplace_from(const MdArraySlice<MdArray_, Slicers_...>& src) {
+        fdapde_assert(size() == src.size());
+        for (auto it = src.begin(); it != src.end(); ++it) {
+            if constexpr (std::is_same_v<Scalar, bool>) {
+	      // if (*it) { operator()(it.index()).set(); }
+            } else {
+                operator()(it.index()) = *it;
+            }
+        }
+        return *this;
+    }
     template <typename Dst>
         requires(internals::is_subscriptable<Dst, int>)
     void assign_to(Dst&& dst) const {
@@ -924,8 +941,7 @@ template <typename Derived> class md_handler_base {
         constexpr const Scalar* operator->() const { return std::addressof(fetch_at_(index_)); }
         // non-const access
         constexpr reference operator*() requires(!std::is_const_v<Derived_>) { return fetch_at_(index_); }
-        constexpr Scalar* operator->()
-            requires(!std::is_const_v<Derived_>) {
+        constexpr Scalar* operator->()  requires(!std::is_const_v<Derived_>) {
             return std::addressof(fetch_at_(index_));
         }
         // comparison

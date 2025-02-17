@@ -318,7 +318,7 @@ template <typename DataLayer> struct plain_row_view {
         }
         return *this;
     }
-   private:
+   protected:
     DataLayer* data_;
     index_t row_;
 };
@@ -476,7 +476,7 @@ class scalar_data_layer {
     bool has_column_(const std::string& colname) const { return colname_to_field_.contains(colname); }
     template <typename T> bool has_column_of_type_(const std::string& colname) const {
         auto col_dtype = internals::dtype_from_static_type<T>();
-        for (const auto& field : fields_) {
+        for (const auto& field : header_) {
             if (field.type_id == col_dtype.type_id && field.colname == colname) { return true; }
         }
         return false;
@@ -515,6 +515,7 @@ class scalar_data_layer {
     using logical_t = MdArray<bool, full_dynamic_extent_t<Order>, internals::layout_left>;
     using index_t = int;
     using size_t = std::size_t;
+    using field_t = field;
     template <typename T> class is_indexable {
         using T_ = std::decay_t<T>;
        public:
@@ -533,6 +534,10 @@ class scalar_data_layer {
     using const_row_view = plain_row_view<const scalar_data_layer>;
 
     scalar_data_layer() noexcept : rows_(0), cols_(0) { }
+    // build from header
+    scalar_data_layer(const std::vector<field>& header) : rows_(0), cols_(header.size()), header_(header) {
+        for (int i = 0; i < cols_; ++i) { colname_to_field_[header_[i].colname] = i; }
+    }
     template <typename... DataT>
         requires(
           ([]() {
@@ -566,9 +571,9 @@ class scalar_data_layer {
             using MappedT = mapped_type_t<std::decay_t<decltype(std::declval<T>()[std::declval<index_t>()])>>;
             // add field descriptor
             auto dtype_ = internals::dtype_from_static_type<MappedT>();
-            fields_.emplace_back(colname, type_id_map[dtype_.type_id], dtype_.type_id);
+            header_.emplace_back(colname, type_id_map[dtype_.type_id], dtype_.type_id);
             type_id_map[dtype_.type_id]++;
-            colname_to_field_[colname] = fields_.size() - 1;
+            colname_to_field_[colname] = header_.size() - 1;
         };
         // push column descriptors
         internals::for_each_index_and_args<sizeof...(DataT)>(
@@ -631,9 +636,9 @@ class scalar_data_layer {
               using MappedT = mapped_type_t<std::decay_t<decltype(std::declval<T>()[std::declval<index_t>()])>>;
               // add field descriptor
               auto dtype_ = internals::dtype_from_static_type<MappedT>();
-              fields_.emplace_back(colnames[Ns_], type_id_map[dtype_.type_id], dtype_.type_id);
+              header_.emplace_back(colnames[Ns_], type_id_map[dtype_.type_id], dtype_.type_id);
               type_id_map[dtype_.type_id]++;
-              colname_to_field_[colnames[Ns_]] = fields_.size() - 1;
+              colname_to_field_[colnames[Ns_]] = header_.size() - 1;
               cols_++;
           },
           data...);
@@ -660,10 +665,10 @@ class scalar_data_layer {
         for (int i = 0; i < cols_; ++i) {
             auto field = row_filter.field_descriptor(cols[i]);
             internals::dtype type_id = field.type_id;
-            fields_.emplace_back(cols[i], type_id_map[type_id], offset[type_id], field.size, type_id);
+            header_.emplace_back(cols[i], type_id_map[type_id], offset[type_id], field.size, type_id);
             offset[type_id] += field.size;
             type_id_map[type_id]++;
-            colname_to_field_[field.colname] = fields_.size() - 1;
+            colname_to_field_[field.colname] = header_.size() - 1;
         }
         // reserve space, copy data in internal storage
 	std::unordered_map<dtype, int> tmp = make_dtyped_map<int>();
@@ -696,25 +701,17 @@ class scalar_data_layer {
     template <typename LayerType>
     scalar_data_layer(const random_access_row_view<LayerType>& row_filter) :
         scalar_data_layer(row_filter, row_filter.colnames()) { }
-    // scalar_data_layer(const hetero_data_vector& data) :
-    //     scalar_data_layer(
-    //       data.get<double>(), data.get<float>(), data.get<std::int64_t>(), data.get<std::int32_t>(), data.get<bool>(),
-    //       data.get<std::string>()) { }
 
     // observers
-    const field& field_descriptor(const std::string& colname) const { return fields_[colname_to_field_.at(colname)]; }
-    const std::vector<field>& field_descriptors() const { return fields_; }
-    const std::array<int, 2> shape() const { return shape_; }
+    const field& field_descriptor(const std::string& colname) const { return header_[colname_to_field_.at(colname)]; }
+    const std::vector<field>& header() const { return header_; }
     std::vector<std::string> colnames() const {
         std::vector<std::string> colnames_;
-        for (int i = 0, n = fields_.size(); i < n; ++i) { colnames_.push_back(fields_[i].colname); }
+        for (int i = 0, n = header_.size(); i < n; ++i) { colnames_.push_back(header_[i].colname); }
         return colnames_;
     }
     bool contains(const std::string& column) const {   // true if this layer contains column
-        for (int i = 0, n = fields_.size(); i < n; ++i) {
-            if (fields_[i].colname == column) { return true; }
-        }
-        return false;
+        return has_column_(column);
     }
     logical_t nan(const std::vector<std::string>& colnames) const {
         fdapde_assert(colnames.size() > 0);
@@ -723,7 +720,7 @@ class scalar_data_layer {
 	offset.push_back(0);
         for (const std::string& col : colnames) {
             fdapde_assert(has_column_(col));
-	    offset.push_back(offset.back() + fields_.at(colname_to_field_.at(col)).size);
+	    offset.push_back(offset.back() + header_.at(colname_to_field_.at(col)).size);
         }
         logical_t nan(n_rows, n_cols);
         for (size_t i = 0; i < colnames.size(); ++i) { extract_nan_pattern_(colnames[i], nan, offset[i]); }
@@ -731,7 +728,7 @@ class scalar_data_layer {
     }
     logical_t nan(const std::string& colname) const {
         fdapde_assert(has_column_(colname));
-        field f = fields_.at(colname_to_field_.at(colname));
+        field f = header_.at(colname_to_field_.at(colname));
         logical_t nan(rows_, f.size);
 	extract_nan_pattern_(colname, nan, 0);
         return nan;
@@ -743,11 +740,11 @@ class scalar_data_layer {
     // column access
     template <typename T> plain_col_view<T, scalar_data_layer> col(size_t col) {
         fdapde_assert(col < cols_);
-        return plain_col_view<T, scalar_data_layer>(*this, fields_[col]);
+        return plain_col_view<T, scalar_data_layer>(*this, header_[col]);
     }
     template <typename T> plain_col_view<T, const scalar_data_layer> col(size_t col) const {
         fdapde_assert(col < cols_);
-        return plain_col_view<T, const scalar_data_layer>(*this, fields_[col]);
+        return plain_col_view<T, const scalar_data_layer>(*this, header_[col]);
     }
     template <typename T> plain_col_view<T, scalar_data_layer> col(const std::string& colname) {
         fdapde_assert(has_column_(colname));
@@ -789,32 +786,11 @@ class scalar_data_layer {
     template <typename T> data_table<T>& data() { return fetch_<mapped_type_t<T>>(data_); }
     // modifiers
     void set_colnames(const std::vector<std::string>& colnames) {
-        fdapde_assert(colnames.size() == fields_.size());
-        std::vector<std::string> tmp = colnames;
-        std::sort(tmp.begin(), tmp.end());
-        if (
-          colnames.size() != cols_ || std::unique(tmp.begin(), tmp.end()) != tmp.end() ||
-          !std::accumulate(
-            colnames.begin(), colnames.end(), true, [](bool v, const auto& name) { return (v & !name.empty()); })) {
-            throw std::runtime_error("GeoFrame: not unique or empty column names.");
-        }
-        for (size_t i = 0; i < colnames.size(); ++i) { fields_[i].colname = colnames[i]; }
+        fdapde_assert(colnames.size() == header_.size());
+        for (size_t i = 0; i < colnames.size(); ++i) { header_[i].colname = colnames[i]; }
         return;
     }
-    template <typename BinXprType>
-    void set_nan(const std::string& colname, const BinMtxBase<Dynamic, 1, BinXprType>& nan_pattern) {
-        auto colnames_ = colnames();
-        if (std::find(colnames_.begin(), colnames_.end(), colname) == colnames_.end()) {
-            throw std::runtime_error("GeoFrame: column not found.");
-        }
-        nan_pattern_[colname] = nan_pattern;
-	return;
-    }
-    void set_nan(const std::vector<std::string>& colnames, const BinaryMatrix<Dynamic, Dynamic>& nan_pattern) {
-        fdapde_assert(nan_pattern.cols() == cols_ || nan_pattern.cols() == colnames.size());
-        for (std::size_t i = 0; i < colnames.size(); ++i) { set_nan(colnames[i], nan_pattern.col(i)); }
-    }
-    template <typename Scalar, typename... Extents_>   // reserve memory for rows x cols Scalar
+    template <typename Scalar, typename... Extents_>   // reserve memory for Extents_... Scalar
         requires(std::is_convertible_v<Extents_, index_t> && ...) &&
                 (sizeof...(Extents_) == Order && is_type_supported_v<Scalar>)
     void resize(Extents_... exts) {
@@ -852,14 +828,12 @@ class scalar_data_layer {
         }
         return;
     }
-  
+
     template <typename Src>
         requires(
           (std::is_pointer_v<Src> && is_type_supported_v<std::remove_pointer_t<Src>>) ||
           (internals::is_subscriptable<Src, index_t> &&
-           requires(Src src) {
-               { src.size() } -> std::convertible_to<size_t>;
-           } && is_type_supported_v<std::decay_t<decltype(std::declval<Src>()[index_t()])>>))
+           is_type_supported_v<std::decay_t<decltype(std::declval<Src>()[index_t()])>>))
     void append_column(const std::string& colname, const Src& src) {
         using SrcType = std::conditional_t<
           std::is_pointer_v<Src>, std::remove_pointer_t<Src>, std::decay_t<decltype(std::declval<Src>()[index_t()])>>;
@@ -870,14 +844,14 @@ class scalar_data_layer {
         // add field descriptor
         auto dtype_ = internals::dtype_from_static_type<SrcType_>();
         int col = 0, offset = 0;
-        for (const field& f : fields_) {
+        for (const field& f : header_) {
             if (f.type_id == dtype_.type_id) {
                 col++;
                 offset += f.size;
 	    }
         }
-        fields_.emplace_back(colname, col, offset, 1, dtype_.type_id);
-        colname_to_field_[colname] = fields_.size() - 1;
+        header_.emplace_back(colname, col, offset, 1, dtype_.type_id);
+        colname_to_field_[colname] = header_.size() - 1;
         // resize space if column doesn't fit current size (double number of columns, amortized constant time insertion)
         if (col == 0) {
             resize<SrcType_>(src.size(), 1);
@@ -899,19 +873,21 @@ class scalar_data_layer {
         using ValueType_ =
           decltype(internals::apply_index_pack<Order>([&]<int... Ns_>() { return src(((void)Ns_, index_t())...); }));
         using SrcType_ = mapped_type_t<std::decay_t<ValueType_>>;
-        fdapde_assert(src.size() != 0 && src.rows() == fetch_<SrcType_>(data_).extent(0));
+        fdapde_assert(fetch_<SrcType_>(data_).extent(0) == 0 || src.rows() == fetch_<SrcType_>(data_).extent(0));
         // add field descriptor
         auto dtype_ = internals::dtype_from_static_type<SrcType_>();
         int col = 0, offset = 0;
-        for (const field& f : fields_) {
+        for (const field& f : header_) {
             if (f.type_id == dtype_.type_id) {
                 col++;
                 offset += f.size;
             }
         }
-        fields_.emplace_back(colname, col, offset, src.cols(), dtype_.type_id);
-        colname_to_field_[colname] = fields_.size() - 1;
-        if (offset + src.cols() > fetch_<SrcType_>(data_).extent(1)) {
+        header_.emplace_back(colname, col, offset, src.cols(), dtype_.type_id);
+        colname_to_field_[colname] = header_.size() - 1;
+        if (col == 0) {
+            resize<SrcType_>(src.rows(), src.cols());
+        } else if (offset + src.cols() > fetch_<SrcType_>(data_).extent(1)) {
             internals::apply_index_pack<Order>([&]<int... Ns_>() {
                 conservative_resize<SrcType_>(
                   (Ns_ == 1 ? (2 * src.cols() + fetch_<SrcType_>(data_).extent(Ns_)) :
@@ -927,7 +903,7 @@ class scalar_data_layer {
     // output stream
     friend std::ostream& operator<<(std::ostream& os, const scalar_data_layer& data) {
         std::vector<std::vector<std::string>> out;
-        std::vector<std::size_t> max_size(data.field_descriptors().size(), 0);
+        std::vector<std::size_t> max_size(data.header().size(), 0);
 	int n_rows = std::min(size_t(8), data.rows());
         int n_cols = data.cols();
         out.resize(n_cols);
@@ -956,7 +932,7 @@ class scalar_data_layer {
             }
         };
         for (int i = 0, n = n_cols; i < n; ++i) {
-            const auto& desc = data.field_descriptors()[i];
+            const auto& desc = data.header()[i];
             dtype coltype = desc.type_id;
             if (coltype == dtype::flt64) { print.template operator()<double      >(out[i], "flt64", desc); }
             if (coltype == dtype::flt32) { print.template operator()<float       >(out[i], "flt32", desc); }
@@ -974,7 +950,7 @@ class scalar_data_layer {
             for (int j = 0, m = out[i].size(); j < m; ++j) {
                 out[i][j].insert(0, max_size[i] - out[i][j].size() + (i == 0 ? 0 : 1), ' ');
             }
-            if (data.field_descriptors()[i].size > 1) {   // block columns formatting
+            if (data.header()[i].size > 1) {   // block columns formatting
                 std::vector<std::size_t> posmin;
                 std::size_t posmax = std::numeric_limits<std::size_t>::min();
                 for (int j = 2, m = out[i].size(); j < m; ++j) {
@@ -999,7 +975,7 @@ class scalar_data_layer {
    private:
     // extract nan_pattern from column
     void extract_nan_pattern_(const std::string& colname, logical_t& nan_pattern, size_t offset) const {
-        field f = fields_.at(colname_to_field_.at(colname));
+        field f = header_.at(colname_to_field_.at(colname));
         internals::dispatch_to_dtype(
           f.type_id,
           [&]<typename T>(logical_t& dst) mutable {
@@ -1011,11 +987,9 @@ class scalar_data_layer {
     }
 
     storage_t data_;
-    std::vector<field> fields_;
+    std::vector<field> header_;
     std::unordered_map<std::string, int> colname_to_field_;
-    std::unordered_map<std::string, BinaryMatrix<Dynamic, 1>> nan_pattern_;
     int rows_ = 0, cols_ = 0;
-    std::array<int, 2> shape_;
 };
 
 // filter outstream

@@ -99,7 +99,9 @@ template <typename... Triangulation_> struct GeoFrame {
     template <typename... GeoInfo>
         requires(
           sizeof...(GeoInfo) == Order &&
-          (internals::is_any_same_v<GeoInfo, std::tuple<internals::polygon_tag, internals::point_tag>> && ...))
+          (internals::is_any_same_v<
+             GeoInfo, std::tuple<internals::polygon_layer_descriptor, internals::point_layer_descriptor>> &&
+           ...))
     void add_scalar_layer(const std::string& name) {
         fdapde_static_assert(sizeof...(GeoInfo) == Order, BAD_LAYER_CONSTRUCTION__NO_MATCHING_ORDER);
         geoframe_assert(!name.empty() && !has_layer(name), "empty or duplicated layer name.");
