@@ -75,8 +75,7 @@ struct is_pair {
     }();
 };
 template <typename T> static constexpr bool is_pair_v = is_pair<T>::value;
-
-// deduces returned type of T's subscript operator with arguments Args...
+  
 template <typename Fn, typename... Arg>
 concept is_subscriptable = requires(Fn fn, Arg... arg) {
     { fn.operator[](arg...) };
@@ -86,8 +85,18 @@ template <typename T, typename... Args>
 struct subscript_result_of {
     using type = decltype(std::declval<T>().operator[](std::declval<Args>()...));
 };
+// deduces returned type of T's subscript operator with arguments Args...
 template <typename T, typename... Args> using subscript_result_of_t = typename subscript_result_of<T, Args...>::type;
-  
+
+template <typename T> class is_vector_like {
+    using T_ = std::decay_t<T>;
+  public:
+   static constexpr bool value = is_subscriptable<T, int> && requires(T t) {
+       { t.size() } -> std::convertible_to<std::size_t>;
+   };
+};
+template <typename T> static constexpr bool is_vector_like_v = is_vector_like<T>::value;
+
 // get i-th element from parameter pack
 template <int N, typename... Ts>
     requires(sizeof...(Ts) >= N)
@@ -229,22 +238,7 @@ template <typename XprType> struct ref_select_impl<XprType, false> {
 };
 template <typename XprType> struct ref_select : ref_select_impl<XprType, has_nest_as_ref_bit<XprType>> { };
 template <typename XprType> using ref_select_t = ref_select<XprType>::type;
-
-// concept for STL container
-template <typename T>
-concept is_stl_container = requires(T t) {
-    requires std::same_as<typename T::reference, typename T::value_type &>;
-    requires std::same_as<typename T::const_reference, const typename T::value_type &>;
-    requires std::forward_iterator<typename T::iterator>;
-    requires std::forward_iterator<typename T::const_iterator>;
-    { t.begin() } -> std::same_as<typename T::iterator>;
-    { t.end() } -> std::same_as<typename T::iterator>;
-    { t.cbegin() } -> std::same_as<typename T::const_iterator>;
-    { t.cend() } -> std::same_as<typename T::const_iterator>;
-    { t.size() } -> std::convertible_to<std::size_t>;
-    { t.empty() } -> std::same_as<bool>;
-};
-
+  
 }   // namespace internals
 }   // namespace fdapde
 

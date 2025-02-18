@@ -63,6 +63,7 @@ template <typename Scalar_, typename DataObj> struct plain_col_view {
     plain_col_view() noexcept = default;
     template <typename FieldDescriptor>
     plain_col_view(DataObj& data, index_t row_begin, index_t row_end, const FieldDescriptor& desc) noexcept :
+        data_(std::addressof(data)),
         block_(internals::apply_index_pack<Order>([&]<int... Ns_>() {
             return data.template data<Scalar>().block(
               ((void)Ns_, Ns_ == 0 ?
@@ -72,6 +73,8 @@ template <typename Scalar_, typename DataObj> struct plain_col_view {
         })),
         // metadata
         rows_(row_end - row_begin),
+        row_begin_(row_begin),
+        row_end_(row_end),
         blk_sz_(desc.size()),
         type_id_(desc.type_id()),
         colname_(desc.colname()) { }
@@ -141,6 +144,40 @@ template <typename Scalar_, typename DataObj> struct plain_col_view {
           block_.data(), rows(), blk_sz_);
     }
 #endif
+    // assignment
+    template <typename Src>
+        requires(is_vector_like_v<Src> || is_indexable_v<Src, Order, index_t>)
+    plain_col_view& operator=(Src&& src) {
+        // inplace assignment
+        if constexpr (is_vector_like_v<Src> && !is_indexable_v<Src, Order, index_t>) {
+            fdapde_assert(src.size() == rows_);
+            if (blk_sz_ == 1) {   // vector - vector assign
+                block_.assign_inplace_from(src);
+                return *this;
+            }
+        } else {
+            fdapde_assert(src.rows() == rows_);
+            if (blk_sz_ == src.cols()) {   // block - block asssign
+                block_.assign_inplace_from(src);
+                return *this;
+            }
+        }
+        // reallocation required
+	index_t col_id = data_->col_id(colname_);
+	data_->erase (colname_);
+        data_->insert(colname_, col_id, src);
+        // update block-view
+        const auto& desc = data_->field_descriptor(colname_);
+        blk_sz_ = desc.size();
+        block_ = internals::apply_index_pack<Order>([&]<int... Ns_>() {
+            return data_->template data<Scalar>().block(
+              ((void)Ns_, Ns_ == 0 ?
+                            std::pair {row_begin_, row_end_ - 1} :
+                            (Ns_ == 1 ? std::pair {desc.offset(), desc.offset() + desc.size() - 1} :
+                                        std::pair {0, index_t(data_->template data<Scalar>().extent(Ns_)) - 1}))...);
+        });
+        return *this;
+    }
    protected:
     template <typename Functor> std::vector<bool> logical_apply_(const Scalar& rhs, Functor&& f) const {
         logical_t mask(block_.extents());
@@ -149,9 +186,12 @@ template <typename Scalar_, typename DataObj> struct plain_col_view {
         }
         return mask;
     }
+
+    DataObj* data_;
     storage_t block_;
     // metadata
     size_t rows_, blk_sz_;
+    index_t row_begin_, row_end_;
     std::string colname_;
     dtype type_id_;
 };
@@ -505,7 +545,7 @@ class scalar_data_layer {
         (internals::is_subscriptable<value_t, int> &&
          is_type_supported_v<mapped_type_t<std::decay_t<decltype(std::declval<value_t>()[int()])>>>);
     };
-    template <typename T> static constexpr bool is_valid_pair_v = is_valid_pair<T>::value;
+    template <typename T> static constexpr bool is_valid_pair_v = is_valid_pair<T>::value;  
     // moves std::tuple<Ts...> to T<Ts...>
     template <template <typename...> typename T, typename U> struct strip_tuple_into;
     template <template <typename...> typename T, typename... Us>
@@ -532,6 +572,25 @@ class scalar_data_layer {
         }();
     };
     template <typename T> static constexpr bool is_indexable_v = is_indexable<T>::value;
+    template <typename T> class is_vector_like {
+        using T_ = std::decay_t<T>;
+       public:
+        static constexpr bool value = []() {
+            if constexpr (std::is_pointer_v<T_>) {
+                return is_type_supported_v<std::remove_pointer_t<T_>>;
+            } else {
+                if constexpr (is_subscriptable<T_, index_t> && requires(T t) {
+                                  { t.size() } -> std::convertible_to<size_t>;
+                              }) {
+                    return is_type_supported_v<std::decay_t<decltype(std::declval<T_>()[index_t()])>>;
+                } else {
+                    return false;
+                }
+            }
+        }();
+    };
+    template <typename T> static constexpr bool is_vector_like_v = is_vector_like<T>::value;
+
     using row_view = plain_row_view<scalar_data_layer>;
     using const_row_view = plain_row_view<const scalar_data_layer>;
 
@@ -711,6 +770,7 @@ class scalar_data_layer {
 
     // observers
     const field& field_descriptor(const std::string& colname) const { return header_[col_idx_.at(colname)]; }
+    index_t col_id(const std::string& colname) const { return col_idx_.at(colname); }
     const std::vector<field>& header() const { return header_; }
     std::vector<std::string> colnames() const {
         std::vector<std::string> colnames_;
@@ -868,10 +928,7 @@ class scalar_data_layer {
     }
 
     template <typename Src>
-        requires(
-          (std::is_pointer_v<Src> && is_type_supported_v<std::remove_pointer_t<Src>>) ||
-          (internals::is_subscriptable<Src, index_t> &&
-           is_type_supported_v<std::decay_t<decltype(std::declval<Src>()[index_t()])>>))
+        requires(is_vector_like_v<Src>)
     void append_vec(const std::string& colname, const Src& src) {
         using SrcType = std::conditional_t<
           std::is_pointer_v<Src>, std::remove_pointer_t<Src>, std::decay_t<decltype(std::declval<Src>()[index_t()])>>;
@@ -880,7 +937,7 @@ class scalar_data_layer {
             fdapde_assert(fetch_<SrcType_>(data_).extent(0) == 0 || src.size() == fetch_<SrcType_>(data_).extent(0));
         }
 	fdapde_assert(!has_column_(colname));
-        dtype type_id = internals::dtype_from_static_type<SrcType_>().type_id;	
+        dtype type_id = internals::dtype_from_static_type<SrcType_>().type_id;
         // check if there is already allocated free memory to hold src
         index_t offset = find_free_blk_idx_<SrcType_>(1);
         if (offset == -1) {   // memory allocation requested
@@ -941,6 +998,26 @@ class scalar_data_layer {
         fetch_<SrcType_>(data_).block(full_extent, std::pair{offset, offset + src.cols() - 1}).assign_inplace_from(src);
         cols_++;
         return;
+    }
+    // insert src at index position
+    template <typename Src>
+        requires(is_vector_like_v<Src> || is_indexable_v<Src>)
+    void insert(const std::string& colname, index_t index, const Src& src) {
+        if constexpr (is_vector_like_v<Src> && !is_indexable_v<Src>) {
+            append_vec(colname, src);
+        } else {
+            append_blk(colname, src);
+        }
+        // adjust header to put colname at index
+        field tmp = header_[index];
+        header_[index] = header_[col_idx_[colname]];
+	col_idx_[colname] = index;
+        for (int i = index + 1; i < cols_; ++i) {
+            field cur = header_[i];
+            header_[i] = tmp;
+	    col_idx_[tmp.colname()] = i;
+            tmp = cur;
+	}
     }
     // do not perform any memory reallocation, sets the corresponding freemem_ bits to 1 and update header
     void erase(const std::string& colname) {
@@ -1060,10 +1137,15 @@ class scalar_data_layer {
         }
         return -1;
     }
+    bool unique_colnames_() const {   // check colnames are unique
+        std::unordered_set<std::string> colnames_;
+        for (const field& f : header_) { colnames_.insert(f.colname()); }
+        return colnames_.size() == header_.size();
+    }
 
     storage_t data_;
     std::vector<field> header_;
-    std::unordered_map<std::string, int> col_idx_;
+    std::unordered_map<std::string, index_t> col_idx_;
     std::unordered_map<dtype, std::vector<bool>> freemem_;
     int rows_ = 0, cols_ = 0;
 };

@@ -31,16 +31,16 @@ template <typename Triangulation_> struct point_layer {
 
     point_layer() : triangulation_(nullptr), coords_(), points_at_dofs_(false) { }
     template <typename GeoDescriptor>
-        requires(internals::is_eigen_dense_xpr_v<GeoDescriptor> || internals::is_stl_container<GeoDescriptor>)
+        requires(is_eigen_dense_xpr_v<GeoDescriptor> || is_vector_like_v<GeoDescriptor>)
     point_layer(Triangulation_* triangulation, const GeoDescriptor& coords) noexcept :
         triangulation_(triangulation), points_at_dofs_(false) {
-        if constexpr (internals::is_eigen_dense_xpr_v<GeoDescriptor>) {
+        if constexpr (is_eigen_dense_xpr_v<GeoDescriptor>) {
             coords_.reserve(coords.size());
             for (int i = 0; i < coords.rows(); ++i) {
                 for (int j = 0; j < coords.cols(); ++j) { coords_.push_back(coords(i, j)); }
             }
             n_rows_ = coords.rows();
-        } else if constexpr(internals::is_stl_container<GeoDescriptor>) {
+        } else/* if constexpr(internals::is_stl_container<GeoDescriptor>) */{
             fdapde_assert(coords.size() % embed_dim == 0);
             coords_.reserve(coords.size());
             std::copy(coords.begin(), coords.end(), coords_.data());
@@ -71,14 +71,14 @@ template <typename Triangulation_> struct point_layer {
 	return;
     }
     template <typename CoordsT>
-        requires(internals::is_eigen_dense_xpr_v<CoordsT> || internals::is_stl_container<CoordsT>)
+        requires(is_eigen_dense_xpr_v<CoordsT> || is_vector_like_v<CoordsT>)
     void push_back(const CoordsT& coords) {
-        if constexpr (internals::is_eigen_dense_xpr_v<CoordsT>) {
+        if constexpr (is_eigen_dense_xpr_v<CoordsT>) {
             for (int i = 0; i < coords.rows(); ++i) {
                 for (int j = 0; j < coords.cols(); ++j) { coords_.push_back(coords(i, j)); }
             }
             n_rows_ += coords.rows();
-        } else if constexpr (internals::is_stl_container<CoordsT>) {
+        } else {
             fdapde_assert(coords.size() % embed_dim == 0);
 	    coords_.insert(coords_.end(), coords.begin(), coords.end());
 	    n_rows_ += coords.size() / embed_dim;
