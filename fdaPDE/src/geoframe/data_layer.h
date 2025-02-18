@@ -67,15 +67,14 @@ template <typename Scalar_, typename DataObj> struct plain_col_view {
             return data.template data<Scalar>().block(
               ((void)Ns_, Ns_ == 0 ?
                             std::pair {row_begin, row_end - 1} :
-                            (Ns_ == 1 ? std::pair {desc.offset, desc.offset + desc.size - 1} :
+                            (Ns_ == 1 ? std::pair {desc.offset(), desc.offset() + desc.size() - 1} :
                                         std::pair {0, index_t(data.template data<Scalar>().extent(Ns_)) - 1}))...);
         })),
         // metadata
         rows_(row_end - row_begin),
-        blk_sz_(desc.size),
-        id_(desc.col_id),
-        type_id_(desc.type_id),
-        colname_(desc.colname) { }
+        blk_sz_(desc.size()),
+        type_id_(desc.type_id()),
+        colname_(desc.colname()) { }
     template <typename FieldDescriptor>   // column row constructor
     plain_col_view(DataObj& data, index_t row, const FieldDescriptor& desc) noexcept :
         plain_col_view(data, row, row + 1, desc) { }
@@ -88,7 +87,6 @@ template <typename Scalar_, typename DataObj> struct plain_col_view {
     size_t rows() const { return rows_; }
     size_t cols() const { return 1; }
     size_t size() const { return rows_ * blk_sz_; }
-    index_t id()  const { return id_; }
     const storage_t& data() const { return block_; }
     storage_t& data() { return block_; }
     const std::string& colname() const { return colname_; }
@@ -153,7 +151,6 @@ template <typename Scalar_, typename DataObj> struct plain_col_view {
     }
     storage_t block_;
     // metadata
-    index_t id_;
     size_t rows_, blk_sz_;
     std::string colname_;
     dtype type_id_;
@@ -181,15 +178,14 @@ template <typename Scalar_, typename DataObj> struct random_access_col_view {
     random_access_col_view(DataObj& data, const std::vector<index_t>& idxs, const FieldDescriptor& desc) noexcept :
         data_(internals::apply_index_pack<Order>([&]<int... Ns_>() {
             return data.template data<Scalar>().block(
-              ((void)Ns_, Ns_ == 1 ? std::pair {desc.offset, desc.offset + desc.size - 1} :
+              ((void)Ns_, Ns_ == 1 ? std::pair {desc.offset(), desc.offset() + desc.size() - 1} :
                                      std::pair {0, index_t(data.template data<Scalar>().extent(Ns_)) - 1})...);
         })),
         idxs_(idxs),
-        id_(desc.col_id),
         rows_(idxs.size()),
-        blk_sz_(desc.size),
-        type_id_(desc.type_id),
-        colname_(desc.colname) {
+        blk_sz_(desc.size()),
+        type_id_(desc.type_id()),
+        colname_(desc.colname()) {
         // set up extents
         if constexpr (Order == 2) { extents_.resize(rows_, blk_sz_); }
         if constexpr (Order == 3) { extents_.resize(rows_, blk_sz_, data_.extent(2)); }
@@ -199,7 +195,6 @@ template <typename Scalar_, typename DataObj> struct random_access_col_view {
     size_t rows() const { return rows_; }
     size_t cols() const { return 1; }
     size_t size() const { return rows_ * blk_sz_; }
-    index_t id()  const { return id_; }
     // access to data requires copying in contiguous memory
     data_table data() const {
         data_table data_blk(extents_);
@@ -267,7 +262,6 @@ template <typename Scalar_, typename DataObj> struct random_access_col_view {
     std::vector<index_t> idxs_;
     extents_t extents_;   // contiguous-like memory block extention
     // metadata
-    index_t id_;
     size_t rows_, blk_sz_, offset_;
     std::string colname_;
     dtype type_id_;
@@ -310,7 +304,7 @@ template <typename DataLayer> struct plain_row_view {
     plain_row_view& operator=(const plain_row_view& src) {
         for (const auto& f : field_descriptors()) {
             internals::dispatch_to_dtype(
-              f.type_id,
+              f.type_id(),
               [&]<typename T>(plain_row_view& dst) mutable {
                   dst.col<T>(f.colname).data() = src.col<T>(f.colname).data();
               },
@@ -473,35 +467,43 @@ class scalar_data_layer {
     const auto& fetch_(const U& u) const {
         return std::get<index_of<T, types>::value>(u);
     }
-    bool has_column_(const std::string& colname) const { return colname_to_field_.contains(colname); }
+    bool has_column_(const std::string& colname) const { return col_idx_.contains(colname); }
     template <typename T> bool has_column_of_type_(const std::string& colname) const {
-        auto col_dtype = internals::dtype_from_static_type<T>();
+        dtype col_dtype = internals::dtype_from_static_type<T>().type_id;
         for (const auto& field : header_) {
-            if (field.type_id == col_dtype.type_id && field.colname == colname) { return true; }
+            if (field.type_id() == col_dtype && field.colname() == colname) { return true; }
         }
         return false;
     }
     struct field {
-        std::string colname;
-        int col_id;
-        int size;     // number of indexed MdArray columns
-        int offset;   // first indexed MdArray column
-        internals::dtype type_id;
-
-        field(const std::string& colname_, internals::dtype type_id_) : colname(colname_), type_id(type_id_) { }
-        field(const std::string& colname_, int col_id_, int offset_, internals::dtype type_id_) :
-            colname(colname_), col_id(col_id_), size(1), offset(offset_), type_id(type_id_) { }
-        field(const std::string& colname_, int col_id_, int offset_, int size_, internals::dtype type_id_) :
-            colname(colname_), col_id(col_id_), size(size_), offset(offset_), type_id(type_id_) { }
+        std::string colname_;
+        int size_, offset_;   // block size and first indexed MdArray column
+        dtype type_id_;
+      
+       public:
+        field() noexcept = default;
+        field(const std::string& colname, int offset, int size, dtype type_id) noexcept :
+            colname_(colname), size_(size), offset_(offset), type_id_(type_id) { }
+        field(const std::string& colname, int offset, dtype type_id) noexcept : field(colname, offset, 1, type_id) { }
+        field(const std::string& colname, dtype type_id) noexcept : field(colname, 0, 0, type_id) { }
+        // observers
+        const std::string& colname() const { return colname_; }
+        int size() const { return size_; }
+        int offset() const { return offset_; }
+        const dtype& type_id() const { return type_id_; }
+        // modifiers
+        void set_colname(const std::string& colname) { colname_ = colname; }
     };
     template <typename T>
     struct is_valid_pair {
-      using colname_type = std::tuple_element_t<0, std::decay_t<T>>;
-      using value_type   = mapped_type_t<std::tuple_element_t<1, std::decay_t<T>>>;
+      using colname_t = std::tuple_element_t<0, std::decay_t<T>>;
+      using value_t   = mapped_type_t<std::tuple_element_t<1, std::decay_t<T>>>;
       static constexpr bool value =
-        (std::is_same_v<colname_type, std::string> || std::is_same_v<colname_type, const char*>) &&
-        (internals::is_subscriptable<value_type, int> &&
-         is_type_supported_v<mapped_type_t<std::decay_t<decltype(std::declval<value_type>()[std::declval<int>()])>>>);
+	// first  element: column name
+        (std::is_same_v<colname_t, std::string> || std::is_same_v<colname_t, const char*>) &&
+	// second element: something subscriptable returning an accepted type
+        (internals::is_subscriptable<value_t, int> &&
+         is_type_supported_v<mapped_type_t<std::decay_t<decltype(std::declval<value_t>()[int()])>>>);
     };
     template <typename T> static constexpr bool is_valid_pair_v = is_valid_pair<T>::value;
     // moves std::tuple<Ts...> to T<Ts...>
@@ -535,8 +537,9 @@ class scalar_data_layer {
 
     scalar_data_layer() noexcept : rows_(0), cols_(0) { }
     // build from header
-    scalar_data_layer(const std::vector<field>& header) : rows_(0), cols_(header.size()), header_(header) {
-        for (int i = 0; i < cols_; ++i) { colname_to_field_[header_[i].colname] = i; }
+    scalar_data_layer(const std::vector<field>& header) :
+        rows_(0), cols_(header.size()), header_(header), freemem_(make_dtyped_map<std::vector<bool>>()) {
+        for (int i = 0; i < cols_; ++i) { col_idx_[header_[i].colname()] = i; }
     }
     template <typename... DataT>
         requires(
@@ -557,7 +560,7 @@ class scalar_data_layer {
               }
           }()) &&
           ...)
-    scalar_data_layer(DataT&&... data) {
+    scalar_data_layer(DataT&&... data) : freemem_(make_dtyped_map<std::vector<bool>>()) {
         // for each type id, the number of columns of that type
         std::unordered_map<dtype, int> type_id_map = make_dtyped_map<int>();
         std::unordered_map<dtype, int> type_id_col = make_dtyped_map<int>();
@@ -571,9 +574,9 @@ class scalar_data_layer {
             using MappedT = mapped_type_t<std::decay_t<decltype(std::declval<T>()[std::declval<index_t>()])>>;
             // add field descriptor
             auto dtype_ = internals::dtype_from_static_type<MappedT>();
-            header_.emplace_back(colname, type_id_map[dtype_.type_id], dtype_.type_id);
+            header_.emplace_back(colname, dtype_.type_id);
             type_id_map[dtype_.type_id]++;
-            colname_to_field_[colname] = header_.size() - 1;
+            col_idx_[colname] = header_.size() - 1;
         };
         // push column descriptors
         internals::for_each_index_and_args<sizeof...(DataT)>(
@@ -599,17 +602,17 @@ class scalar_data_layer {
                       return std::get<1>(t[0]);
                   }
               }().operator[](std::declval<index_t>()))>>;
-              auto dtype_ = internals::dtype_from_static_type<MappedT>();
-              fetch_<MappedT>(data_).resize(rows_, type_id_map[dtype_.type_id]);
+              dtype type_id = internals::dtype_from_static_type<MappedT>().type_id;
+              fetch_<MappedT>(data_).resize(rows_, type_id_map[type_id]);
               if constexpr (internals::is_pair_v<T>) {
-                  fetch_<MappedT>(data_)
-                    .template slice<1>(type_id_col[dtype_.type_id])
-                    .assign_inplace_from(std::get<1>(t));
-                  type_id_col[dtype_.type_id]++;
+                  fetch_<MappedT>(data_).template slice<1>(type_id_col[type_id]).assign_inplace_from(std::get<1>(t));
+                  type_id_col[type_id]++;
+		  freemem_[type_id].push_back(false);
               } else {   // map-like object
                   for (const auto& [colname, data] : t) {
-                      fetch_<MappedT>(data_).template slice<1>(type_id_col[dtype_.type_id]).assign_inplace_from(data);
-                      type_id_col[dtype_.type_id]++;
+                      fetch_<MappedT>(data_).template slice<1>(type_id_col[type_id]).assign_inplace_from(data);
+                      type_id_col[type_id]++; // ------------------------------------ change in type_id_col_cnt
+		      freemem_[type_id].push_back(false);
                   }
               }
           },
@@ -619,7 +622,8 @@ class scalar_data_layer {
         requires(
           (std::contiguous_iterator<typename DataT::iterator> && is_type_supported_v<typename DataT::value_type>) &&
           ...)
-    scalar_data_layer(const std::vector<std::string>& colnames, const DataT&... data) {
+    scalar_data_layer(const std::vector<std::string>& colnames, const DataT&... data) :
+        freemem_(make_dtyped_map<std::vector<bool>>()) {
         fdapde_assert(colnames.size() == sizeof...(data));
         // for each type id, the number of columns of that type
         std::unordered_map<dtype, int> type_id_map = make_dtyped_map<int>();
@@ -635,10 +639,10 @@ class scalar_data_layer {
               }
               using MappedT = mapped_type_t<std::decay_t<decltype(std::declval<T>()[std::declval<index_t>()])>>;
               // add field descriptor
-              auto dtype_ = internals::dtype_from_static_type<MappedT>();
-              header_.emplace_back(colnames[Ns_], type_id_map[dtype_.type_id], dtype_.type_id);
-              type_id_map[dtype_.type_id]++;
-              colname_to_field_[colnames[Ns_]] = header_.size() - 1;
+              dtype type_id = internals::dtype_from_static_type<MappedT>().type_id;
+              header_.emplace_back(colnames[Ns_], type_id);
+              type_id_map[type_id]++;
+              col_idx_[colnames[Ns_]] = header_.size() - 1;
               cols_++;
           },
           data...);
@@ -646,16 +650,18 @@ class scalar_data_layer {
         internals::for_each_index_and_args<sizeof...(DataT)>(
           [&]<int Ns_, typename T>(const T& t) {
               using MappedT = mapped_type_t<std::decay_t<decltype(std::declval<T>()[std::declval<index_t>()])>>;
-              auto dtype_ = internals::dtype_from_static_type<MappedT>();
-              fetch_<MappedT>(data_).resize(rows_, type_id_map[dtype_.type_id]);
-              fetch_<MappedT>(data_).template slice<1>(type_id_col[dtype_.type_id]).assign_inplace_from(t);
-              type_id_col[dtype_.type_id]++;
+              dtype type_id = internals::dtype_from_static_type<MappedT>().type_id;
+              fetch_<MappedT>(data_).resize(rows_, type_id_map[type_id]);
+              fetch_<MappedT>(data_).template slice<1>(type_id_col[type_id]).assign_inplace_from(t);
+              type_id_col[type_id]++;
+	      freemem_[type_id].push_back(false);
           },
           data...);
     }
     template <typename LayerType>
-    scalar_data_layer(const random_access_row_view<LayerType>& row_filter, const std::vector<std::string>& cols) {
-        fdapde_assert(cols.size() > 0);
+    scalar_data_layer(const random_access_row_view<LayerType>& row_filter, const std::vector<std::string>& cols) :
+        freemem_(make_dtyped_map<std::vector<bool>>()) {
+        if (cols.size() == 0) return;
         // for each type id, the requested memory block size
         std::unordered_map<dtype, int> type_id_map = make_dtyped_map<int>();
         std::unordered_map<dtype, int> offset = make_dtyped_map<int>();
@@ -664,11 +670,11 @@ class scalar_data_layer {
 	cols_ = cols.size();
         for (int i = 0; i < cols_; ++i) {
             auto field = row_filter.field_descriptor(cols[i]);
-            internals::dtype type_id = field.type_id;
-            header_.emplace_back(cols[i], type_id_map[type_id], offset[type_id], field.size, type_id);
-            offset[type_id] += field.size;
+            dtype type_id = field.type_id();
+            header_.emplace_back(cols[i], offset[type_id], field.size(), type_id);
+            offset[type_id] += field.size();
             type_id_map[type_id]++;
-            colname_to_field_[field.colname] = header_.size() - 1;
+            col_idx_[field.colname()] = header_.size() - 1;
         }
         // reserve space, copy data in internal storage
 	std::unordered_map<dtype, int> tmp = make_dtyped_map<int>();
@@ -677,19 +683,20 @@ class scalar_data_layer {
               (
                 [&]() {
                     using T = std::decay_t<decltype(ts)>;
-		    internals::dtype type_id = internals::dtype_from_static_type<T>().type_id;
+		    dtype type_id = internals::dtype_from_static_type<T>().type_id;
 		    int col_id_ = 0;
                     if (type_id_map[type_id] != 0) {
                         fetch_<T>(data_).resize(rows_, offset[type_id]);
 			// take typed data from filter
                         for (const auto& colname : cols) {
                             auto desc = row_filter.field_descriptor(colname);
-                            if (desc.type_id == type_id) {
+                            if (desc.type_id() == type_id) {
                                 fetch_<T>(data_)
-                                  .block(full_extent, std::pair {tmp[type_id], tmp[type_id] + desc.size - 1})
+                                  .block(full_extent, std::pair {tmp[type_id], tmp[type_id] + desc.size() - 1})
                                   .assign_inplace_from(row_filter.template col<T>(colname).data());
+                                for (int i = 0; i < desc.size(); ++i) { freemem_[type_id].push_back(false); }
                                 col_id_++;
-				tmp[type_id] += desc.size;
+				tmp[type_id] += desc.size();
                             }
                         }
                     }
@@ -703,11 +710,11 @@ class scalar_data_layer {
         scalar_data_layer(row_filter, row_filter.colnames()) { }
 
     // observers
-    const field& field_descriptor(const std::string& colname) const { return header_[colname_to_field_.at(colname)]; }
+    const field& field_descriptor(const std::string& colname) const { return header_[col_idx_.at(colname)]; }
     const std::vector<field>& header() const { return header_; }
     std::vector<std::string> colnames() const {
         std::vector<std::string> colnames_;
-        for (int i = 0, n = header_.size(); i < n; ++i) { colnames_.push_back(header_[i].colname); }
+        for (int i = 0, n = header_.size(); i < n; ++i) { colnames_.push_back(header_[i].colname()); }
         return colnames_;
     }
     bool contains(const std::string& column) const {   // true if this layer contains column
@@ -720,7 +727,7 @@ class scalar_data_layer {
 	offset.push_back(0);
         for (const std::string& col : colnames) {
             fdapde_assert(has_column_(col));
-	    offset.push_back(offset.back() + header_.at(colname_to_field_.at(col)).size);
+            offset.push_back(offset.back() + header_.at(col_idx_.at(col)).size());
         }
         logical_t nan(n_rows, n_cols);
         for (size_t i = 0; i < colnames.size(); ++i) { extract_nan_pattern_(colnames[i], nan, offset[i]); }
@@ -728,14 +735,17 @@ class scalar_data_layer {
     }
     logical_t nan(const std::string& colname) const {
         fdapde_assert(has_column_(colname));
-        field f = header_.at(colname_to_field_.at(colname));
-        logical_t nan(rows_, f.size);
-	extract_nan_pattern_(colname, nan, 0);
+        field f = header_.at(col_idx_.at(colname));
+        logical_t nan(rows_, f.size());
+        extract_nan_pattern_(colname, nan, 0);
         return nan;
     }
     size_t rows() const { return rows_; }
     size_t cols() const { return cols_; }
     size_t size() const { return rows_* cols_; }
+    // maximum number of elements of type T which can currently be holded
+    template <typename T> size_t capacity() const { return fetch_<mapped_type_t<T>>(data_).size(); }
+
     // accessors
     // column access
     template <typename T> plain_col_view<T, scalar_data_layer> col(size_t col) {
@@ -748,11 +758,11 @@ class scalar_data_layer {
     }
     template <typename T> plain_col_view<T, scalar_data_layer> col(const std::string& colname) {
         fdapde_assert(has_column_(colname));
-        return col<T>(colname_to_field_.at(colname));
+        return col<T>(col_idx_.at(colname));
     }
     template <typename T> plain_col_view<T, const scalar_data_layer> col(const std::string& colname) const {
         fdapde_assert(has_column_(colname));
-        return col<T>(colname_to_field_.at(colname));
+        return col<T>(col_idx_.at(colname));
     }
     // row access
     plain_row_view<scalar_data_layer> row(size_t row) {
@@ -787,7 +797,7 @@ class scalar_data_layer {
     // modifiers
     void set_colnames(const std::vector<std::string>& colnames) {
         fdapde_assert(colnames.size() == header_.size());
-        for (size_t i = 0; i < colnames.size(); ++i) { header_[i].colname = colnames[i]; }
+        for (size_t i = 0; i < colnames.size(); ++i) { header_[i].set_colname(colnames[i]); }
         return;
     }
     template <typename Scalar, typename... Extents_>   // reserve memory for Extents_... Scalar
@@ -795,13 +805,25 @@ class scalar_data_layer {
                 (sizeof...(Extents_) == Order && is_type_supported_v<Scalar>)
     void resize(Extents_... exts) {
         auto& data = fetch_<Scalar>(data_);
-        // exts coincide with current size, skip resizing
-        if (internals::apply_index_pack<Order>(
-              [&]<int... Ns_>() { return ((exts == data.extent(Ns_)) && ...); })) {
-            return;
+        if (internals::apply_index_pack<Order>([&]<int... Ns_>() { return ((exts == data.extent(Ns_)) && ...); })) {
+            return;   // exts coincide with current size, skip resizing
         }
         data.resize(static_cast<index_t>(exts)...);   // resize storage discarding old values
-	rows_ = data.extent(0);
+	fdapde_assert(rows_ == 0 || rows_ == data.extent(0));
+        rows_ = data.extent(0);
+        dtype type_id = internals::dtype_from_static_type<Scalar>().type_id;
+        freemem_[type_id].resize(data.extent(1));
+	// invalidate memory
+        for (typename std::vector<bool>::reference b : freemem_[type_id]) { b = true; }
+        for (auto it = header_.begin(); it != header_.end();) {
+            if (it->type_id() == type_id) {
+                col_idx_.erase(it->colname());
+                it = header_.erase(it);
+		cols_--;
+            } else {
+                ++it;
+            }
+        }
         return;
     }
     // resize mdarray storage, preserving old values
@@ -810,7 +832,12 @@ class scalar_data_layer {
                 (sizeof...(Extents_) == Order && is_type_supported_v<Scalar>)
     void conservative_resize(Extents_... exts) {
         using mem_t = MdArray<Scalar, full_dynamic_extent_t<Order>, internals::layout_left>;
-        if (fetch_<Scalar>(data_).size() != 0) {
+        auto& data = fetch_<Scalar>(data_);
+        if (internals::apply_index_pack<Order>([&]<int... Ns_>() { return ((exts == data.extent(Ns_)) && ...); })) {
+            return;   // exts coincide with current size, skip resizing
+        }
+        dtype type_id = internals::dtype_from_static_type<Scalar>().type_id;
+        if (data.size() != 0) {
             std::array<index_t, Order> exts_;
             internals::for_each_index_and_args<Order>(
               [&]<int Ns, typename Ts>(const Ts& ts) {
@@ -819,12 +846,23 @@ class scalar_data_layer {
               exts...);
             mem_t tmp = internals::apply_index_pack<Order>(   // copy old values
               [&, this]<int... Ns>() { return fetch_<Scalar>(data_).block(std::make_pair(0, exts_[Ns])...); });
-            resize<Scalar>(exts...);
+            int old_size = tmp.extent(1);
+            // allocate memory
+            data.resize(static_cast<index_t>(exts)...);
+	    int new_size = data.extent(1);
+            fdapde_assert(rows_ == 0 || rows_ == data.extent(0));
+            rows_ = data.extent(0);
+	    // flag new memory as free
+            for (int i = 0; i < new_size - old_size; ++i) { freemem_[type_id].push_back(true); }
             fetch_<Scalar>(data_)
               .block(std::make_pair(0, exts_[0]), std::make_pair(0, exts_[1]))
-              .assign_inplace_from(tmp);
+              .assign_inplace_from(tmp);	    
         } else {   // nothing to copy
-            resize<Scalar>(exts...);
+            data.resize(static_cast<index_t>(exts)...);   // resize storage discarding old values
+            fdapde_assert(rows_ == 0 || rows_ == data.extent(0));
+            rows_ = data.extent(0);
+            freemem_[type_id].resize(data.extent(1));
+            for (typename std::vector<bool>::reference b : freemem_[type_id]) { b = true; }
         }
         return;
     }
@@ -834,71 +872,86 @@ class scalar_data_layer {
           (std::is_pointer_v<Src> && is_type_supported_v<std::remove_pointer_t<Src>>) ||
           (internals::is_subscriptable<Src, index_t> &&
            is_type_supported_v<std::decay_t<decltype(std::declval<Src>()[index_t()])>>))
-    void append_column(const std::string& colname, const Src& src) {
+    void append_vec(const std::string& colname, const Src& src) {
         using SrcType = std::conditional_t<
           std::is_pointer_v<Src>, std::remove_pointer_t<Src>, std::decay_t<decltype(std::declval<Src>()[index_t()])>>;
         using SrcType_ = mapped_type_t<SrcType>;
         if constexpr (!std::is_pointer_v<Src>) {
             fdapde_assert(fetch_<SrcType_>(data_).extent(0) == 0 || src.size() == fetch_<SrcType_>(data_).extent(0));
         }
-        // add field descriptor
-        auto dtype_ = internals::dtype_from_static_type<SrcType_>();
-        int col = 0, offset = 0;
-        for (const field& f : header_) {
-            if (f.type_id == dtype_.type_id) {
-                col++;
-                offset += f.size;
-	    }
+	fdapde_assert(!has_column_(colname));
+        dtype type_id = internals::dtype_from_static_type<SrcType_>().type_id;	
+        // check if there is already allocated free memory to hold src
+        index_t offset = find_free_blk_idx_<SrcType_>(1);
+        if (offset == -1) {   // memory allocation requested
+            offset = 0;
+            for (const field& f : header_) {
+                if (f.type_id() == type_id) { offset += f.size(); }
+            }
+            if (offset == 0) {
+                resize<SrcType_>(src.size(), 1);
+            } else if (offset == fetch_<SrcType>(data_).extent(1)) {
+                // double number of columns, guarantees amortized constant time insertion
+                internals::apply_index_pack<Order>([&]<int... Ns_>() {
+                    conservative_resize<SrcType_>(
+                      (Ns_ == 1 ? (2 * fetch_<SrcType_>(data_).extent(Ns_)) : fetch_<SrcType_>(data_).extent(Ns_))...);
+                });
+            }
         }
-        header_.emplace_back(colname, col, offset, 1, dtype_.type_id);
-        colname_to_field_[colname] = header_.size() - 1;
-        // resize space if column doesn't fit current size (double number of columns, amortized constant time insertion)
-        if (col == 0) {
-            resize<SrcType_>(src.size(), 1);
-        } else if (col == fetch_<SrcType>(data_).extent(1)) {
-            internals::apply_index_pack<Order>([&]<int... Ns_>() {
-                conservative_resize<SrcType_>(
-                  (Ns_ == 1 ? (2 * fetch_<SrcType_>(data_).extent(Ns_)) : fetch_<SrcType_>(data_).extent(Ns_))...);
-            });
-        }
+        // update header
+        header_.emplace_back(colname, offset, 1, type_id);
+        col_idx_[colname] = header_.size() - 1;
+        freemem_[type_id][offset] = false;
         // copy src into data_
-        fetch_<SrcType_>(data_).template slice<1>(col).assign_inplace_from(src);
+        fetch_<SrcType_>(data_).template slice<1>(offset).assign_inplace_from(src);
         cols_++;
         return;
     }
-
     template <typename Src>
         requires(is_indexable_v<Src>)
-    void append_block(const std::string& colname, const Src& src) {
+    void append_blk(const std::string& colname, const Src& src) {
         using ValueType_ =
           decltype(internals::apply_index_pack<Order>([&]<int... Ns_>() { return src(((void)Ns_, index_t())...); }));
         using SrcType_ = mapped_type_t<std::decay_t<ValueType_>>;
         fdapde_assert(fetch_<SrcType_>(data_).extent(0) == 0 || src.rows() == fetch_<SrcType_>(data_).extent(0));
-        // add field descriptor
-        auto dtype_ = internals::dtype_from_static_type<SrcType_>();
-        int col = 0, offset = 0;
-        for (const field& f : header_) {
-            if (f.type_id == dtype_.type_id) {
-                col++;
-                offset += f.size;
+        fdapde_assert(!has_column_(colname));
+        dtype type_id = internals::dtype_from_static_type<SrcType_>().type_id;
+        // check if there is already allocated free memory to hold src
+        index_t offset = find_free_blk_idx_<SrcType_>(src.cols());
+        if (offset == -1) {   // memory allocation requested
+            offset = 0;
+            for (const field& f : header_) {
+                if (f.type_id() == type_id) { offset += f.size(); }
+            }
+            if (offset == 0) {
+                resize<SrcType_>(src.rows(), src.cols());
+            } else if (offset + src.cols() > fetch_<SrcType_>(data_).extent(1)) {
+                internals::apply_index_pack<Order>([&]<int... Ns_>() {
+                    conservative_resize<SrcType_>(
+                      (Ns_ == 1 ? (2 * src.cols() + fetch_<SrcType_>(data_).extent(Ns_)) :
+                                  fetch_<SrcType_>(data_).extent(Ns_))...);
+                });
             }
         }
-        header_.emplace_back(colname, col, offset, src.cols(), dtype_.type_id);
-        colname_to_field_[colname] = header_.size() - 1;
-        if (col == 0) {
-            resize<SrcType_>(src.rows(), src.cols());
-        } else if (offset + src.cols() > fetch_<SrcType_>(data_).extent(1)) {
-            internals::apply_index_pack<Order>([&]<int... Ns_>() {
-                conservative_resize<SrcType_>(
-                  (Ns_ == 1 ? (2 * src.cols() + fetch_<SrcType_>(data_).extent(Ns_)) :
-                              fetch_<SrcType_>(data_).extent(Ns_))...);
-            });
-        }
+        // update header
+        header_.emplace_back(colname, offset, src.cols(), type_id);
+        col_idx_[colname] = header_.size() - 1;
+        for (int i = 0; i < src.cols(); ++i) { freemem_[type_id][offset + i] = false; }
         // copy src into data_
         fetch_<SrcType_>(data_).block(full_extent, std::pair{offset, offset + src.cols() - 1}).assign_inplace_from(src);
         cols_++;
         return;
     }
+    // do not perform any memory reallocation, sets the corresponding freemem_ bits to 1 and update header
+    void erase(const std::string& colname) {
+        fdapde_assert(has_column_(colname));
+        auto it = std::find_if(header_.begin(), header_.end(), [&](const field& f) { return f.colname() == colname; });
+        for (int i = it->offset(); i < it->offset() + it->size(); ++i) { freemem_[it->type_id()][i] = true; }
+        col_idx_.erase(colname);
+        header_.erase(it);
+        cols_--;
+    }
+    void shrink_to_fit() { }
 
     // output stream
     friend std::ostream& operator<<(std::ostream& os, const scalar_data_layer& data) {
@@ -906,6 +959,7 @@ class scalar_data_layer {
         std::vector<std::size_t> max_size(data.header().size(), 0);
 	int n_rows = std::min(size_t(8), data.rows());
         int n_cols = data.cols();
+        if (n_cols == 0) { return os; }   // empty frame, nothing to print
         out.resize(n_cols);
         auto stringify = []<typename T>(const T& t, bool is_na) {
             if (is_na) { return std::string("NA"); }
@@ -916,24 +970,25 @@ class scalar_data_layer {
             }
         };
         auto print = [&]<typename T>(std::vector<std::string>& out_, const std::string& typestring, const field& desc) {
-            out_.push_back(desc.colname);
-            std::string info_ = "<" + std::to_string(desc.size) + ",1:" + typestring + ">";
+            out_.push_back(desc.colname());
+            std::string info_ = "<" + std::to_string(desc.size()) + ",1:" + typestring + ">";
             out_.push_back(info_);
             // print actual data
             auto col = plain_col_view<T, const scalar_data_layer>(data, 0, n_rows, desc);
             auto nan = col.nan();   // extract column nan pattern
-
             for (int i = 0; i < n_rows; ++i) {
                 std::string datastr;
                 datastr += stringify(col(i, 0), nan(i, 0));
-                if (desc.size == 2) { datastr += " " + stringify(col(i, 1), nan(i, 1)); }
-                if (desc.size >= 3) { datastr += " ... " + stringify(col(i, desc.size - 1), nan(i, desc.size - 1)); }
-		out_.push_back(datastr);
+                if (desc.size() == 2) { datastr += " " + stringify(col(i, 1), nan(i, 1)); }
+                if (desc.size() >= 3) {
+                    datastr += " ... " + stringify(col(i, desc.size() - 1), nan(i, desc.size() - 1));
+                }
+                out_.push_back(datastr);
             }
         };
         for (int i = 0, n = n_cols; i < n; ++i) {
             const auto& desc = data.header()[i];
-            dtype coltype = desc.type_id;
+            dtype coltype = desc.type_id();
             if (coltype == dtype::flt64) { print.template operator()<double      >(out[i], "flt64", desc); }
             if (coltype == dtype::flt32) { print.template operator()<float       >(out[i], "flt32", desc); }
             if (coltype == dtype::int64) { print.template operator()<std::int64_t>(out[i], "int64", desc); }
@@ -950,7 +1005,7 @@ class scalar_data_layer {
             for (int j = 0, m = out[i].size(); j < m; ++j) {
                 out[i][j].insert(0, max_size[i] - out[i][j].size() + (i == 0 ? 0 : 1), ' ');
             }
-            if (data.header()[i].size > 1) {   // block columns formatting
+            if (data.header()[i].size() > 1) {   // block columns formatting
                 std::vector<std::size_t> posmin;
                 std::size_t posmax = std::numeric_limits<std::size_t>::min();
                 for (int j = 2, m = out[i].size(); j < m; ++j) {
@@ -975,20 +1030,41 @@ class scalar_data_layer {
    private:
     // extract nan_pattern from column
     void extract_nan_pattern_(const std::string& colname, logical_t& nan_pattern, size_t offset) const {
-        field f = header_.at(colname_to_field_.at(colname));
+        field f = header_.at(col_idx_.at(colname));
         internals::dispatch_to_dtype(
-          f.type_id,
+          f.type_id(),
           [&]<typename T>(logical_t& dst) mutable {
-              dst.block(full_extent, std::pair {offset, offset + f.size - 1})
-                .assign_inplace_from(col<T>(f.colname).nan());
+              dst.block(full_extent, std::pair {offset, offset + f.size() - 1})
+                .assign_inplace_from(col<T>(f.colname()).nan());
           },
           nan_pattern);
         return;
     }
+    // returns the index of the first typed memory column which can hold a **contiguous** block of blk_sz columns, or -1
+    // if there is no such available (already allocated) memory
+    template <typename Scalar> index_t find_free_blk_idx_(size_t blk_sz) {
+        fdapde_assert(blk_sz > 0);
+        dtype type_id = dtype_from_static_type<Scalar>().type_id;
+        const std::vector<bool>& freemem = freemem_[type_id];
+        int j = 0;
+        for (int i = 0; i < freemem.size(); ++i) {
+            if (freemem[i]) {   // possible candidate point found
+                j = i;
+                size_t cnt = 0;
+                while (i < freemem.size() && freemem[i] && cnt < blk_sz) {
+                    cnt++;
+                    i++;
+                }
+                if (cnt == blk_sz) { return j; }
+            }
+        }
+        return -1;
+    }
 
     storage_t data_;
     std::vector<field> header_;
-    std::unordered_map<std::string, int> colname_to_field_;
+    std::unordered_map<std::string, int> col_idx_;
+    std::unordered_map<dtype, std::vector<bool>> freemem_;
     int rows_ = 0, cols_ = 0;
 };
 

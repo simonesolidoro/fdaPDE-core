@@ -817,11 +817,12 @@ template <typename MdArray, int... Slicers> class MdArraySlice {
         return *this;
     }
     template <typename MdArray_, int... Slicers_>
+        requires(std::is_same_v<typename MdArray::Scalar, typename MdArray_::Scalar>)
     constexpr MdArraySlice& assign_inplace_from(const MdArraySlice<MdArray_, Slicers_...>& src) {
         fdapde_assert(size() == src.size());
         for (auto it = src.begin(); it != src.end(); ++it) {
             if constexpr (std::is_same_v<Scalar, bool>) {
-	      // if (*it) { operator()(it.index()).set(); }
+                if (*it) { operator()(it.index()).set(); }
             } else {
                 operator()(it.index()) = *it;
             }
@@ -1341,12 +1342,24 @@ template <typename Extents_, typename LayoutPolicy_> struct md_traits<MdArray<bo
    public:
     using layout_t = LayoutPolicy_;
     using mapping_t = typename layout_t::mapping<extents_t>;
-   private:
     // struct to proxy the behaviour of reference to a single bit of the MdArray
     template <typename BitPackT>
         requires(std::is_same_v<std::decay_t<BitPackT>, bitpack_t>)
     struct bit_proxy {
+        friend bit_proxy<bitpack_t>;
+        friend bit_proxy<const bitpack_t>;
+      
         constexpr bit_proxy() noexcept : data_(nullptr), pack_id_(0), bitmask_(0) { }
+        template <typename BitPackT_>
+        constexpr bit_proxy(const bit_proxy<BitPackT_>& other) :
+            data_(const_cast<BitPackT*>(other.data_)), pack_id_(other.pack_id_), bitmask_(other.bitmask_) { }
+        template <typename BitPackT_> constexpr bit_proxy& operator=(const bit_proxy<BitPackT_>& other) {
+            data_ = const_cast<BitPackT*>(other.data_);
+            pack_id_ = other.pack_id_;
+            bitmask_ = other.bitmask_;
+            return *this;
+        }
+
         template <typename... Idxs>
             requires(std::is_convertible_v<Idxs, index_t> && ...) && (sizeof...(Idxs) == extents_t::Order)
         explicit constexpr bit_proxy(BitPackT* data, Idxs... idxs) : data_(data), pack_id_(), bitmask_() {
@@ -1373,7 +1386,6 @@ template <typename Extents_, typename LayoutPolicy_> struct md_traits<MdArray<bo
         index_t pack_id_;
         bitpack_t bitmask_;
     };
-   public:
     using Scalar = bool;
     using reference = bit_proxy<bitpack_t>;
     using const_reference = bit_proxy<const bitpack_t>;
@@ -1458,6 +1470,23 @@ class MdArray<bool, Extents_, LayoutPolicy_> :
     constexpr MdArray(const OtherExtents& extents) : Base(extents), data_() {
         data_.resize(int_ceil(extents_.size(), PackSize), 0);
     }
+    // construct from MdArraySlice
+    template <typename OtherMdArray, int... OtherSlicers>
+        requires(Order == OtherMdArray::Order - sizeof...(OtherSlicers) &&
+                 std::is_same_v<layout_t, typename OtherMdArray::layout_t> &&
+                 std::is_default_constructible_v<storage_t> && std::is_default_constructible_v<mapping_t> &&
+                 std::is_default_constructible_v<extents_t>)
+    constexpr MdArray(const MdArraySlice<OtherMdArray, OtherSlicers...>& other) : Base(), data_() {
+        assign_from_slice_(other);
+    }
+    // construct from MdArrayBlock
+    template <typename OtherMdArray, typename OtherBlkExtents>
+        requires(Order == OtherMdArray::Order && std::is_same_v<layout_t, typename OtherMdArray::layout_t> &&
+                 std::is_default_constructible_v<storage_t> && std::is_default_constructible_v<mapping_t> &&
+                 std::is_default_constructible_v<extents_t>)
+    constexpr MdArray(const MdArrayBlock<OtherMdArray, OtherBlkExtents>& other) : Base(), data_() {
+        assign_from_block_(other);
+    }  
     // assignment
     template <typename OtherDerived, int... OtherSlicers>
         requires(
@@ -1494,7 +1523,7 @@ class MdArray<bool, Extents_, LayoutPolicy_> :
         std::for_each(data_.begin(), data_.end(), [](auto& b) { b = -1; });
     }
     constexpr void clear() {
-        std::for_each(data_.begin(), data_.end(), [](auto& b) { b = 0; });
+        std::for_each(data_.begin(), data_.end(), [](auto& b) { b =  0; });
     }
     // observers
     constexpr const_storage_t data() const { return const_storage_t(data_.data()); }

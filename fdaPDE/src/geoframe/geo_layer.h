@@ -256,7 +256,6 @@ struct GeoLayer {
         strides_(),
         extents_(),
         structured_(false) {
-        fdapde_assert(cols.size() > 0);
         std::fill(strides_.begin(), strides_.end(), 1);   // unstructured layer by construction
 	// collect geometry from filtering predicate
         using mem_t = decltype(internals::apply_index_pack<Order>([]<int... Ns>() {
@@ -406,7 +405,7 @@ struct GeoLayer {
             internals::foreach_dtype([&]<typename T>() {
                 if (data_.template data<T>().extent(0) > 0) {
                     internals::apply_index_pack<Order>([&]<int... Ns_>() {
-                        grid_data.template resize<T>(
+                        grid_data.template conservative_resize<T>(
                           (void(Ns_), Ns_ == 0 ? n_rows_ : data_.template data<T>().extent(Ns_))...);
                     });
                 }
@@ -435,7 +434,7 @@ struct GeoLayer {
 		// directly copy in memory storage, or place NA if coordinate was not in data
                 for (const auto& field : data_.header()) {
                     internals::dispatch_to_dtype(
-                      field.type_id,
+                      field.type_id(),
                       [&]<typename T>(storage_t& dst) {
                           auto slice = dst.template data<T>().template slice<0>(i);
                           if (found) {
@@ -532,11 +531,11 @@ struct GeoLayer {
     void load_vec(const std::vector<std::string>& colnames, const Ts&... data) {
         fdapde_assert(colnames.size() == sizeof...(data));
         internals::for_each_index_and_args<sizeof...(data)>(
-          [&, this]<int Ns_, typename Ts_>(const Ts_& ts) { data_.append_column(colnames[Ns_], ts); }, data...);
+          [&, this]<int Ns_, typename Ts_>(const Ts_& ts) { data_.append_vec(colnames[Ns_], ts); }, data...);
         return;
     }
     template <typename T> void load_blk(const std::string& colname, const T& data) {
-        data_.append_block(colname, data);
+        data_.append_blk(colname, data);
         return;
     }
 
@@ -588,13 +587,13 @@ struct GeoLayer {
     template <typename T> internals::geo_col_view<T, GeoLayer> col(const std::string& colname) {
         fdapde_assert(data_.contains(colname));
 	int i = 0;
-        for (; i < cols() && data_.header()[i].colname != colname; ++i);
+        for (; i < cols() && data_.header()[i].colname() != colname; ++i);
         return col<T>(i);
     }
     template <typename T> internals::geo_col_view<T, const GeoLayer> col(const std::string& colname) const {
         fdapde_assert(data_.contains(colname));
 	int i = 0;
-        for (; i < cols() && data_.header()[i].colname != colname; ++i);
+        for (; i < cols() && data_.header()[i].colname() != colname; ++i);
         return col<T>(i);
     }
     // row access
@@ -636,8 +635,8 @@ struct GeoLayer {
         };
         using field = typename storage_t::field_t;
         auto print = [&]<typename T>(std::vector<std::string>& out_, const std::string& typestring, const field& desc) {
-            out_.push_back(desc.colname);
-            std::string info_ = "<" + std::to_string(desc.size) + ",1:" + typestring + ">";
+            out_.push_back(desc.colname());
+            std::string info_ = "<" + std::to_string(desc.size()) + ",1:" + typestring + ">";
             out_.push_back(info_);
             // print actual data
             auto col = internals::plain_col_view<T, const storage_t>(data.data(), 0, n_rows, desc);
@@ -646,8 +645,10 @@ struct GeoLayer {
             for (int i = 0; i < n_rows; ++i) {
                 std::string datastr;
                 datastr += stringify(col(i, 0), nan(i, 0));
-                if (desc.size == 2) { datastr += " " + stringify(col(i, 1), nan(i, 1)); }
-                if (desc.size >= 3) { datastr += " ... " + stringify(col(i, desc.size - 1), nan(i, desc.size - 1)); }
+                if (desc.size() == 2) { datastr += " " + stringify(col(i, 1), nan(i, 1)); }
+                if (desc.size() >= 3) {
+                    datastr += " ... " + stringify(col(i, desc.size() - 1), nan(i, desc.size() - 1));
+                }
                 out_.push_back(datastr);
             }
         };
@@ -692,7 +693,7 @@ struct GeoLayer {
         using internals::dtype;
         for (int i = Order, n = n_cols; i < n; ++i) {
             const auto& desc = data.header()[i - Order];
-            dtype coltype = desc.type_id;
+            dtype coltype = desc.type_id();
             if (coltype == dtype::flt64) { print.template operator()<double      >(out[i], "flt64", desc); }
             if (coltype == dtype::flt32) { print.template operator()<float       >(out[i], "flt32", desc); }
             if (coltype == dtype::int64) { print.template operator()<std::int64_t>(out[i], "int64", desc); }
@@ -711,7 +712,7 @@ struct GeoLayer {
 		if (i < Order && j < 2) { out[i][j].insert(0, 1, ' '); }
                 if (i < Order && j > 1) { out[i][j].insert(0 + (i > 0 ? 1 : 0), 1, '('); }
             }
-	    if (i >= Order && data.header()[i - Order].size > 1) {   // block columns formatting
+	    if (i >= Order && data.header()[i - Order].size() > 1) {   // block columns formatting
                 std::vector<std::size_t> posmin;
                 std::size_t posmax = std::numeric_limits<std::size_t>::min();
                 for (int j = 2, m = out[i].size(); j < m; ++j) {
@@ -744,7 +745,7 @@ struct GeoLayer {
             data[i].push_back(s);
             i = (i + 1) % n_col;
         }
-        for (int i = 0; i < n_col; ++i) { data_.append_column(colnames[i], data[i]); }
+        for (int i = 0; i < n_col; ++i) { data_.append_vec(colnames[i], data[i]); }
         n_rows_ = data_.rows();
 	return;
     }
