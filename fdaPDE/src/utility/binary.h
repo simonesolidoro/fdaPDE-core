@@ -499,17 +499,17 @@ class BinMtxRepeatOp : public BinMtxBase<Rows, Cols, BinMtxRepeatOp<Rows, Cols, 
     int rep_row_, rep_col_;
 };
 
-// reshaped operation
+// reshape operation
 template <int Rows, int Cols, typename XprTypeNested>
-class BinMtxReshapedOp : public BinMtxBase<Rows, Cols, BinMtxReshapedOp<Rows, Cols, XprTypeNested>> {
+class BinMtxReshapeOp : public BinMtxBase<Rows, Cols, BinMtxReshapeOp<Rows, Cols, XprTypeNested>> {
 public:
-    using XprType = BinMtxReshapedOp<Rows, Cols, XprTypeNested>;
+    using XprType = BinMtxReshapeOp<Rows, Cols, XprTypeNested>;
     using Base = BinMtxBase<Rows, Cols, XprType>;
     using BitPackType = typename Base::BitPackType;
     static constexpr int PackSize = Base::PackSize;   // number of bits in a packet
     static constexpr int NestAsRef = 0;   // whether to store this node by reference or by copy in an expression
   
-    BinMtxReshapedOp(const XprTypeNested& xpr, int reshaped_rows, int reshaped_cols) :
+    BinMtxReshapeOp(const XprTypeNested& xpr, int reshaped_rows, int reshaped_cols) :
         Base(reshaped_rows, reshaped_cols), xpr_(xpr), reshaped_rows_(reshaped_rows), reshaped_cols_(reshaped_cols) {
         fdapde_assert(reshaped_rows * reshaped_cols == xpr.rows() * xpr.cols());
     }
@@ -644,10 +644,10 @@ template <int Rows, int Cols, typename XprType> class BinMtxBase {
         return BinMtxRepeatOp<Dynamic, Dynamic, XprType>(get(), rep_row, rep_col);
     }
     // reshape a binary matrix to another matrix of different sizes
-    BinMtxReshapedOp<Dynamic, Dynamic, XprType> reshaped(int n_row, int n_col) const {
-        return BinMtxReshapedOp<Dynamic, Dynamic, XprType>(get(), n_row, n_col);
+    BinMtxReshapeOp<Dynamic, Dynamic, XprType> reshape(int n_row, int n_col) const {
+        return BinMtxReshapeOp<Dynamic, Dynamic, XprType>(get(), n_row, n_col);
     }
-    BinMtxReshapedOp<Dynamic, Dynamic, XprType> vector_view() const { return reshaped(get().size(), 1); }
+    BinMtxReshapeOp<Dynamic, Dynamic, XprType> vector_view() const { return reshape(get().size(), 1); }
    private:
     template <typename Visitor, template <typename, typename> typename VisitStrategy> inline auto visit_apply_() const {
         Visitor visitor;
@@ -711,6 +711,78 @@ BinaryVector<Dynamic> make_binary_vector(const Iterator& first, const Iterator& 
     return vec;
 }
 
+// map a memory region to a BinaryMatrix
+template <int Rows, int Cols, typename XprTypeNested>
+class BinaryMap : public BinMtxBase<Rows, Cols, BinaryMap<Rows, Cols, XprTypeNested>> {
+   public:
+    using XprType = BinaryMap<Rows, Cols, XprTypeNested>;
+    using Base = BinMtxBase<Rows, Cols, XprType>;
+    using BitPackType = std::decay_t<XprTypeNested>;
+    static constexpr int PackSize = sizeof(XprTypeNested) * 8;   // number of bits in a packet
+    static constexpr int NestAsRef = 0;   // whether to store this node by reference or by copy in an expression
+    using Base::n_cols_;
+    using Base::n_rows_;
+
+    BinaryMap(XprTypeNested* data)
+        requires(Rows != Dynamic && Cols != Dynamic)
+      : Base(), data_(data) {
+        fdapde_static_assert(std::is_integral_v<XprTypeNested>, ONLY_INTEGRAL_TYPES_CAN_BE_BINARY_MAPPED);
+    }
+    BinaryMap(XprTypeNested* data, int row) : Base(row), data_(data) {
+        fdapde_static_assert(std::is_integral_v<XprTypeNested>, ONLY_INTEGRAL_TYPES_CAN_BE_BINARY_MAPPED);
+        fdapde_static_assert(Cols == 1 || Rows == 1, THIS_METHOD_IS_ONLY_FOR_VECTORS);
+    }
+    BinaryMap(XprTypeNested* data, int row, int col) : Base(row, col), data_(data) {
+        fdapde_static_assert(std::is_integral_v<XprTypeNested>, ONLY_INTEGRAL_TYPES_CAN_BE_BINARY_MAPPED);
+    }
+    // const access
+    bool operator()(int i, int j) const {
+        return (data_[pack_of(i, j)] & BitPackType(1) << ((i * n_cols_ + j) % PackSize)) != 0;
+    }
+    bool operator[](int i) const {   // vector-like (subscript) access
+        fdapde_static_assert(Cols == 1 || Rows == 1, THIS_METHOD_IS_ONLY_FOR_VECTORS);
+        return operator()(i, 0);
+    }
+    BitPackType bitpack(int i) const { return data_[i]; }
+    BitPackType& bitpack(int i) { return data_[i]; }   // non-const access to i-th bitpack
+
+    void set(int i, int j) {   // set (i,j)-th bit
+        fdapde_assert(i < n_rows_ && j < n_cols_);
+        data_[pack_of(i, j)] |= (BitPackType(1) << ((i * n_cols_ + j) % PackSize));
+    }
+    void set(int i) {
+        fdapde_static_assert(Cols == 1 || Rows == 1, THIS_METHOD_IS_ONLY_FOR_VECTORS);
+        set(i, 0);
+    }
+    void set() {   // sets all coeffients in the matrix
+        for (int i = 0; i < n_rows_; ++i) {
+            for (int j = 0; j < n_cols_; ++j) {
+                data_[pack_of(i, j)] |= (BitPackType(1) << ((i * n_cols_ + j) % PackSize));
+            }
+        }
+    }  
+    void clear(int i, int j) {   // clear (i,j)-th bit (sets to 0)
+        fdapde_assert(i < n_rows_ && j < n_cols_);
+        data_[pack_of(i, j)] &= ~(BitPackType(1) << ((i * n_cols_ + j) % PackSize));
+    }
+    void clear(int i) {
+        fdapde_static_assert(Cols == 1 || Rows == 1, THIS_METHOD_IS_ONLY_FOR_VECTORS);
+        clear(i, 0);
+    }
+    void clear() {   // clears all coeffients in the matrix
+        for (int i = 0; i < n_rows_; ++i) {
+            for (int j = 0; j < n_cols_; ++j) {
+                data_[pack_of(i, j)] &= ~(BitPackType(1) << ((i * n_cols_ + j) % PackSize));
+            }
+        }
+    }
+   private:
+    XprTypeNested* data_;
+    // recover the byte-pack for the (i,j)-th element
+    inline int pack_of(int i, int j) const { return (i * n_cols_ + j) / PackSize; }
+};
+
+  
 }   // namespace fdapde
 
 #endif   // __FDAPDE_BINARY_H__

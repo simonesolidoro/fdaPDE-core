@@ -36,26 +36,26 @@ template <typename Triangulation_> struct areal_layer {
     areal_layer(Triangulation_* triangulation, const SubregionsType& regions) noexcept :
         triangulation_(triangulation), regions_(regions) { }
     // observers
-    size_t n_regions() const { return regions_->size(); }
+    size_t n_regions() const { return regions_.size(); }
     // geometry
-    const MultiPolygon<local_dim, embed_dim>& geometry(int i) const { return regions_->operator[](i); }
+    const MultiPolygon<local_dim, embed_dim>& geometry(int i) const { return regions_[i]; }
     Triangulation& triangulation() { return *triangulation_; }
     const Triangulation& triangulation() const { return *triangulation_; }
 
     // computes measures of subdomains
     std::vector<double> measures() const {
-        std::vector<double> m_(regions_->size(), 0);
-        for (int i = 0; i < regions_->size(); ++i) { m_[i] = regions_->operator[](i).measure(); }
+        std::vector<double> m_(regions_.size(), 0);
+        for (int i = 0; i < regions_.size(); ++i) { m_[i] = regions_[i].measure(); }
         return m_;
     }
     // computes matrix [M]_{ij} : [M]_{ij} == 1 \iff cell j is inside region i, 0 otherwise
     BinaryMatrix<Dynamic, Dynamic> incidence_matrix() const {
-        BinaryMatrix<Dynamic, Dynamic> m(regions_->size(), triangulation().n_cells());
+        BinaryMatrix<Dynamic, Dynamic> m(regions_.size(), triangulation().n_cells());
         // for each cell, check in which region its barycenter lies
         for (auto it = triangulation().cells_begin(); it != triangulation().cells_end(); ++it) {
             Eigen::Matrix<double, embed_dim, 1> barycenter = it->barycenter();
-            for (int i = 0, n = regions_->size(); i < n; ++i) {
-                if (regions_->operator[](i).contains(barycenter)) { m.set(i, it->id()); }
+            for (int i = 0, n = regions_.size(); i < n; ++i) {
+                if (regions_[i].contains(barycenter)) { m.set(i, it->id()); }
             }
         }
         return m;

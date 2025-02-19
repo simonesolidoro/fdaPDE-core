@@ -35,7 +35,8 @@ template <typename MdArray_> auto compute_na_mask(MdArray_&& data) {
         }
     } else if constexpr (std::is_same_v<Scalar, std::string>) {
         for (auto it = data.begin(); it != data.end(); ++it) {
-            if (*it == "NaN" || *it == "nan" || *it == "NA") { na_mask(it.index()).set(); }
+            const std::string& str = *it;
+            if (str == "NaN" || str == "nan" || str == "NA") { na_mask(it.index()).set(); }
         }
     } else {
         // for other integer types, there is no nan encoding, do nothing.
@@ -95,10 +96,20 @@ template <typename Scalar_, typename DataObj> struct plain_col_view {
     const std::string& colname() const { return colname_; }
     dtype type_id() const { return type_id_; }
     logical_t nan() const { return compute_na_mask(block_); }
+    bool has_nan() const {
+        for (auto it = block_.begin(); it != block_.end(); ++it) {
+            if constexpr (std::is_same_v<Scalar, double> || std::is_same_v<Scalar, float>) {
+                if (std::isnan(*it)) { return true; }
+            }
+            if constexpr (std::is_same_v<Scalar, std::string>) {
+                const std::string& str = *it;
+                if (str == "NaN" || str == "nan" || str == "NA") { return true; }
+            }
+        }
+        return false;
+    }
     template <typename Dst>   // direct copy column content in suscriptable destination
-        requires(
-          internals::is_subscriptable<std::decay_t<Dst>, int> &&
-          std::is_convertible_v<Scalar, internals::subscript_result_of<std::decay_t<Dst>, int>>)
+        requires(is_subscriptable<Dst, int>)
     void assign_to(Dst&& dst) const {
         block_.assign_to(dst);
     }

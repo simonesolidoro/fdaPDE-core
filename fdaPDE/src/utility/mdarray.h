@@ -1405,6 +1405,9 @@ template <typename Extents_, typename LayoutPolicy_> struct md_traits<MdArray<bo
         // raw data access
         bitpack_t& operator*() { return *data_; }
         const bitpack_t& operator*() const { return *data_; }
+        // pointer access
+        BitPackT* data() { return data_; }
+        const BitPackT* data() const { return data_; }
     };
    public:
     using storage_t = storage_t_impl<bitpack_t>;
@@ -1529,6 +1532,19 @@ class MdArray<bool, Extents_, LayoutPolicy_> :
     constexpr const_storage_t data() const { return const_storage_t(data_.data()); }
     constexpr storage_t data() { return storage_t(data_.data()); }
     constexpr size_t bitpacks() const { return data_.size(); }
+    constexpr auto matrix() const {
+        fdapde_static_assert(Order == 2 || Order == 1, THIS_METHOD_IS_FOR_MDARRAYS_OF_ORDER_ONE_OR_TWO_ONLY);
+        if constexpr (Order == 2) {
+            constexpr int storage_layout =
+              std::is_same_v<typename mapping_t::layout_type, internals::layout_right> ? ColMajor : RowMajor;
+            BinaryMap<static_extents[0], static_extents[1], const typename traits::bitpack_t> map(
+              data().data(), Base::extent(0), Base::extent(1));
+            return map;
+        } else {
+            BinaryMap<static_extents[0], 1, const typename traits::bitpack_t> map(data().data(), Base::extent(0), 1);
+            return map;
+        }
+    }
    private:
     template <typename OtherDerived, int... OtherSlicers>
         requires(Order == OtherDerived::Order - sizeof...(OtherSlicers))

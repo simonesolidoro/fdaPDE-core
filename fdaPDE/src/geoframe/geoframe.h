@@ -61,9 +61,11 @@ template <typename... Triangulation_> struct GeoFrame {
         void* geo_data() { return geo_data_.get(); }
         const void* geo_data() const { return geo_data_.get(); }
         const std::array<ltype, Order>& category() const { return category_; }
+        bool contains(const std::string& colname) const { return data_->contains(colname); }
         int rows() const { return data_->rows(); }
         int cols() const { return data_->cols(); }
         int size() const { return data_->size(); }
+      
         void* geo_index(int n) const { return geo_index_.at(n); }
         // accessors
         template <typename T> decltype(auto) col(size_t col) { return data_->template col<T>(col); }
@@ -118,7 +120,7 @@ template <typename... Triangulation_> struct GeoFrame {
     }
     // observers
     int n_layers() const { return n_layers_; }
-    const std::array<ltype, Order>& layer_category(int layer_id) const { return layers_[layer_id].layer_category_; }
+    const std::array<ltype, Order>& category(int layer_id) const { return layers_[layer_id].category(); }
     bool has_layer(const std::string& name) const {
         for (const layer_t& layer : layers_) {
             if (layer.name() == name) { return true; }
