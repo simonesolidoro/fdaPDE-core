@@ -296,7 +296,7 @@ struct fe_assembler_base {
         for (int i = 0; i < n_basis_; ++i) {
             for (int j = 0; j < n_quadrature_nodes_; ++j) {
                 // get i-th reference basis gradient evaluted at j-th quadrature node
-                auto ref_grad = ref_grads.template slice<0, 1>(i, j).matrix();
+                auto ref_grad = ref_grads.template slice<0, 1>(i, j).as_matrix();
 		Matrix<double, local_dim, n_components_> mapped_grad;
                 for (int k = 0; k < n_components_; ++k) {
                     mapped_grad.col(k) =
@@ -318,7 +318,7 @@ struct fe_assembler_base {
         for (int i = 0; i < n_basis_; ++i) {
             for (int j = 0; j < n_quadrature_nodes_; ++j) {
                 // get i-th reference basis gradient evaluted at j-th quadrature node
-                auto ref_grad = ref_grads.template slice<0, 1>(i, j).matrix();
+                auto ref_grad = ref_grads.template slice<0, 1>(i, j).as_matrix();
 		// compute divergence as trace of jacobian matrix
 		double div_ = 0;
                 for (int k = 0; k < n_components_; ++k) {
@@ -342,7 +342,7 @@ struct fe_assembler_base {
                 for (int k = 0; k < n_components_; ++k) {
                     // move i-th reference basis hessian evaluted at j-th quadrature node on physical cell
                     mapped_hess = Map<const double, local_dim, embed_dim>(it->invJ().data()).transpose() *
-                                  ref_hess.template slice<0, 1, 2>(i, j, k).matrix();
+                                  ref_hess.template slice<0, 1, 2>(i, j, k).as_matrix();
                     dst.template slice<0, 1, 2>(i, j, k).assign_inplace_from(mapped_hess.data());
                 }
             }
