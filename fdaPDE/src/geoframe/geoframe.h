@@ -98,14 +98,13 @@ template <typename... Triangulation_> struct GeoFrame {
     explicit GeoFrame(Triangulation_&... triangulation) noexcept :
         triangulation_(std::make_tuple(std::addressof(triangulation)...)), layers_(), n_layers_(0) { }
     // modifiers
-    template <typename... GeoInfo, typename... GeoData>
+    template <typename... GeoInfo, typename GeoData>
         requires(
           sizeof...(GeoInfo) == Order &&
           (internals::is_any_same_v<
              GeoInfo, std::tuple<internals::polygon_layer_descriptor, internals::point_layer_descriptor>> &&
-           ...) &&
-          sizeof...(GeoData) > 0)
-    auto& insert_scalar_layer(const std::string& name, GeoData&&... data) {
+           ...))
+    auto& insert_scalar_layer(const std::string& name, GeoData&& data) {
         fdapde_static_assert(sizeof...(GeoInfo) == Order, BAD_LAYER_CONSTRUCTION__NO_MATCHING_ORDER);
 	fdapde_assert(!name.empty() && !has_layer(name));
         using geo_layer_t = GeoLayer<Triangulation, std::tuple<GeoInfo...>>;
@@ -115,7 +114,7 @@ template <typename... Triangulation_> struct GeoFrame {
               return std::array<ltype, sizeof...(GeoInfo)> {ltype_from_layer_tag<typename GeoInfo::layer_tag>()...};
           }),
           internals::apply_index_pack<sizeof...(GeoInfo)>(   // data
-            [&, this]<int... Ns>() { return geo_layer_t(triangulation_, std::forward<GeoData>(data)...); }));
+            [&, this]<int... Ns>() { return geo_layer_t(triangulation_, data); }));
         layer_name_to_idx_[name] = n_layers_;
         n_layers_++;
         return geo_cast<GeoInfo...>(operator[](name));
@@ -188,7 +187,6 @@ template <typename... GeoInfo, typename DataLayer> decltype(auto) geo_cast(DataL
     return *reinterpret_cast<std::conditional_t<std::is_const_v<DataLayer_>, std::add_const_t<GeoLayer_>, GeoLayer_>*>(
       data_layer.geo_data());
 }
-
 // retrieve and casts a GeoFrame layer index
 template <typename GeoInfo, int N, typename DataLayer> decltype(auto) geo_index(DataLayer&& data_layer) {
     fdapde_static_assert(N < std::decay_t<DataLayer>::Order, OUT_OF_BOUND_ACCESS);

@@ -38,10 +38,11 @@
 // define basic symbols
 namespace fdapde {
 
+[[maybe_unused]] constexpr int MESH_NODES = 0;
 struct areal_layer_tag {} gf_areal;
 struct point_layer_tag {} gf_point;
 enum class ltype : int { point = 0, areal = 1 };
-
+  
 namespace internals {
   enum class dtype : int { flt64 = 0, flt32 = 1, int64 = 2, int32 = 3, bin = 4, str = 5 };    // runtime data type id
 }   // namespace internals
