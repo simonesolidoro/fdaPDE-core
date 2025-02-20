@@ -243,9 +243,12 @@ struct GeoLayer {
 
    public:
     // constructor
-    GeoLayer(triangulation_t triangulation) :
+    template <typename... GeoData_>
+        requires(sizeof...(GeoData_) > 0)
+    GeoLayer(triangulation_t triangulation, GeoData_&&... geo_data) :
         triangulation_(triangulation), data_(), geo_data_(), n_rows_(0), strides_(), extents_(), structured_(false) {
         std::fill(strides_.begin(), strides_.end(), 1);   // default to unstructured layer
+        load_geometry_(std::forward<GeoData_>(geo_data)...);
     }
     template <typename LayerType>
         requires(LayerType::Order == Order && std::is_same_v<typename LayerType::GeoInfo, GeoInfo>)
@@ -294,83 +297,10 @@ struct GeoLayer {
     const storage_t& data() const { return data_; }
     logical_t nan(const std::string& colname) const { return data_.nan(colname); }
     logical_t nan(const std::vector<std::string>& colnames) const { return data_.nan(colnames); }
+    bool is_structured() const { return structured_; }
     // modifiers
     storage_t& data() { return data_; }
-    bool is_structured() const { return structured_; }
-
-    template <typename... GeoEntity>
-        requires(sizeof...(GeoEntity) == Order)
-    void push_grid(GeoEntity&&... geo_entity) {
-        fdapde_static_assert(is_full_geo_point, THIS_METHOD_IS_FOR_FULL_POINT_LAYERS_ONLY);
-	
-        constexpr int full_embed_dim = std::accumulate(embed_dim.begin(), embed_dim.end(), 0);
-        using point_t = std::array<double, full_embed_dim>;
-	// compute unique coordinates along direction Ns_
-        auto insert_unique_ = [this]<int Ns_, typename T>(const T& coords) {
-            auto& layer = std::get<Ns_>(geo_data_);
-            // unique coordinates
-            std::unordered_set<Eigen::Matrix<double, embed_dim[Ns_], 1>, internals::eigen_matrix_hash> coords_set;
-            std::vector<int> coords_idx;
-            for (int i = 0; i < coords.rows(); ++i) {
-                Eigen::Matrix<double, embed_dim[Ns_], 1> p(coords.row(i));
-                if (!coords_set.contains(p)) {
-                    coords_set.insert(p);
-                    coords_idx.push_back(i);
-                }
-            }
-            Eigen::Matrix<double, Dynamic, Dynamic> coords_unique(coords_set.size(), embed_dim[Ns_]);
-            int i = 0;
-            for (int idx : coords_idx) { coords_unique.row(i++) = coords.row(idx); }
-            // push in layer
-            std::get<Ns_>(geo_data_) =
-              std::tuple_element_t<Ns_, geo_storage_t>(std::get<Ns_>(triangulation_), coords_unique);
-            extents_[Ns_] = std::get<Ns_>(geo_data_).rows();
-            return;
-        };
-        // compute full point set for each layer direction
-        internals::for_each_index_and_args<Order>(
-          [&, this]<int Ns_, typename T>(const T& coords) mutable {
-              if constexpr (std::is_same_v<T, std::string>) {   // parse file
-                  insert_unique_<Ns_>(parse_file_<double>(coords));
-              } else {
-                  insert_unique_<Ns_>(coords);
-              }
-          },
-          geo_entity...);
-        // overall number of points in structured grid
-        n_rows_ = std::accumulate(extents_.begin(), extents_.end(), 1, std::multiplies<int>());
-	// set strides
-	strides_[0] = 1;
-        for (int i = 1; i < Order; ++i) {
-            for (int j = 0; j < i; ++j) { strides_[i] *= extents_[j]; }
-        }
-	structured_ = true;
-        return;
-    }
-#ifdef __FDAPDE_HAS_EIGEN__
-    void push_back(const Eigen::Matrix<double, Dynamic, Dynamic>& coords) {
-        fdapde_static_assert(is_full_geo_point, THIS_METHOD_IS_FOR_FULL_POINT_LAYERS_ONLY);
-        constexpr int full_embed_dim = std::accumulate(embed_dim.begin(), embed_dim.end(), 0);
-        fdapde_assert(coords.cols() == full_embed_dim);
-        int offset = 0;
-        internals::for_each_index_in_pack<Order>([&]<int Ns_>() {
-            Eigen::Matrix<double, Dynamic, Dynamic> coords_ = coords.middleCols(offset, embed_dim[Ns_]);
-            std::get<Ns_>(geo_data_) = std::tuple_element_t<Ns_, geo_storage_t>(std::get<Ns_>(triangulation_), coords_);
-            offset += embed_dim[Ns_];
-        });
-        n_rows_ = coords.rows();
-        return;
-    }
-#endif
-    // load coordinates from external file
-    void push_back(const std::string& filename, bool header = true, bool index_col = false) {
-        fdapde_static_assert(is_full_geo_point, THIS_METHOD_IS_FOR_FULL_POINT_LAYERS_ONLY);
-	push_back(parse_file_<double>(filename, header, index_col));
-	return;
-    }
-
     void make_structured() {
-        fdapde_static_assert(is_full_geo_point, THIS_METHOD_IS_FOR_FULL_POINT_LAYERS_ONLY);
         if (Order == 1) { return; }
         internals::for_each_index_in_pack<Order>(
           [&]<int Ns_>() { fdapde_assert(std::get<Ns_>(geo_data_).rows() != 0); });
@@ -388,14 +318,16 @@ struct GeoLayer {
         // build temporary point index for amortized O(1) search
         std::unordered_set<point_t, internals::std_array_hash<double, full_embed_dim>> grid_set_;
         point_t p;
-        for (int i = 0; i < n_rows_; ++i) {
-            int offset = 0;
-            internals::for_each_index_in_pack<Order>([&]<int Ns_>() {
-                const auto& coords = std::get<Ns_>(geo_data_).coordinates();
-                for (int j = 0; j < coords.cols(); ++j) { p[offset + j] = coords(i, j); }
-                offset += embed_dim[Ns_];
-            });
-            grid_set_.insert(p);
+        if (data_.rows() != 0) {
+            for (int i = 0; i < n_rows_; ++i) {
+                int offset = 0;
+                internals::for_each_index_in_pack<Order>([&]<int Ns_>() {
+                    const auto& coords = std::get<Ns_>(geo_data_).coordinates();
+                    for (int j = 0; j < coords.cols(); ++j) { p[offset + j] = coords(i, j); }
+                    offset += embed_dim[Ns_];
+                });
+                grid_set_.insert(p);
+            }
         }
         // overall number of points in structured grid
         n_rows_ = std::accumulate(extents_.begin(), extents_.end(), 1, std::multiplies<int>());
@@ -538,9 +470,8 @@ struct GeoLayer {
         data_.append_blk(colname, data);
         return;
     }
-
-  // erase column
-  
+    // erase column
+    void erase(const std::string& colname) { data_.erase(colname); }
     // geometry access
     const triangulation_t& triangulation() const { return triangulation_; }
     template <int N> auto& geometry() {
@@ -763,7 +694,26 @@ struct GeoLayer {
 	if (filepath.extension() == ".txt") data = read_txt<Scalar>(filename, header, index_col).as_matrix();
 	return data;
     }
-
+    // load geometry
+    void load_geometry_(const Eigen::Matrix<double, Dynamic, Dynamic>& coords) {
+        fdapde_static_assert(is_full_geo_point, THIS_METHOD_IS_FOR_FULL_POINT_LAYERS_ONLY);
+        constexpr int full_embed_dim = std::accumulate(embed_dim.begin(), embed_dim.end(), 0);
+        fdapde_assert(coords.cols() == full_embed_dim);
+        int offset = 0;
+        internals::for_each_index_in_pack<Order>([&]<int Ns_>() {
+            Eigen::Matrix<double, Dynamic, Dynamic> coords_ = coords.middleCols(offset, embed_dim[Ns_]);
+            std::get<Ns_>(geo_data_) = std::tuple_element_t<Ns_, geo_storage_t>(std::get<Ns_>(triangulation_), coords_);
+            offset += embed_dim[Ns_];
+        });
+        n_rows_ = coords.rows();
+        return;
+    }
+    void load_geometry_(const std::string& filename, bool header = true, bool index_col = false) {
+        fdapde_static_assert(is_full_geo_point, THIS_METHOD_IS_FOR_FULL_POINT_LAYERS_ONLY);
+        load_geometry_(parse_file_<double>(filename, header, index_col));
+	return;
+    }
+  
     storage_t data_;
     geo_storage_t geo_data_;
     triangulation_t triangulation_;

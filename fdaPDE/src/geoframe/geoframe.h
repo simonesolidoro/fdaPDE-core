@@ -98,25 +98,27 @@ template <typename... Triangulation_> struct GeoFrame {
     explicit GeoFrame(Triangulation_&... triangulation) noexcept :
         triangulation_(std::make_tuple(std::addressof(triangulation)...)), layers_(), n_layers_(0) { }
     // modifiers
-    template <typename... GeoInfo>
+    template <typename... GeoInfo, typename... GeoData>
         requires(
           sizeof...(GeoInfo) == Order &&
           (internals::is_any_same_v<
              GeoInfo, std::tuple<internals::polygon_layer_descriptor, internals::point_layer_descriptor>> &&
-           ...))
-    void add_scalar_layer(const std::string& name) {
+           ...) &&
+          sizeof...(GeoData) > 0)
+    auto& insert_scalar_layer(const std::string& name, GeoData&&... data) {
         fdapde_static_assert(sizeof...(GeoInfo) == Order, BAD_LAYER_CONSTRUCTION__NO_MATCHING_ORDER);
-        geoframe_assert(!name.empty() && !has_layer(name), "empty or duplicated layer name.");
+	fdapde_assert(!name.empty() && !has_layer(name));
         using geo_layer_t = GeoLayer<Triangulation, std::tuple<GeoInfo...>>;
         layers_.emplace_back(
-          name, internals::apply_index_pack<sizeof...(GeoInfo)>([&]<int... Ns>() {
+          name,                                                                // layer name
+          internals::apply_index_pack<sizeof...(GeoInfo)>([&]<int... Ns>() {   // layer category
               return std::array<ltype, sizeof...(GeoInfo)> {ltype_from_layer_tag<typename GeoInfo::layer_tag>()...};
           }),
-          internals::apply_index_pack<sizeof...(GeoInfo)>(
-            [&, this]<int... Ns>() { return geo_layer_t(triangulation_); }));
+          internals::apply_index_pack<sizeof...(GeoInfo)>(   // data
+            [&, this]<int... Ns>() { return geo_layer_t(triangulation_, std::forward<GeoData>(data)...); }));
         layer_name_to_idx_[name] = n_layers_;
         n_layers_++;
-        return;
+        return geo_cast<GeoInfo...>(operator[](name));
     }
     // observers
     int n_layers() const { return n_layers_; }
@@ -141,8 +143,8 @@ template <typename... Triangulation_> struct GeoFrame {
     // indexed access
     const layer_t& operator[](int idx) const { return layers_[idx]; }
     layer_t& operator[](int idx) { return layers_[idx]; }
-    const layer_t& operator[](const std::string& colname) const { return layers_[layer_name_to_idx_.at(colname)]; }
-    layer_t& operator[](const std::string& colname) { return layers_[layer_name_to_idx_.at(colname)]; }
+    const layer_t& operator[](const std::string& colname) const { return layers_.at(layer_name_to_idx_.at(colname)); }
+    layer_t& operator[](const std::string& colname) { return layers_.at(layer_name_to_idx_.at(colname)); }
   
     // iterator
     class iterator {
