@@ -408,29 +408,25 @@ struct GeoLayer {
     }
 
     // data import
-    template <typename T>
-    void load_csv(
-      const std::vector<std::string>& colnames, std::string filename, bool header = true, bool index_col = false) {
-        auto csv = read_csv<T>(filename, header, index_col);
+    template <typename T> void load_csv(const std::vector<std::string>& colnames, const std::string& filename) {
+        auto csv = read_csv<T>(filename);
 	fdapde_assert(csv.cols() == colnames.size());
 	load_table_<T>(colnames, csv);
         return;
     }
-    template <typename T> void load_csv(std::string filename, bool header = true, bool index_col = false) {
-        auto csv = read_csv<T>(filename, header, index_col);
+    template <typename T> void load_csv(const std::string& filename) {
+        auto csv = read_csv<T>(filename);
         load_table_<T>(csv.colnames(), csv);
         return;
     }
-    template <typename T>
-    void load_txt(
-      const std::vector<std::string>& colnames, std::string filename, bool header = true, bool index_col = false) {
-        auto txt = read_txt<T>(filename, header, index_col);
+    template <typename T> void load_txt(const std::vector<std::string>& colnames, const std::string& filename) {
+        auto txt = read_txt<T>(filename);
         fdapde_assert(txt.cols() == colnames.size());
         load_table_<T>(colnames, txt);
         return;
     }
-    template <typename T> void load_txt(std::string filename, bool header = true, bool index_col = false) {
-        auto txt = read_txt<T>(filename, header, index_col);
+    template <typename T> void load_txt(const std::string& filename) {
+        auto txt = read_txt<T>(filename);
         load_table_<T>(txt.colnames(), txt);
         return;
     }
@@ -472,10 +468,15 @@ struct GeoLayer {
     void load_vec(const std::vector<std::string>& colnames, const Ts&... data) {
         fdapde_assert(colnames.size() == sizeof...(data));
         internals::for_each_index_and_args<sizeof...(data)>(
-          [&, this]<int Ns_, typename Ts_>(const Ts_& ts) { data_.append_vec(colnames[Ns_], ts); }, data...);
+          [&, this]<int Ns_, typename Ts_>(const Ts_& ts) {
+              fdapde_assert(ts.size() == n_rows_);
+              data_.append_vec(colnames[Ns_], ts);
+          },
+          data...);
         return;
     }
     template <typename T> void load_blk(const std::string& colname, const T& data) {
+        fdapde_assert(data.rows() == n_rows_);
         data_.append_blk(colname, data);
         return;
     }
@@ -686,7 +687,7 @@ struct GeoLayer {
             i = (i + 1) % n_col;
         }
         for (int i = 0; i < n_col; ++i) { data_.append_vec(colnames[i], data[i]); }
-        n_rows_ = data_.rows();
+	fdapde_assert(n_rows_ == data_.rows());
 	return;
     }
     template <typename Scalar>
