@@ -82,7 +82,7 @@ class sp_linear_form_assembly_loop :
                     }
                     value += Base::quad_weights_(q_k, 0) * form_(sp_packet);
                 }
-                assembled_vec[active_dofs[i]] += value * sp_packet.cell_measure;
+                assembled_vec[active_dofs[i]] += value * sp_packet.cell_measure * 0.5;
             }
 	    local_cell_id++;
         }

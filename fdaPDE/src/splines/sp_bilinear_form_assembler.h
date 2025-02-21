@@ -150,7 +150,7 @@ class sp_bilinear_form_assembly_loop :
                     }
                     triplet_list.emplace_back(
                       test_active_dofs[j], is_galerkin ? test_active_dofs[i] : trial_active_dofs[i],
-                      value * sp_packet.cell_measure);
+                      value * sp_packet.cell_measure * 0.5);
                 }
             }
 	    local_cell_id++;
