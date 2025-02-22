@@ -65,12 +65,12 @@ struct sp_scalar_test_function_impl : public ScalarFieldBase<SpSpace_::local_dim
         using Scalar = double;
         static constexpr int StaticInputSize = TestSpace::local_dim;
         static constexpr int NestAsRef = 0;
-        static constexpr int XprBits = 0 | int(sp_assembler_flags::compute_shape_ddx);
+        static constexpr int XprBits = 0 | int(sp_assembler_flags::compute_shape_dxx);
 
         SecondDerivative_() noexcept = default;
         SecondDerivative_(const Derived_& xpr) noexcept : xpr_(xpr) { }
         // assembly evaluation
-        constexpr Scalar operator()(const InputType& sp_packet) const { return sp_packet.test_ddx; }
+        constexpr Scalar operator()(const InputType& sp_packet) const { return sp_packet.test_dxx; }
         constexpr const TestSpace& function_space() const { return *(xpr_.sp_space_); }
         constexpr int input_size() const { return StaticInputSize; }
         constexpr const Derived& derived() const { return xpr_; }
@@ -137,12 +137,12 @@ struct sp_scalar_trial_function_impl :
         using Scalar = double;
         static constexpr int StaticInputSize = TrialSpace::local_dim;
         static constexpr int NestAsRef = 0;
-        static constexpr int XprBits = 0 | int(sp_assembler_flags::compute_shape_ddx);
+        static constexpr int XprBits = 0 | int(sp_assembler_flags::compute_shape_dxx);
 
         SecondDerivative_() noexcept = default;
         SecondDerivative_(const Derived_& xpr) noexcept : xpr_(xpr) { }
         // assembly evaluation
-        constexpr Scalar operator()(const InputType& sp_packet) const { return sp_packet.trial_ddx; }
+      constexpr Scalar operator()(const InputType& sp_packet) const { return sp_packet.trial_dxx; }
         constexpr const TrialSpace& function_space() const { return *(xpr_.sp_space_); }
         constexpr int input_size() const { return StaticInputSize; }
         constexpr const Derived& derived() const { return xpr_; }

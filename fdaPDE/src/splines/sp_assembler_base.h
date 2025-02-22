@@ -26,7 +26,7 @@ template <typename Derived_> struct SpMap;
 enum class sp_assembler_flags {
     compute_shape_values        = 0x0001,
     compute_shape_dx            = 0x0002,
-    compute_shape_ddx           = 0x0004,
+    compute_shape_dxx           = 0x0004,
     compute_physical_quad_nodes = 0x0010,
     compute_cell_diameter       = 0x0020
 };
@@ -48,7 +48,7 @@ template <int LocalDim> struct sp_assembler_packet {
     // functional informations
     double trial_value, test_value;   // \psi_i(q_k), \psi_j(q_k)
     double trial_dx, test_dx;         // d{\psi_i}/dx(q_k), d{\psi_j}/dx(q_k)
-    double trial_ddx, test_ddx;       // d^2{\psi_i}/dx^2(q_k), d^2{\psi_j}/dx^2(q_k)
+    double trial_dxx, test_dxx;       // d^2{\psi_i}/dx^2(q_k), d^2{\psi_j}/dx^2(q_k)
 };
 
 // base class for spline-based assembly loops
@@ -98,7 +98,7 @@ struct sp_assembler_base {
         if constexpr (sizeof...(quadrature) == 1) {
             auto quad_rule = std::get<0>(std::make_tuple(quadrature...));
             fdapde_assert(local_dim == quad_rule.local_dim);
-            quad_nodes__.resize(quad_rule.order, quad_rule.local_dim);
+            quad_nodes__ .resize(quad_rule.order, quad_rule.local_dim);
             quad_weights_.resize(quad_rule.order, 1);
             for (int i = 0; i < quad_rule.order; ++i) {
                 quad_weights_(i, 0) = quad_rule.weights[i];
@@ -112,14 +112,9 @@ struct sp_assembler_base {
         int n_cells = end_.index() - begin_.index(), n_src_points = quad_nodes__.rows();
         quad_nodes_.resize(n_cells * n_src_points, local_dim);
         int i = 0;
-	// utility lambda to map p \in [a, b] to \hat p \in [-1, 1]
-        auto map_to_reference = [a = test_space_->triangulation().range()[0],
-                                 b = test_space_->triangulation().range()[1]](double p) {
-            return (p - (b - a) / 2) * 2 / (b + a);
-        };
+	// as quadrature nodes are defined on [-1, 1], we map them on each triangulation's subinterval
         for (auto it = begin_; it != end_; ++it) {
-            // map src nodes on cell it
-            double a = map_to_reference(it->nodes()[0]), b = map_to_reference(it->nodes()[1]);
+            double a = it->nodes()[0], b = it->nodes()[1];
             for (int j = 0; j < quad_nodes__.rows(); ++j) {
                 quad_nodes_(i, 0) = (b - a) / 2 * quad_nodes__(j, 0) + (b + a) / 2;
                 i++;
@@ -162,12 +157,12 @@ struct sp_assembler_base {
     template <typename BasisType__, typename IteratorType, typename DstMdArray>
     void
     eval_shape_dx(BasisType__&& basis, const std::vector<int>& active_dofs, IteratorType cell, DstMdArray& dst) const {
-        eval_shape_derivative(basis, active_dofs, cell, dst, /* order = */ 1);
+        eval_shape_derivative(basis, active_dofs, cell, dst, 1);
     }
     template <typename BasisType__, typename IteratorType, typename DstMdArray>
     void
-    eval_shape_ddx(BasisType__&& basis, const std::vector<int>& active_dofs, IteratorType cell, DstMdArray& dst) const {
-        eval_shape_derivative(basis, active_dofs, cell, dst, /* order = */ 2);
+    eval_shape_dxx(BasisType__&& basis, const std::vector<int>& active_dofs, IteratorType cell, DstMdArray& dst) const {
+        eval_shape_derivative(basis, active_dofs, cell, dst, 2);
     }
     void distribute_quadrature_nodes(
       std::unordered_map<const void*, Eigen::Matrix<double, Dynamic, Dynamic>>& sp_map_buff, dof_iterator begin,
