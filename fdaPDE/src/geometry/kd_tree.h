@@ -125,7 +125,8 @@ template <int K> class KDTree {
         // returns true if the node indexed by it_ lies inside the query
         auto contained = [&data, &query](const iterator& it_) -> bool {
             for (int dim = 0; dim < K; ++dim) {
-                if (data(*it_, dim) > query.ur[dim] || data(*it_, dim) < query.ll[dim]) return false;
+                if (greater_than(data(*it_, dim), query.ur[dim]) || less_than(data(*it_, dim), query.ll[dim]))
+                    return false;
             }
             return true;
         };

@@ -61,19 +61,27 @@ constexpr std::vector<int> combinations(int k, int n) {
 constexpr int int_ceil(unsigned int a, unsigned int b) { return a / b + (a % b != 0); }
 
 // test for floating point equality
-[[maybe_unused]] constexpr double double_tolerance = 50 * std::numeric_limits<double>::epsilon();   // approx 10^-14
-[[maybe_unused]] constexpr double machine_epsilon  = 10 * std::numeric_limits<double>::epsilon();
+[[maybe_unused]] constexpr double double_tolerance = 1e-10;
+[[maybe_unused]] constexpr double machine_epsilon  = 50 * std::numeric_limits<double>::epsilon();   // approx 10^-14
 template <typename T>
     requires(std::is_floating_point_v<T>)
 constexpr bool almost_equal(T a, T b, T epsilon) {
     return std::fabs(a - b) < epsilon ||
            std::fabs(a - b) < ((std::fabs(a) < std::fabs(b) ? std::fabs(b) : std::fabs(a)) * epsilon);
 }
+template <typename T> constexpr bool almost_equal(T a, T b) { return almost_equal(a, b, double_tolerance); }
 template <typename T>
     requires(std::is_floating_point_v<T>)
-constexpr bool almost_equal(T a, T b) {
-    return almost_equal(a, b, double_tolerance);
+constexpr bool greater_than(T a, T b, T epsilon) {
+    return (a - b) > ((std::fabs(a) < std::fabs(b) ? std::fabs(b) : std::fabs(a)) * epsilon);
 }
+template <typename T> constexpr bool greater_than(T a, T b) { return greater_than(a, b, double_tolerance); }
+template <typename T>
+    requires(std::is_floating_point_v<T>)
+constexpr bool less_than(T a, T b, T epsilon) {
+    return (b - a) > ((std::fabs(a) < std::fabs(b) ? std::fabs(b) : std::fabs(a)) * epsilon);
+}
+template <typename T> constexpr bool less_than(T a, T b) { return less_than(a, b, double_tolerance); }
 
 // numerical stable log(1 + exp(x)) computation (see "Machler, M. (2012). Accurately computing log(1-exp(-|a|))")
 template <typename T>

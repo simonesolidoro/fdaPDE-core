@@ -142,7 +142,7 @@ struct sp_scalar_trial_function_impl :
         SecondDerivative_() noexcept = default;
         SecondDerivative_(const Derived_& xpr) noexcept : xpr_(xpr) { }
         // assembly evaluation
-      constexpr Scalar operator()(const InputType& sp_packet) const { return sp_packet.trial_dxx; }
+        constexpr Scalar operator()(const InputType& sp_packet) const { return sp_packet.trial_dxx; }
         constexpr const TrialSpace& function_space() const { return *(xpr_.sp_space_); }
         constexpr int input_size() const { return StaticInputSize; }
         constexpr const Derived& derived() const { return xpr_; }
