@@ -188,7 +188,7 @@ template <typename... GeoInfo, typename DataLayer> decltype(auto) geo_cast(DataL
       data_layer.geo_data());
 }
 // retrieve and casts a GeoFrame layer index
-template <typename GeoInfo, int N, typename DataLayer> decltype(auto) geo_index(DataLayer&& data_layer) {
+template <int N, typename GeoInfo, typename DataLayer> decltype(auto) geo_index_cast(DataLayer&& data_layer) {
     fdapde_static_assert(N < std::decay_t<DataLayer>::Order, OUT_OF_BOUND_ACCESS);
     using DataLayer_ = std::remove_reference_t<DataLayer>;
     using IndexT = internals::layer_type_from_layer_tag<

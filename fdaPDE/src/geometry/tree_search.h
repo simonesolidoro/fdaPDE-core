@@ -75,7 +75,9 @@ template <typename MeshType> class TreeSearch {
         }
         return -1;   // no element found
     }
-    Eigen::Matrix<int, Dynamic, 1> locate(const Eigen::Matrix<double, Dynamic, Dynamic>& locs) const {
+    template <typename CoordsMatrix>
+        requires(internals::is_eigen_dense_xpr_v<CoordsMatrix>)
+    Eigen::Matrix<int, Dynamic, 1> locate(const CoordsMatrix& locs) const {
         fdapde_assert(locs.cols() == embed_dim);
         Eigen::Matrix<int, Dynamic, 1> ids(locs.rows());
         for (int i = 0; i < locs.rows(); ++i) { ids[i] = locate(Eigen::Matrix<double, embed_dim, 1>(locs.row(i))); }

@@ -481,6 +481,10 @@ template <int N> class Triangulation<2, N> : public TriangulationBase<2, N, Tria
         if (!location_policy_.has_value()) { location_policy_ = LocationPolicy(this); }
         return location_policy_->locate(p);
     }
+    template <typename Derived> Eigen::Matrix<int, Dynamic, 1> locate(const Eigen::Map<Derived>& p) const {
+        if (!location_policy_.has_value()) location_policy_ = LocationPolicy(this);
+        return location_policy_->locate(p);
+    }
     // the set of cells which have node id as vertex
     std::vector<int> node_patch(int id) const {
         if (!location_policy_.has_value()) location_policy_ = LocationPolicy(this);
@@ -868,6 +872,10 @@ template <> class Triangulation<3, 3> : public TriangulationBase<3, 3, Triangula
         fdapde_static_assert(
           (Cols == 1 && Rows == embed_dim) || (Cols == Dynamic && Rows == Dynamic),
           YOU_PASSED_A_MATRIX_OF_POINTS_TO_LOCATE_OF_WRONG_DIMENSIONS);
+        if (!location_policy_.has_value()) location_policy_ = LocationPolicy(this);
+        return location_policy_->locate(p);
+    }
+    template <typename Derived> Eigen::Matrix<int, Dynamic, 1> locate(const Eigen::Map<Derived>& p) const {
         if (!location_policy_.has_value()) location_policy_ = LocationPolicy(this);
         return location_policy_->locate(p);
     }

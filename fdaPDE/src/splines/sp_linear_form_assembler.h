@@ -27,6 +27,7 @@ template <typename Triangulation_, typename Form_, int Options_, typename... Qua
 class sp_linear_form_assembly_loop :
     public sp_assembler_base<Triangulation_, Form_, Options_, Quadrature_...>,
     public assembly_xpr_base<sp_linear_form_assembly_loop<Triangulation_, Form_, Options_, Quadrature_...>> {
+   public:
     using Base = sp_assembler_base<Triangulation_, Form_, Options_, Quadrature_...>;
     using Form = typename Base::Form;
     using DofHandlerType = typename Base::DofHandlerType;
@@ -35,7 +36,7 @@ class sp_linear_form_assembly_loop :
     static constexpr int embed_dim = Base::embed_dim;
     using Base::form_;
     using Base::dof_handler_;
-   public:
+
     sp_linear_form_assembly_loop() = default;
     sp_linear_form_assembly_loop(
       const Form_& form, typename Base::geo_iterator begin, typename Base::geo_iterator end,
