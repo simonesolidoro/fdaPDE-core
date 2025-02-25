@@ -36,12 +36,11 @@ template <typename Triangulation_> struct areal_layer {
     areal_layer(Triangulation_* triangulation, const SubregionsType& regions) noexcept :
         triangulation_(triangulation), regions_(regions) { }
     // observers
-    size_t n_regions() const { return regions_.size(); }
+    int rows() const { return regions_.size(); }
     // geometry
     const MultiPolygon<local_dim, embed_dim>& geometry(int i) const { return regions_[i]; }
     Triangulation& triangulation() { return *triangulation_; }
     const Triangulation& triangulation() const { return *triangulation_; }
-
     // computes measures of subdomains
     std::vector<double> measures() const {
         std::vector<double> m_(regions_.size(), 0);
@@ -62,7 +61,7 @@ template <typename Triangulation_> struct areal_layer {
     }
     // random sample points in areal layer
     Eigen::Matrix<double, Dynamic, Dynamic> sample(int n_samples, int seed = random_seed) const {
-        if (n_regions() == 1) { return geometry(0).sample(n_samples, seed); }
+        if (rows() == 1) { return geometry(0).sample(n_samples, seed); }
         // set up random number generation
         int seed_ = (seed == random_seed) ? std::random_device()() : seed;
         std::mt19937 rng(seed_);
