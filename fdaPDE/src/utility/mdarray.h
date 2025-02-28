@@ -568,7 +568,7 @@ consteval bool slices_to_contiguous_memory() {
     std::sort(slicers_.begin(), slicers_.end());
     int i = std::is_same_v<typename mapping::layout_type, layout_right> ? 0 : mapping::Order - 1 - sizeof...(Slicers);
     for (int j = 0; j < sizeof...(Slicers); ++j) {
-        if (slicers_[j] != i++) return false;
+        if (slicers_[j] != (std::is_same_v<typename mapping::layout_type, layout_right> ? i++ : ++i)) return false;
     }
     return true;
 }
@@ -603,9 +603,9 @@ template <typename MdArray, int... Slicers> class MdArraySlice {
         return map;
     }()};
     static constexpr std::array<index_t, DynamicOrder> free_dynamic_extents_idxs_ {[]() {
-        if constexpr (DynamicOrder == 0)
+        if constexpr (DynamicOrder == 0) {
             return std::array<index_t, DynamicOrder> {};
-        else {
+        } else {
             std::array<index_t, DynamicOrder> map {};
             for (order_t i = 0, j = 0; i < MdArray::Order; ++i) {
                 if (
@@ -780,26 +780,31 @@ template <typename MdArray, int... Slicers> class MdArraySlice {
         }
     }
 #ifdef __FDAPDE_HAS_EIGEN__
-    constexpr auto as_eigen_map() const {
+   private:
+    template <typename Ptr_>
+        requires(std::is_pointer_v<std::decay_t<Ptr_>>)
+    constexpr auto as_eigen_map_(Ptr_ ptr) const {
         static_assert(contiguous_access && (Order == 2 || Order == 1) && ((Slicers != Dynamic) && ...));
+        using Scalar_ = std::remove_pointer_t<Ptr_>;
         constexpr int rows = MdArray::static_extents[free_extents_idxs_[0]];
         if constexpr (Order == 2) {
             constexpr int cols = MdArray::static_extents[free_extents_idxs_[1]];
             constexpr int storage_layout =
               std::is_same_v<typename mapping_t::layout_type, internals::layout_right> ? ColMajor : RowMajor;
-            Eigen::Map<const Eigen::Matrix<Scalar, rows, cols, storage_layout>> map(data(), extent(0), extent(1));
-            return map;
+            using matrix_t = Eigen::Matrix<std::decay_t<Scalar_>, rows, cols, storage_layout>;
+            return Eigen::Map<std::conditional_t<std::is_const_v<Scalar_>, const matrix_t, matrix_t>>(
+              ptr, extent(0), extent(1));
         } else {
-            Eigen::Map<const Eigen::Matrix<Scalar, rows, 1>> map(data(), extent(0), 1);
-            return map;
+	  using vector_t = Eigen::Matrix<std::decay_t<Scalar_>, rows, 1>;
+            return Eigen::Map<std::conditional_t<std::is_const_v<Scalar_>, const vector_t, vector_t>>(
+              data(), extent(0), 1);
         }
     }
+   public:
+    constexpr auto as_eigen_map() const { return as_eigen_map_(data()); }
+    constexpr auto as_eigen_map() { return as_eigen_map_(data()); }
 #endif
-    constexpr const Scalar* data() const
-        requires(contiguous_access)
-    {
-        return mdarray_->data() + offset_;
-    }
+    constexpr const Scalar* data() const requires(contiguous_access) { return mdarray_->data() + offset_; }
     constexpr Scalar* data() requires(!std::is_const_v<MdArray> && contiguous_access) {
         return mdarray_->data() + offset_;
     }
