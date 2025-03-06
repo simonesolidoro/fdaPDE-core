@@ -82,6 +82,12 @@ constexpr bool less_than(T a, T b, T epsilon) {
     return (b - a) > ((std::fabs(a) < std::fabs(b) ? std::fabs(b) : std::fabs(a)) * epsilon);
 }
 template <typename T> constexpr bool less_than(T a, T b) { return less_than(a, b, double_tolerance); }
+template <typename T>
+    requires(std::is_floating_point_v<T>)
+constexpr bool almost_zero(T a, T epsilon) {
+    return std::fabs(a) < epsilon;
+}
+template <typename T> constexpr bool almost_zero(T a) { return almost_zero(a, machine_epsilon); }
 
 // numerical stable log(1 + exp(x)) computation (see "Machler, M. (2012). Accurately computing log(1-exp(-|a|))")
 template <typename T>
