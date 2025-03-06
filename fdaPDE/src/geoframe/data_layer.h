@@ -91,6 +91,7 @@ template <typename Scalar_, typename DataObj> struct plain_col_view {
     size_t rows() const { return rows_; }
     size_t cols() const { return 1; }
     size_t size() const { return rows_ * blk_sz_; }
+    size_t blk_sz() const { return blk_sz_; }
     const storage_t& data() const { return block_; }
     storage_t& data() { return block_; }
     const std::string& colname() const { return colname_; }

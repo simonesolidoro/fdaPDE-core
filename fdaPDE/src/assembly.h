@@ -24,14 +24,20 @@ namespace fdapde {
 
 // test function forward decl
 template <typename FunctionSpace_, typename DiscretizationCategory_> struct TestFunction;
-template <typename FunctionSpace_>   // deduction guide
+template <typename FunctionSpace_>
 TestFunction(FunctionSpace_ function_space)
   -> TestFunction<FunctionSpace_, typename FunctionSpace_::discretization_category>;
+template <typename FunctionSpace_>
+TestFunction(std::shared_ptr<FunctionSpace_> function_space)
+  -> TestFunction<std::shared_ptr<FunctionSpace_>, typename FunctionSpace_::discretization_category>;
 // trial function forward decl
 template <typename FunctionSpace, typename DiscretizationCategory_> struct TrialFunction;
-template <typename FunctionSpace_>   // deduction guide
+template <typename FunctionSpace_>
 TrialFunction(FunctionSpace_ function_space)
   -> TrialFunction<FunctionSpace_, typename FunctionSpace_::discretization_category>;
+template <typename FunctionSpace_>
+TrialFunction(std::shared_ptr<FunctionSpace_> function_space)
+  -> TrialFunction<std::shared_ptr<FunctionSpace_>, typename FunctionSpace_::discretization_category>;
 
 namespace internals {
 
@@ -228,6 +234,20 @@ template <typename Triangulation, int Options, typename... Quadrature> class int
     }
 };
 
+// form traits
+template <typename BilinearForm> struct is_bilinear_form {
+    static constexpr bool value = requires(BilinearForm t) {
+        { t.assemble() } -> std::same_as<Eigen::SparseMatrix<double>>;
+    };
+};
+template <typename BilinearForm> constexpr bool is_bilinear_form_v = is_bilinear_form<BilinearForm>::value;
+template <typename LinearForm> struct is_linear_form {
+    static constexpr bool value = requires(LinearForm t) {
+        { t.assemble() } -> std::same_as<Eigen::Matrix<double, Dynamic, 1>>;
+    };
+};
+template <typename LinearForm> constexpr bool is_linear_form_v = is_linear_form<LinearForm>::value;
+  
 }   // namespace internals
 
 // main entry points for operator discretization
@@ -253,7 +273,7 @@ auto integral(
     return internals::integrator_dispatch<Triangulation, FaceMajor, Quadrature...>(
       range.first, range.second, quadrature...);
 }
-  
+
 }   // namespace fdapde
 
 #endif   // __FDAPDE_ASSEMBLY_H__

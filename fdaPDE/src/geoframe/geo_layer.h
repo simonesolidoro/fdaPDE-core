@@ -723,6 +723,9 @@ struct GeoLayer {
         load_geometry_(parse_file_<double>(filename, header, index_col));
 	return;
     }
+    void load_geometry_(int flag) {
+        internals::for_each_index_in_pack<Order>([&]<int Ns>() { load_geometry_index_<Ns>(flag); });
+    }
     // single geomtric indexes reading utilities
     template <int N> void load_geometry_index_(const Eigen::Matrix<double, Dynamic, Dynamic>& coords) {
         fdapde_assert(coords.cols() == embed_dim[N]);

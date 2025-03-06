@@ -42,7 +42,7 @@ constexpr void for_each_index_and_args(F_&& f, Args_&&... args) {
         (f.template operator()<Ns_, Args_>(std::forward<Args_>(args)), ...);
     }(std::make_integer_sequence<int, N_> {});
 }
-
+  
 // detect if type is integer-like
 template <typename T> class is_integer {
     using T_ = std::decay_t<T>;
@@ -75,7 +75,23 @@ struct is_pair {
     }();
 };
 template <typename T> static constexpr bool is_pair_v = is_pair<T>::value;
-  
+
+// detect if T is a shared_ptr instance
+template <typename T> struct is_shared_ptr : std::false_type { };
+template <typename T> struct is_shared_ptr<std::shared_ptr<T>> : std::true_type {};
+template <typename T> static constexpr bool is_shared_ptr_v = is_shared_ptr<T>::value;
+  // given a type E, returns T if E = std::shared_ptr<T>, or directly returns E otherwise
+template <typename E> struct remove_shared_ptr {
+    using type = decltype([]() {
+      if constexpr (is_shared_ptr_v<std::decay_t<E>>) {
+          return typename E::element_type();
+        } else {
+            return E();
+        }
+    }());
+};
+template <typename E> using remove_shared_ptr_t = typename remove_shared_ptr<E>::type;
+
 template <typename Fn, typename... Arg>
 concept is_subscriptable = requires(Fn fn, Arg... arg) {
     { fn.operator[](arg...) };

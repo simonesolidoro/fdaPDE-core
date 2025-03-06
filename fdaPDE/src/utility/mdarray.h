@@ -513,10 +513,16 @@ template <typename MdArray_, typename BlkExtents_> class MdArrayBlock {
         return *this;
     }
     template <typename Dst>
-        requires(internals::is_subscriptable<Dst, int>)
+        requires(internals::is_subscriptable<Dst, index_t> || internals::is_indexable_v<Dst, Order, index_t>)
     void assign_to(Dst&& dst) const {
-        int i = 0;
-        for (auto& v : *this) { dst[i++] = v; }
+        if constexpr (internals::is_subscriptable<Dst, index_t> && !internals::is_indexable_v<Dst, Order, index_t>) {
+            index_t i = 0;
+            for (auto& v : *this) { dst[i++] = v; }
+        } else {
+            for (auto it = begin(); it != end(); ++it) {
+                internals::apply_index_pack<Order>([&]<int... Ns_>() { dst(it.index()[Ns_]...) = *it; });
+            }
+        }
     }
    private:
     std::array<index_t, Order> offset_ {};
@@ -837,13 +843,20 @@ template <typename MdArray, int... Slicers> class MdArraySlice {
         return *this;
     }
     template <typename Dst>
-        requires(internals::is_subscriptable<Dst, int>)
+        requires(internals::is_subscriptable<Dst, index_t> || internals::is_indexable_v<Dst, Order, index_t>)
     void assign_to(Dst&& dst) const {
         if constexpr (contiguous_access) {
             for (int i = 0, n = size(); i < n; ++i) { dst[i] = operator[](i); }
         } else {
-            int i = 0;
-            for (auto& v : *this) dst[i++] = v;
+            if constexpr (
+              internals::is_subscriptable<Dst, index_t> && !internals::is_indexable_v<Dst, Order, index_t>) {
+                index_t i = 0;
+                for (auto& v : *this) { dst[i++] = v; }
+            } else {
+                for (auto it = begin(); it != end(); ++it) {
+                    internals::apply_index_pack<Order>([&]<int... Ns_>() { dst(it.index()[Ns_]...) = *it; });
+                }
+            }
         }
     }
    private:

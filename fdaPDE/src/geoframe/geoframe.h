@@ -139,6 +139,7 @@ template <typename... Triangulation_> struct GeoFrame {
         for (const auto& [name, id] : layer_name_to_idx_) { names.push_back(name); }
         return names;
     }
+    template <int N> decltype(auto) triangulation() const { return *std::get<N>(triangulation_); }
     // indexed access
     const layer_t& operator[](int idx) const { return layers_[idx]; }
     layer_t& operator[](int idx) { return layers_[idx]; }
