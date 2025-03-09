@@ -23,40 +23,9 @@
 #include <Eigen/Eigen>
 #define __FDAPDE_HAS_EIGEN__
 
-// define basic eigen traits
-namespace fdapde {
-namespace internals {
-
-template <typename XprType> struct is_eigen_dense_xpr {
-    static constexpr bool value =
-        std::is_base_of<Eigen::MatrixBase<std::decay_t<XprType>>, std::decay_t<XprType>>::value;
-};
-template <typename XprType> constexpr bool is_eigen_dense_xpr_v = is_eigen_dense_xpr<XprType>::value;
-template <typename XprType> class is_eigen_dense_vec {
-   private:
-    static constexpr bool check_() {
-        if constexpr (is_eigen_dense_xpr_v<std::decay_t<XprType>>) {
-            if constexpr (XprType::ColsAtCompileTime == 1) { return true; }
-            return false;
-        }
-        return false;
-    }
-   public:
-    static constexpr bool value = check_();
-};
-template <typename XprType> constexpr bool is_eigen_dense_vec_v = is_eigen_dense_vec<XprType>::value;
-
-template <typename XprType> struct is_eigen_sparse_xpr {
-    static constexpr bool value =
-        std::is_base_of_v<Eigen::SparseMatrixBase<std::decay_t<XprType>>, std::decay_t<XprType>>;
-};
-template <typename XprType> constexpr bool is_eigen_sparse_xpr_v = is_eigen_sparse_xpr<XprType>::value;
-    
-}   // namespace internals
-}   // namespace fdapde
-
 // include required modules
 #include "utility.h"
+#include "src/linear_algebra/utility.h"
 
 #include "src/linear_algebra/eigen_helper.h"
 #include "src/linear_algebra/fspai.h"
@@ -64,6 +33,10 @@ template <typename XprType> constexpr bool is_eigen_sparse_xpr_v = is_eigen_spar
 #include "src/linear_algebra/lumping.h"
 #include "src/linear_algebra/sparse_block_matrix.h"
 #include "src/linear_algebra/woodbury.h"
+// randomized linear algebra
+#include "src/linear_algebra/rsi.h"
+#include "src/linear_algebra/rbki.h"
+#include "src/linear_algebra/rp_chol.h"
 
 // clang-format on
 
