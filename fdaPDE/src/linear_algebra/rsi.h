@@ -46,14 +46,14 @@ class RSI {
     void compute(const MatrixType& A, int rank) {
         // use as block size the one suggested in "N. Halko, P.G. Martinsson, and J. A. Tropp. (2010) Finding structure
         // with randomness: Probabilistic algorithms for constructing approximate matrix decompositions."
-        compute(A, rank, std::min(2 * rank, std::min(A.rows(), A.cols())));
+        compute(A, rank, std::min(2 * static_cast<long int>(rank), std::min(A.rows(), A.cols())));
     }
     void compute(const MatrixType& A, int rank, int block_sz) {
         rank_ = rank;
         int rows = A.rows();
         int cols = A.cols();
         // approximate range of A
-        matrix_t Omega = gaussian_matrix(cols, block_sz, seed_);
+        matrix_t Omega = internals::gaussian_matrix(cols, block_sz, seed_);
         qr_t qr(A * Omega);
         matrix_t Q = qr.householderQ() * matrix_t::Identity(rows, block_sz);
         matrix_t B = A.transpose() * Q;
@@ -102,34 +102,36 @@ class RSI {
 // applications, Alg 5.7, pag 21.
 template <typename MatrixType>
     requires(internals::is_eigen_dense_xpr_v<MatrixType>)
-class NysSI {
+class NysRSI {
     using matrix_t = Eigen::Matrix<double, Dynamic, Dynamic>;
     using vector_t = Eigen::Matrix<double, Dynamic, 1>;
     using qr_t     = Eigen::HouseholderQR<matrix_t>;
     using chol_t   = Eigen::LLT<matrix_t>;
     using svd_t    = Eigen::JacobiSVD<matrix_t>;
    public:
-    NysSI() noexcept =default;
-    NysSI(const MatrixType& m, int rank) noexcept : tol_(1e-5), max_iter_(50), seed_(std::random_device()()) {
+    NysRSI() noexcept =default;
+    NysRSI(const MatrixType& m, int rank) noexcept : tol_(1e-5), max_iter_(50), seed_(std::random_device()()) {
         compute(m, rank);
     }
-    NysSI(const MatrixType& m, int rank, double tol, int max_iter, int seed = random_seed) noexcept :
+    NysRSI(const MatrixType& m, int rank, double tol, int max_iter, int seed = random_seed) noexcept :
         tol_(tol), max_iter_(max_iter), seed_(seed == random_seed ? std::random_device()() : seed) {
         compute(m, rank);
     }
-    NysSI(double tol, int max_iter, int seed = random_seed) noexcept :
+    NysRSI(double tol, int max_iter, int seed = random_seed) noexcept :
         tol_(tol), max_iter_(max_iter), seed_(seed == random_seed ? std::random_device()() : seed) { }
 
     // computes the decomposition
-    void compute(const MatrixType& A, int rank) override { compute(A, rank, std::min(2 * rank, A.rows())); }
-    void compute(const MatrixType& A, int rank, int block_sz) override {
+    void compute(const MatrixType& A, int rank) {
+        compute(A, rank, std::min(2 * static_cast<long int>(rank), A.rows()));
+    }
+    void compute(const MatrixType& A, int rank, int block_sz) {
         rank_ = rank;
         int rows = A.rows();
         int cols = A.cols();
         double shift = A.diagonal().sum() * std::numeric_limits<double>::epsilon();   // epsilon_shift
 	
         // subspace iteration loop initialization
-        matrix_t Y = gaussian_matrix(rows, block_sz, seed_);
+        matrix_t Y = internals::gaussian_matrix(rows, block_sz, seed_);
 	svd_t svd;
         int iter = 0;
         double res_err = std::numeric_limits<double>::max();

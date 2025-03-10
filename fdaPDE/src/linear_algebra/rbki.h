@@ -67,7 +67,7 @@ class RBKI {
         int max_dim = (max_iter + 1) * block_sz;
 
         // approximate range of A
-        matrix_t Omega = gaussian_matrix(cols, block_sz, seed_);
+        matrix_t Omega = internals::gaussian_matrix(cols, block_sz, seed_);
         matrix_t Q(rows, max_dim);
         matrix_t B(cols, max_dim);
         Q.leftCols(block_sz) = A * Omega;
@@ -106,7 +106,8 @@ class RBKI {
         return;
     }
 
-    // for X = [X_1 ... X_n], X_i \in R^{n, m} and y \in R^{n, m}, performs an incremental BCGS step
+    // for X = [X_1 ... X_n], X_i \in R^{n, m} and y \in R^{n, m}, performs a Block Classical Gram-Schmidt step as
+    // y = y - \sum_{j} (X_j * X_j^\top) * y
     template <typename Lhs_, typename Rhs_> matrix_t BCGS_(const Lhs_& X, const Rhs_& y) {
         int rows = y.rows();
         int cols = y.cols();
@@ -136,22 +137,23 @@ class RBKI {
 // applications, Alg 5.8, pag 22.
 template <typename MatrixType>
     requires(internals::is_eigen_dense_xpr_v<MatrixType>)
-class NysBKI {
+class NysRBKI {
     using matrix_t = Eigen::Matrix<double, Dynamic, Dynamic>;
     using vector_t = Eigen::Matrix<double, Dynamic, 1>;
     using qr_t     = Eigen::HouseholderQR<matrix_t>;
+    using chol_t   = Eigen::LLT<matrix_t>;
     using svd_t    = Eigen::JacobiSVD<matrix_t>;
    public:
 
-    NysBKI() noexcept =default;
-    NysBKI(const MatrixType& m, int rank) noexcept : tol_(1e-5), max_iter_(50), seed_(std::random_device()()) {
+    NysRBKI() noexcept =default;
+    NysRBKI(const MatrixType& m, int rank) noexcept : tol_(1e-5), max_iter_(50), seed_(std::random_device()()) {
         compute(m, rank);
     }
-    NysBKI(const MatrixType& m, int rank, double tol, int max_iter, int seed = random_seed) noexcept :
+    NysRBKI(const MatrixType& m, int rank, double tol, int max_iter, int seed = random_seed) noexcept :
         tol_(tol), max_iter_(max_iter), seed_(seed == random_seed ? std::random_device()() : seed) {
         compute(m, rank);
     }
-    NysBKI(double tol, int max_iter, int seed = random_seed) noexcept :
+    NysRBKI(double tol, int max_iter, int seed = random_seed) noexcept :
         tol_(tol), max_iter_(max_iter), seed_(seed == random_seed ? std::random_device()() : seed) { }
 
     // computes the decomposition
@@ -167,10 +169,10 @@ class NysBKI {
 
         // Krylov subspace iteration loop initialization
         matrix_t X(rows, max_dim), Y(rows, max_dim);
+	qr_t qr(internals::gaussian_matrix(rows, block_sz, seed_));
+	X.leftCols(block_sz) = qr.householderQ() * matrix_t::Identity(rows, block_sz);
+	Y.leftCols(block_sz) = A * X.leftCols(block_sz);
         matrix_t S = matrix_t::Zero(max_dim, max_dim);   // matrix [X_0, ..., X_{i - 1}]^\top * [Y_1, ..., Y_{i}]
-        qr_t qr(gaussian_matrix(rows, block_sz, seed_));
-        X.middleCols(0, block_sz) = qr.householderQ() * matrix_t::Identity(rows, block_sz);
-        Y.middleCols(0, block_sz) = A * X.middleCols(0, block_sz) + shift * X.middleCols(0, block_sz);
         svd_t svd;
         int i = 0;
         double res_err = std::numeric_limits<double>::max();
@@ -178,30 +180,34 @@ class NysBKI {
         for (; res_err > tol_ && i < max_iter; i++) {
             // krylov subspace update
             X.middleCols((i + 1) * block_sz, block_sz) =
-              BCGS_(X.leftCols((i + 1) * block_sz), X.middleCols((i + 1) * block_sz, block_sz));
-            Y.middleCols((i + 1) * block_sz, block_sz) =
-              A * X.middleCols((i + 1) * block_sz, block_sz) + shift * X.middleCols((i + 1) * block_sz, block_sz);
-            // Nystrom factor computation
+              Y.middleCols(i * block_sz, block_sz) + shift * X.middleCols(i * block_sz, block_sz);
             // incremental update of [X_0, ..., X_{i - 1}]^\top * [Y_1, ..., Y_{i}]
-            S.middleCols(i * block_sz, block_sz) =
-              X.middleCols(0, (i + 1) * block_sz) * Y.middleCols((i + 1) * block_sz, block_sz);
-            if (i > 0) {
-                S.block(i * block_sz, 0, block_sz, (i + 1) * block_sz) =
-                  X.middleCols((i + 1) * block_sz, block_sz) * Y.middleCols(0, i * block_sz);
+            {
+                matrix_t tmp = matrix_t::Zero(X.rows(), (i + 1) * block_sz);
+                tmp.middleCols(std::max(i - 1, 0) * block_sz, block_sz) =
+                  X.middleCols(std::max(i - 1, 0) * block_sz, block_sz);
+                tmp.middleCols(i * block_sz, block_sz) = X.middleCols(i * block_sz, block_sz);
+                S.block(0, i * block_sz, (i + 1) * block_sz, block_sz) =
+                  tmp.transpose() * X.middleCols((i + 1) * block_sz, block_sz);
             }
+            // subspace orthogonalization
+            auto [Q, R] = BCGS_(X.leftCols((i + 1) * block_sz), X.middleCols((i + 1) * block_sz, block_sz));
+            X.middleCols((i + 1) * block_sz, block_sz) = Q;
+	    Y.middleCols((i + 1) * block_sz, block_sz) = A * X.middleCols((i + 1) * block_sz, block_sz);
+            // Nystrom factor computation
             chol_t chol(S.block(0, 0, (i + 1) * block_sz, (i + 1) * block_sz));
-            matrix_t F = chol.matrixU().solve<Eigen::OnTheRight>(Y.middleCols(0, (i + 1) * block_sz));
+            S.block((i + 1) * block_sz, i * block_sz, block_sz, block_sz) = R;
+            matrix_t F = chol.matrixU().solve<Eigen::OnTheRight>(S.block(0, 0, (i + 2) * block_sz, (i + 1) * block_sz));
             // residual error update
             svd.compute(F, Eigen::ComputeThinU | Eigen::ComputeThinV);
             int m = std::min(rank, (i + 1) * block_sz);
-            E = (Y.leftCols((i + 1) * block_sz) - shift * X.middleCols((i + 1) * block_sz, block_sz)) *
-                  svd.matrixU().leftCols(m) -
-                X.leftCols((i + 1) * block_sz) * svd.matrixU().leftCols(m) *
-                  (svd.singularValues().head(rank).array().pow(2) - shift).matrix().asDiagonal();
+            matrix_t E = Y.leftCols((i + 2) * block_sz) * svd.matrixU().leftCols(m) -
+                         X.leftCols((i + 2) * block_sz) * svd.matrixU().leftCols(m) *
+                           (svd.singularValues().head(m).array().pow(2) - shift).matrix().asDiagonal();
             res_err = std::sqrt(2) * E.colwise().template lpNorm<2>().maxCoeff();
         }
 	// store result
-        rank = std::min(svd.singularValues().size(), rank);
+        rank = std::min(svd.singularValues().size(), static_cast<long int>(rank));
         U_ = X.leftCols((i + 1) * block_sz) * svd.matrixU().leftCols(rank);
         Lambda_ = (svd.singularValues().head(rank).array().pow(2) - shift).matrix();
         for (int i = 0; i < Lambda_.rows(); ++i) {   // set to zero possible negative eigenvalues due to epsilon shift
@@ -214,8 +220,9 @@ class NysBKI {
     const vector_t& eigenValues() const { return Lambda_; }
     int rank() const { return rank_; }
    private:
-    // for X = [X_1 ... X_n], X_i \in R^{n, m} and y \in R^{n, m}, performs an incremental BCGS step
-    template <typename Lhs_, typename Rhs_> matrix_t BCGS_(const Lhs_& X, const Rhs_& y) {
+    // for X = [X_1 ... X_n], X_i \in R^{n, m} and y \in R^{n, m}, performs a Block Classical Gram-Schmidt step as
+    // y = y - \sum_{j} (X_j * X_j^\top) * y
+    template <typename Lhs_, typename Rhs_> std::pair<matrix_t, matrix_t> BCGS_(const Lhs_& X, const Rhs_& y) {
         int rows = y.rows();
         int cols = y.cols();
         qr_t qr;
@@ -227,15 +234,15 @@ class NysBKI {
 	// perform final stabilzed QR
         qr.compute(orth_block);
         orth_block = qr.householderQ() * matrix_t::Identity(rows, cols);
-        return orth_block;
+        return std::make_pair(orth_block, qr.matrixQR().triangularView<Eigen::Upper>().toDenseMatrix().topRows(cols));
     }
-  
+
     double tol_ = 1e-5;
     int max_iter_ = 50;
     int seed_;
 
     matrix_t U_;
-    vector_t Sigma_;
+    vector_t Lambda_;
     int rank_;
 };
   
