@@ -15,13 +15,5 @@
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 #ifndef __FDAPDE_MULTITHREADING_MODULE_H__
-#define __FDAPDE_MULTITHREADING_MODULE_H__
-
-// clang-format off
-
-#include <vector>
-#include "src/multithreading/worker_queue.h"
-
-// clang-format on
-
+#    error "Include fdaPDE/multithreading.h instead of including internal headers directly."
 #endif

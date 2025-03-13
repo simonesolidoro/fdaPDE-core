@@ -19,10 +19,15 @@
 #ifndef __FDAPDE_WORKER_QUEUE_H__
 #define __FDAPDE_WORKER_QUEUE_H__
 
-#include "multithreading.h"
+#include "header_check.h"
 
 namespace fdapde {
-    
-}
+    template <typename T> 
+    class Worker_queue{
+        private:
+            std::vector<T> coda_;
+    };
+
+};
 
 #endif
