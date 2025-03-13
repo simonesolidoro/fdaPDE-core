@@ -32,7 +32,8 @@ int main(){
     q.print();
     q.flush();
     q.print();
-    
+    q.resize(3);
+    q.print();
     /* pop_front
     for(int j=0; j<20; j++)
         q.pop_front();

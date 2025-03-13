@@ -48,6 +48,12 @@ namespace fdapde {
                 empty_queue_ = true;
             }
 
+            // resize() di queue_ super easy for the moment
+            void resize(int n){
+                queue_ = std::vector<value_type> (n);
+            }
+
+
             bool push_front(value_type t){
                 int new_head = (head_ == size_-1)? (0) : (head_ + 1);
                 if (head_ != tail_ ){
@@ -73,7 +79,7 @@ namespace fdapde {
                 value_type ret = queue_[new_head];
                 queue_[new_head] = new_empty;
                 head_ = new_head;
-                if(head_==tail_) {empty_queue_ = true;}
+                if(head_==tail_) {empty_queue_ = true;}  //head_ ==tail_ after pop() means empty, in general means full  
                 return ret;
                 
             }
