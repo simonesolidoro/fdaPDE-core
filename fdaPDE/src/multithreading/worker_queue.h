@@ -78,7 +78,7 @@ namespace fdapde {
                 
             }
             
-            //member to be thread_safe (only )
+            //push_back() thread-safe 
             bool push_back(value_type t){
                 std::lock_guard loc(m);
                 int new_tail = (tail_ == 0)? (size_-1) : (tail_ -1);
@@ -95,6 +95,7 @@ namespace fdapde {
                 return 0;   
             }
 
+            //pop_back() thrade-safe
             T pop_back(){
                 std::lock_guard loc(m);
                 value_type new_empty;
@@ -109,13 +110,38 @@ namespace fdapde {
                 return ret;
             }
 
-            // wrap of function size() empty() of vector
+            // wrap of function size() empty() of vector thrade-safe
             int size(){
+                std::lock_guard loc(m);
                 return queue_.size();
             }
             bool empty(){
+                std::lock_guard loc(m);
                 return queue_.empy();
             }
+            
+            // svuota queue_
+            void flush(){ 
+                std::lock_guard loc(m);
+                value_type new_empty;
+                if (head_ > tail_)
+                    for(int i = tail_ ; i< head_ ; i++){
+                        queue_[i] = new_empty; 
+                    }
+                else if(head_ < tail_)
+                    for(int i = head_ ; i< tail_ ; i++){
+                        queue_[i] = new_empty; 
+                    }
+                if (head_==tail_){
+                    for(int i=0; i<size_; i++)
+                        queue_[i] = new_empty;
+                } 
+                /*forse piu efficente direttamente svuotare tutto senza vedere dovè pieno
+                        for(int i=0; i<size_; i++)
+                            queue_[i] = new_empty;
+                */
+            } 
+        
 
 
             //per debug momentanei

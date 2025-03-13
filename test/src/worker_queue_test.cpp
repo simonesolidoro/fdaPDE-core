@@ -17,6 +17,9 @@
 #include<fdaPDE/multithreading.h>
 #include<iostream>  //per debug momentaneo
 
+
+
+
 int main(){
     fdapde::Worker_queue<int> q(10);
     fdapde::Worker_queue<int> p;
@@ -25,8 +28,11 @@ int main(){
     for (int i =1; i<21; i++){
         q.push_back(i);
     }
+    
     q.print();
-  
+    q.flush();
+    q.print();
+    
     /* pop_front
     for(int j=0; j<20; j++)
         q.pop_front();
@@ -42,3 +48,32 @@ int main(){
     
     return 0;
 }
+
+
+/*test multithreading giocattolo
+void conta(){
+
+}
+
+class toy_worker {
+    private:
+        fdapde::Worker_queue<int> coda;
+        std::thread t;
+    public:
+        toy_worker(int n):coda(n),t(conta,){
+
+        };
+};
+
+class toy_threadpool {
+    private:
+        std::vector<toy_worker> W;
+    pubblic:
+        toy_threadpool(int n, int n_threads){
+            for(int i=0; i<n_threads; i++){
+                W.emplace_back(n)
+            }
+            
+        }
+
+};*/
