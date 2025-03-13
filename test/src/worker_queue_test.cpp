@@ -23,7 +23,7 @@ int main(){
     std::cout<<p.size()<<" "<<q.size()<<std::endl;
     std::cout<<p.get_tail()<<" "<<q.get_head()<<std::endl;
     for (int i =1; i<21; i++){
-        q.push_front(i);
+        q.push_back(i);
     }
     q.print();
   

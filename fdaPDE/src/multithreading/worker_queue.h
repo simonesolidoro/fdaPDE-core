@@ -79,7 +79,22 @@ namespace fdapde {
             }
             
             //member to be thread_safe (only )
-            bool push_back(value_type t);
+            bool push_back(value_type t){
+                std::lock_guard loc(m);
+                int new_tail = (tail_ == 0)? (size_-1) : (tail_ -1);
+                if (head_ != tail_){ //se non pieno
+                    queue_[new_tail] = t;
+                    tail_ = new_tail;
+                    return 1;}
+                else if(empty_queue_==true){
+                    queue_[tail_] = t;
+                    head_++;
+                    empty_queue_ = false;
+                    return 1;} 
+                //std::cerr<<"queue full"<<std::endl;
+                return 0;   
+            }
+
             T pop_back(){
                 std::lock_guard loc(m);
                 value_type new_empty;
