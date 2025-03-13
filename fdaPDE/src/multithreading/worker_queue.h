@@ -43,9 +43,11 @@ namespace fdapde {
                 tail = 0;
             }
 
-            bool push_front();
+            bool push_front(value_type t);
             T pop_front();
-            bool push_back();
+            
+            //member to be thread_safe (only )
+            bool push_back(value_type t);
             T pop_back();
 
             // wrap of function size() empty() of vector
