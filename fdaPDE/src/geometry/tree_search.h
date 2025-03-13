@@ -32,7 +32,7 @@ template <typename MeshType> class TreeSearch {
     Eigen::Matrix<double, embed_dim, 1> c_;   // normalization constants
     // build search query for point p
     KDTree<2 * embed_dim>::RangeType query(const Eigen::Matrix<double, embed_dim, 1>& p) const {
-        Eigen::Matrix<double, embed_dim, 1> scaled_p = (p - mesh_->range().row(0).transpose()).array() * c_.array();
+        Eigen::Matrix<double, embed_dim, 1> scaled_p = (p - mesh_->bbox().row(0).transpose()).array() * c_.array();
 	Eigen::Matrix<double, 2 * embed_dim, 1> ll, ur;
         ll << Eigen::Matrix<double, embed_dim, 1>::Zero(), scaled_p;
         ur << scaled_p, Eigen::Matrix<double, embed_dim, 1>::Ones();
@@ -45,14 +45,14 @@ template <typename MeshType> class TreeSearch {
         // upper-right] corner. This moves each element to a point in R^{2N}
         Eigen::Matrix<double, Dynamic, Dynamic> data;
         data.resize(mesh_->n_cells(), 2 * embed_dim);
-        for (int dim = 0; dim < embed_dim; ++dim) { c_[dim] = 1.0 / (mesh_->range()(1, dim) - mesh_->range()(0, dim)); }
+        for (int dim = 0; dim < embed_dim; ++dim) { c_[dim] = 1.0 / (mesh_->bbox()(1, dim) - mesh_->bbox()(0, dim)); }
         int i = 0;
         for (typename MeshType::cell_iterator it = mesh_->cells_begin(); it != mesh_->cells_end(); ++it) {
             std::pair<Eigen::Matrix<double, embed_dim, 1>, Eigen::Matrix<double, embed_dim, 1>> bbox =
               it->bounding_box();
             // unit hypercube point scaling
-            data.row(i).leftCols(embed_dim)  = (bbox.first  - mesh_->range().row(0).transpose()).array() * c_.array();
-            data.row(i).rightCols(embed_dim) = (bbox.second - mesh_->range().row(0).transpose()).array() * c_.array();
+            data.row(i).leftCols(embed_dim)  = (bbox.first  - mesh_->bbox().row(0).transpose()).array() * c_.array();
+            data.row(i).rightCols(embed_dim) = (bbox.second - mesh_->bbox().row(0).transpose()).array() * c_.array();
             ++i;
         }
         tree_ = KDTree<2 * embed_dim>(std::move(data));   // organize elements in a KD-tree structure

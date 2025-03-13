@@ -26,7 +26,7 @@ namespace fdapde {
       std::is_same_v<typename Lhs::InputType FDAPDE_COMMA typename Rhs::InputType>,                                    \
       YOU_MIXED_MATRIX_FIELDS_WITH_DIFFERENT_INPUT_VECTOR_TYPES);
 
-template <int Size, typename Derived> class MatrixFieldBase;
+template <int Size, typename Derived> struct MatrixFieldBase;
 
 template <typename Lhs, typename Rhs>
 class MatrixFieldProduct : public MatrixFieldBase<Lhs::StaticInputSize, MatrixFieldProduct<Lhs, Rhs>> {
@@ -43,7 +43,9 @@ class MatrixFieldProduct : public MatrixFieldBase<Lhs::StaticInputSize, MatrixFi
     using RhsDerived = Rhs;
     template <typename T1, typename T2> using Meta = MatrixFieldProduct<T1, T2>;
     using Base = MatrixFieldBase<Lhs::StaticInputSize, MatrixFieldProduct<Lhs, Rhs>>;
-    using InputType = typename Lhs::InputType;
+    using LhsInputType = typename LhsDerived::InputType;
+    using RhsInputType = typename RhsDerived::InputType;
+    using InputType = internals::prefer_most_derived_t<LhsInputType, RhsInputType>;
     using Scalar = decltype(std::declval<typename Lhs::Scalar>() * std::declval<typename Rhs::Scalar>());
     static constexpr int StaticInputSize = Lhs::StaticInputSize;
     static constexpr int Rows = Lhs::Rows;
@@ -127,9 +129,9 @@ class MatrixFieldProduct : public MatrixFieldBase<Lhs::StaticInputSize, MatrixFi
         fdapde_static_assert(Rhs::Cols == 1 || Lhs::Rows == 1, INVALID_MATRIX_VECTOR_PRODUCT_DIMENSIONS);
         Scalar res = 0;
         if constexpr (Rhs::Cols == 1) {
-            for (int k = 0; k < lhs_.cols(); ++k) { res += lhs_.eval(i, k, p) * rhs_.eval(i, p); }
+            for (int k = 0; k < lhs_.cols(); ++k) { res += lhs_.eval(i, k, p) * rhs_.eval(k, p); }
         } else {
-            for (int k = 0; k < lhs_.cols(); ++k) { res += lhs_.eval(i, p) * rhs_.eval(k, i, p); }
+            for (int k = 0; k < rhs_.rows(); ++k) { res += lhs_.eval(k, p) * rhs_.eval(k, i, p); }
         }
 	return res;
     }
@@ -270,7 +272,9 @@ class MatrixFieldBinOp : public MatrixFieldBase<Lhs::StaticInputSize, MatrixFiel
     using RhsDerived = Rhs;
     template <typename T1, typename T2> using Meta = MatrixFieldBinOp<T1, T2, BinaryOperation>;
     using Base = MatrixFieldBase<Lhs::StaticInputSize, MatrixFieldBinOp<Lhs, Rhs, BinaryOperation>>;
-    using InputType = typename Lhs::InputType;
+    using LhsInputType = typename LhsDerived::InputType;
+    using RhsInputType = typename RhsDerived::InputType;
+    using InputType = internals::prefer_most_derived_t<LhsInputType, RhsInputType>;
     using Scalar = decltype(std::declval<BinaryOperation>().operator()(
       std::declval<typename Lhs::Scalar>(), std::declval<typename Rhs::Scalar>()));
     static constexpr int StaticInputSize = Lhs::StaticInputSize;
@@ -815,12 +819,17 @@ struct MatrixFieldSymmetricView :
 template <int StaticInputSize, typename Derived> struct MatrixFieldBase {
    private:
     template <typename InputType_> constexpr auto call_(const InputType_& p) const {
-        typename std::conditional<
-          Derived::Rows == Dynamic || Derived::Cols == Dynamic,
-          Eigen ::Matrix<typename Derived::Scalar, Dynamic, Dynamic>,
-          Matrix<typename Derived::Scalar, Derived::Rows, Derived::Cols>>::type out;
+        using OutputType = std::conditional_t<
+          internals::is_eigen_dense_xpr_v<InputType_>,
+          Eigen::Matrix<
+            typename Derived::Scalar, Derived::Rows == Dynamic ? Dynamic : InputType_::RowsAtCompileTime,
+            Derived::Cols == Dynamic ? Dynamic : InputType_::ColsAtCompileTime>,
+          Matrix<typename Derived::Scalar, Derived::Rows, Derived::Cols>>;
+        OutputType out;
         if constexpr (Derived::StaticInputSize == Dynamic) { fdapde_assert(p.size() == derived().input_size()); }
-        if constexpr (Derived::Rows == Dynamic || Derived::Cols == Dynamic) {
+        if constexpr (
+          Derived::Rows == Dynamic || Derived::Cols == Dynamic || InputType_::RowsAtCompileTime == Dynamic ||
+          InputType_::ColsAtCompileTime == Dynamic) {
             out.resize(derived().rows(), derived().cols());
         }
         eval_at(p, out);
@@ -915,8 +924,8 @@ namespace internals {
 
 template <
   typename Lhs, typename Rhs, typename FieldType_ = std::conditional_t<internals::is_eigen_dense_xpr_v<Lhs>, Rhs, Lhs>>
-class matrix_eigen_product_impl :
-    public MatrixFieldBase<FieldType_::StaticInputSize, matrix_eigen_product_impl<Lhs, Rhs>> {
+class matrix_field_eigen_product_impl :
+    public MatrixFieldBase<FieldType_::StaticInputSize, matrix_field_eigen_product_impl<Lhs, Rhs>> {
     using FieldType = std::conditional_t<internals::is_eigen_dense_xpr_v<Lhs>, Rhs, Lhs>;
     using EigenType = std::conditional_t<internals::is_eigen_dense_xpr_v<Lhs>, Lhs, Rhs>;
     static constexpr bool is_field_lhs = std::is_same_v<FieldType, Lhs>;
@@ -928,8 +937,8 @@ class matrix_eigen_product_impl :
    public:
     using LhsDerived = Lhs;
     using RhsDerived = Rhs;
-    template <typename T1, typename T2> using Meta = matrix_eigen_product_impl<T1, T2>;
-    using Base = MatrixFieldBase<FieldType::StaticInputSize, matrix_eigen_product_impl<Lhs, Rhs>>;
+    template <typename T1, typename T2> using Meta = matrix_field_eigen_product_impl<T1, T2>;
+    using Base = MatrixFieldBase<FieldType::StaticInputSize, matrix_field_eigen_product_impl<Lhs, Rhs>>;
     using InputType = typename FieldType::InputType;
     using Scalar = decltype(std::declval<typename FieldType::Scalar>() * std::declval<typename EigenType::Scalar>());
     static constexpr int StaticInputSize = FieldType::StaticInputSize;
@@ -938,7 +947,7 @@ class matrix_eigen_product_impl :
     static constexpr int NestAsRef = 0;
     static constexpr int XprBits = FieldType::XprBits;
 
-    matrix_eigen_product_impl(const Lhs& lhs, const Rhs& rhs) : Base(), lhs_(lhs), rhs_(rhs) {
+    matrix_field_eigen_product_impl(const Lhs& lhs, const Rhs& rhs) : Base(), lhs_(lhs), rhs_(rhs) {
         if constexpr (
           FieldType::Rows == Dynamic || FieldType::Cols == Dynamic || EigenType::RowsAtCompileTime == Dynamic ||
           EigenType::ColsAtCompileTime == Dynamic) {
@@ -1024,15 +1033,15 @@ class matrix_eigen_product_impl :
     // evaluation at point
     constexpr auto operator()(const InputType& p) const { return Base::call_(p); }
    protected:
-    std::conditional_t<internals::is_eigen_dense_xpr_v<Lhs>, const Lhs&, internals::ref_select_t<const Lhs>> lhs_;
-    std::conditional_t<internals::is_eigen_dense_xpr_v<Rhs>, const Rhs&, internals::ref_select_t<const Rhs>> rhs_;
+    std::conditional_t<internals::is_eigen_dense_xpr_v<Lhs>, const Lhs, internals::ref_select_t<const Lhs>> lhs_;
+    std::conditional_t<internals::is_eigen_dense_xpr_v<Rhs>, const Rhs, internals::ref_select_t<const Rhs>> rhs_;
 };
 
 template <
   typename Lhs, typename Rhs, typename BinaryOperation,
   typename FieldType_ = std::conditional_t<internals::is_eigen_dense_xpr_v<Lhs>, Rhs, Lhs>>
-class matrix_eigen_binary_op_impl :
-    public MatrixFieldBase<FieldType_::StaticInputSize, matrix_eigen_binary_op_impl<Lhs, Rhs, BinaryOperation>> {
+class matrix_field_eigen_binary_op_impl :
+    public MatrixFieldBase<FieldType_::StaticInputSize, matrix_field_eigen_binary_op_impl<Lhs, Rhs, BinaryOperation>> {
     using FieldType = std::conditional_t<internals::is_eigen_dense_xpr_v<Lhs>, Rhs, Lhs>;
     using EigenType = std::conditional_t<internals::is_eigen_dense_xpr_v<Lhs>, Lhs, Rhs>;
     static constexpr bool is_field_lhs = std::is_same_v<FieldType, Lhs>;
@@ -1044,8 +1053,9 @@ class matrix_eigen_binary_op_impl :
    public:
     using LhsDerived = Lhs;
     using RhsDerived = Rhs;
-    template <typename T1, typename T2> using Meta = matrix_eigen_binary_op_impl<T1, T2, BinaryOperation>;
-    using Base = MatrixFieldBase<FieldType::StaticInputSize, matrix_eigen_binary_op_impl<Lhs, Rhs, BinaryOperation>>;
+    template <typename T1, typename T2> using Meta = matrix_field_eigen_binary_op_impl<T1, T2, BinaryOperation>;
+    using Base =
+      MatrixFieldBase<FieldType::StaticInputSize, matrix_field_eigen_binary_op_impl<Lhs, Rhs, BinaryOperation>>;
     using InputType = typename FieldType::InputType;
     using Scalar = decltype(std::declval<BinaryOperation>().operator()(
       std::declval<typename FieldType::Scalar>(), std::declval<typename EigenType::Scalar>()));
@@ -1055,7 +1065,7 @@ class matrix_eigen_binary_op_impl :
     static constexpr int NestAsRef = 0;
     static constexpr int XprBits = FieldType::XprBits;
 
-    matrix_eigen_binary_op_impl(const Lhs& lhs, const Rhs& rhs, BinaryOperation op) :
+    matrix_field_eigen_binary_op_impl(const Lhs& lhs, const Rhs& rhs, BinaryOperation op) :
         Base(), lhs_(lhs), rhs_(rhs), op_(op) {
         if constexpr (
           FieldType::Rows == Dynamic || FieldType::Cols == Dynamic || EigenType::RowsAtCompileTime == Dynamic ||
@@ -1098,8 +1108,8 @@ class matrix_eigen_binary_op_impl :
     // evaluation at point
     constexpr auto operator()(const InputType& p) const { return Base::call_(p); }
    protected:
-    std::conditional_t<internals::is_eigen_dense_xpr_v<Lhs>, const Lhs&, internals::ref_select_t<const Lhs>> lhs_;
-    std::conditional_t<internals::is_eigen_dense_xpr_v<Rhs>, const Rhs&, internals::ref_select_t<const Rhs>> rhs_;
+    std::conditional_t<internals::is_eigen_dense_xpr_v<Lhs>, const Lhs, internals::ref_select_t<const Lhs>> lhs_;
+    std::conditional_t<internals::is_eigen_dense_xpr_v<Rhs>, const Rhs, internals::ref_select_t<const Rhs>> rhs_;
     BinaryOperation op_;
 };
 
@@ -1107,12 +1117,14 @@ class matrix_eigen_binary_op_impl :
 
 // Eigen matrix - matrix field product
 template <typename Lhs, typename Rhs>
-struct MatrixFieldProduct<Lhs, Eigen::MatrixBase<Rhs>> : public internals::matrix_eigen_product_impl<Lhs, Rhs> {
-    MatrixFieldProduct(const Lhs& lhs, const Rhs& rhs) : internals::matrix_eigen_product_impl<Lhs, Rhs>(lhs, rhs) { }
+struct MatrixFieldProduct<Lhs, Eigen::MatrixBase<Rhs>> : public internals::matrix_field_eigen_product_impl<Lhs, Rhs> {
+    MatrixFieldProduct(const Lhs& lhs, const Rhs& rhs) :
+        internals::matrix_field_eigen_product_impl<Lhs, Rhs>(lhs, rhs) { }
 };
 template <typename Lhs, typename Rhs>
-struct MatrixFieldProduct<Eigen::MatrixBase<Lhs>, Rhs> : public internals::matrix_eigen_product_impl<Lhs, Rhs> {
-    MatrixFieldProduct(const Lhs& lhs, const Rhs& rhs) : internals::matrix_eigen_product_impl<Lhs, Rhs>(lhs, rhs) { }
+struct MatrixFieldProduct<Eigen::MatrixBase<Lhs>, Rhs> : public internals::matrix_field_eigen_product_impl<Lhs, Rhs> {
+    MatrixFieldProduct(const Lhs& lhs, const Rhs& rhs) :
+        internals::matrix_field_eigen_product_impl<Lhs, Rhs>(lhs, rhs) { }
 };
   
 template <typename Lhs, typename Rhs>
@@ -1129,15 +1141,15 @@ operator*(const Eigen::MatrixBase<Lhs>& lhs, const MatrixFieldBase<Rhs::StaticIn
 // Eigen matrix - matrix field binary addition and subtraction
 template <typename Lhs, typename Rhs, typename BinaryOperation>
 struct MatrixFieldBinOp<Lhs, Eigen::MatrixBase<Rhs>, BinaryOperation> :
-    public internals::matrix_eigen_binary_op_impl<Lhs, Rhs, BinaryOperation> {
+    public internals::matrix_field_eigen_binary_op_impl<Lhs, Rhs, BinaryOperation> {
     MatrixFieldBinOp(const Lhs& lhs, const Rhs& rhs, BinaryOperation op) :
-        internals::matrix_eigen_binary_op_impl<Lhs, Rhs, BinaryOperation>(lhs, rhs, op) { }
+        internals::matrix_field_eigen_binary_op_impl<Lhs, Rhs, BinaryOperation>(lhs, rhs, op) { }
 };
 template <typename Lhs, typename Rhs, typename BinaryOperation>
 struct MatrixFieldBinOp<Eigen::MatrixBase<Lhs>, Rhs, BinaryOperation> :
-    public internals::matrix_eigen_binary_op_impl<Lhs, Rhs, BinaryOperation> {
+    public internals::matrix_field_eigen_binary_op_impl<Lhs, Rhs, BinaryOperation> {
     MatrixFieldBinOp(const Lhs& lhs, const Rhs& rhs, BinaryOperation op) :
-        internals::matrix_eigen_binary_op_impl<Lhs, Rhs, BinaryOperation>(lhs, rhs, op) { }
+        internals::matrix_field_eigen_binary_op_impl<Lhs, Rhs, BinaryOperation>(lhs, rhs, op) { }
 };
 
 #define FDAPDE_DEFINE_FIELD_EIGEN_BIN_OP(OPERATOR, FUNCTOR)                                                            \

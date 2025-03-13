@@ -161,7 +161,6 @@ template <int LocalDim, int EmbedDim> class DCEL {
     static DCEL<local_dim, embed_dim> make_polygon(const Eigen::Matrix<double, Dynamic, Dynamic>& nodes) {
         fdapde_assert(nodes.cols() == embed_dim);
         int n_nodes = nodes.rows();
-        int n_halfedges = 2 * (n_nodes + 1);
         DCEL<local_dim, embed_dim> dcel;
         // create polygon cell
         dcel.cells_.push_back(cell_t(0));
@@ -242,7 +241,7 @@ template <int LocalDim, int EmbedDim> class DCEL {
     // observers
     Eigen::Matrix<double, Dynamic, Dynamic> nodes() const {   // matrix of nodes coordinates
         Eigen::Matrix<double, Dynamic, Dynamic> coords(n_nodes_, embed_dim);
-        for (int i = 0; i < n_nodes_; ++i) { coords.row(nodes[i].id()) = nodes[i].coords(); }
+        for (auto it = nodes_.begin(); it != nodes_.end(); ++it) { coords.row(it->id()) = it->coords(); }
         return coords;
     }
     int n_nodes() const { return n_nodes_; }

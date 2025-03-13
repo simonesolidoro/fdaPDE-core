@@ -13,3 +13,17 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
+//
+//
+
+#ifndef __FDAPDE_EXECUTION_TYPE_H__
+#define __FDAPDE_EXECUTION_TYPE_H__
+
+#include "header_check.h"
+
+namespace execution {
+    struct execution_parallel {}; 
+    inline constexpr execution_parallel par {};
+}
+
+#endif

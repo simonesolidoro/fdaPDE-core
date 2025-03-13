@@ -21,7 +21,11 @@
 
 namespace fdapde {
 
+// forward decl
 template <int StaticInputSize, typename Derived> struct ScalarFieldBase;
+template <typename Derived> class Gradient;
+template <typename Derived> class Hessian;
+template <typename Derived> class Laplacian;
 
 template <typename Derived_, typename UnaryFunctor>
 struct ScalarFieldUnaryOp :
@@ -72,7 +76,7 @@ class pow_t {
     int i_ = 0;
    public:
     constexpr explicit pow_t(int i) : i_(i) { }
-    template <typename T> constexpr T operator()(T&& t) const { return std::pow(t, i_); }
+    template <typename Scalar> constexpr Scalar operator()(Scalar&& t) const { return fdapde::pow(t, i_); }
 };
 }   // namespace internals
 
@@ -80,37 +84,40 @@ template <int Size, typename Derived> constexpr auto pow(const ScalarFieldBase<S
     return ScalarFieldUnaryOp<Derived, internals::pow_t>(f.derived(), internals::pow_t(i));
 }
 
-template <typename Lhs_, typename Rhs_, typename BinaryOperation>
-class ScalarFieldBinOp : public ScalarFieldBase<Lhs_::StaticInputSize, ScalarFieldBinOp<Lhs_, Rhs_, BinaryOperation>> {
+template <typename Lhs, typename Rhs, typename BinaryOperation>
+class ScalarFieldBinOp : public ScalarFieldBase<Lhs::StaticInputSize, ScalarFieldBinOp<Lhs, Rhs, BinaryOperation>> {
     fdapde_static_assert(
-      Lhs_::StaticInputSize == Rhs_::StaticInputSize, YOU_MIXED_SCALAR_FUNCTIONS_WITH_DIFFERENT_STATIC_INNER_SIZES);
+      Lhs::StaticInputSize == Rhs::StaticInputSize, YOU_MIXED_SCALAR_FUNCTIONS_WITH_DIFFERENT_STATIC_INNER_SIZES);
     fdapde_static_assert(
-      std::is_convertible_v<typename Lhs_::Scalar FDAPDE_COMMA typename Rhs_::Scalar>,
+      std::is_convertible_v<typename Lhs::Scalar FDAPDE_COMMA typename Rhs::Scalar>,
       YOU_MIXED_SCALAR_FIELDS_WITH_NON_CONVERTIBLE_SCALAR_OUTPUT_TYPES);
    public:
-    using LhsDerived = Lhs_;
-    using RhsDerived = Rhs_;
+    using LhsDerived = Lhs;
+    using RhsDerived = Rhs;
     template <typename T1, typename T2> using Meta = ScalarFieldBinOp<T1, T2, BinaryOperation>;
     using Base =
       ScalarFieldBase<LhsDerived::StaticInputSize, ScalarFieldBinOp<LhsDerived, RhsDerived, BinaryOperation>>;
-    using InputType = typename LhsDerived::InputType;
+    using LhsInputType = typename LhsDerived::InputType;
+    using RhsInputType = typename RhsDerived::InputType;
+    using InputType = internals::prefer_most_derived_t<LhsInputType, RhsInputType>;
     using Scalar = typename LhsDerived::Scalar;
     static constexpr int StaticInputSize = LhsDerived::StaticInputSize;
     static constexpr int NestAsRef = 0;
     static constexpr int XprBits = LhsDerived::XprBits | RhsDerived::XprBits;
 
-    ScalarFieldBinOp(const Lhs_& lhs, const Rhs_& rhs, BinaryOperation op) requires(StaticInputSize == Dynamic) :
+    ScalarFieldBinOp(const Lhs& lhs, const Rhs& rhs, BinaryOperation op) requires(StaticInputSize == Dynamic) :
         Base(), lhs_(lhs), rhs_(rhs), op_(op) {
         fdapde_assert(lhs.input_size() == rhs.input_size());
     }
-    constexpr ScalarFieldBinOp(const Lhs_& lhs, const Rhs_& rhs, BinaryOperation op)
+    constexpr ScalarFieldBinOp(const Lhs& lhs, const Rhs& rhs, BinaryOperation op)
         requires(StaticInputSize != Dynamic)
         : Base(), lhs_(lhs), rhs_(rhs), op_(op) { }
-    constexpr ScalarFieldBinOp(const Lhs_& lhs, const Rhs_& rhs) : ScalarFieldBinOp(lhs, rhs, BinaryOperation {}) { }
+    constexpr ScalarFieldBinOp(const Lhs& lhs, const Rhs& rhs) : ScalarFieldBinOp(lhs, rhs, BinaryOperation {}) { }
     constexpr Scalar operator()(const InputType& p) const {
         fdapde_static_assert(
-          std::is_same_v<typename Lhs_::InputType FDAPDE_COMMA typename Rhs_::InputType>,
-          YOU_MIXED_SCALAR_FIELDS_WITH_DIFFERENT_INPUT_VECTOR_TYPES);
+          std::is_same_v<LhsInputType FDAPDE_COMMA RhsInputType> ||
+            internals::are_related_by_inheritance_v<LhsInputType FDAPDE_COMMA RhsInputType>,
+          YOU_MIXED_SCALAR_FIELDS_WITH_INCOMPATIBLE_INPUT_TYPES);
         if constexpr (StaticInputSize == Dynamic) { fdapde_assert(p.rows() == Base::input_size()); }
         return op_(lhs_(p), rhs_(p));
     }
@@ -142,6 +149,32 @@ template <int Size, typename Lhs, typename Rhs>
 constexpr ScalarFieldBinOp<Lhs, Rhs, std::divides<>>
 operator/(const ScalarFieldBase<Size, Lhs>& lhs, const ScalarFieldBase<Size, Rhs>& rhs) {
     return ScalarFieldBinOp<Lhs, Rhs, std::divides<>> {lhs.derived(), rhs.derived(), std::divides<>()};
+}
+
+namespace internals {
+class max_t {
+   public:
+    constexpr explicit max_t() { }
+    template <typename Scalar> constexpr Scalar operator()(Scalar&& lhs, Scalar&& rhs) const { return fdapde::max(lhs, rhs); }
+};
+
+class min_t {
+   public:
+    constexpr explicit min_t() { }
+    template <typename Scalar> constexpr Scalar operator()(Scalar&& lhs, Scalar&& rhs) const { return fdapde::min(lhs, rhs); }
+};
+}   // namespace internals
+
+template <int Size, typename Lhs, typename Rhs>
+constexpr ScalarFieldBinOp<Lhs, Rhs, internals::max_t>
+max(const ScalarFieldBase<Size, Lhs>& lhs, const ScalarFieldBase<Size, Rhs>& rhs) {
+    return ScalarFieldBinOp<Lhs, Rhs, internals::max_t> {lhs.derived(), rhs.derived(), internals::max_t()};
+}
+
+template <int Size, typename Lhs, typename Rhs>
+constexpr ScalarFieldBinOp<Lhs, Rhs, internals::min_t>
+min(const ScalarFieldBase<Size, Lhs>& lhs, const ScalarFieldBase<Size, Rhs>& rhs) {
+    return ScalarFieldBinOp<Lhs, Rhs, internals::max_t> {lhs.derived(), rhs.derived(), internals::min_t()};
 }
 
 template <typename Lhs_, typename Rhs_, typename BinaryOperation>
@@ -232,8 +265,9 @@ class ScalarField : public ScalarFieldBase<Size, ScalarField<Size, FunctorType_>
     static constexpr int NestAsRef = 0;               // whether to store the node by reference of by copy
     static constexpr int XprBits = 0;                 // bits which carries implementation specific informations
 
-    constexpr ScalarField() requires(StaticInputSize != Dynamic) : f_() { }
-    explicit ScalarField(int n) requires(StaticInputSize == Dynamic)
+    constexpr ScalarField() : f_() { }
+    constexpr explicit ScalarField(int n)
+        requires(StaticInputSize == Dynamic)
         : Base(), f_(), dynamic_input_size_(n) { }
     constexpr explicit ScalarField(const FunctorType& f) : f_(f) {};
     template <typename Expr> ScalarField(const ScalarFieldBase<Size, Expr>& f) {
@@ -259,18 +293,18 @@ class ScalarField : public ScalarFieldBase<Size, ScalarField<Size, FunctorType_>
           std::is_same_v<FunctorType FDAPDE_COMMA std::function<Scalar(InputType)>> &&
             std::is_convertible_v<
               typename std::invoke_result<LamdaType FDAPDE_COMMA InputType>::type FDAPDE_COMMA Scalar>,
-          INVALID_SCALAR_FUNCTION_ASSIGNMENT);
+          INVALID_LAMBDA_EXPRESSION_ASSIGNMENT);
         f_ = lambda;
         return *this;
     }
     // static initializers
-    struct ConstantFunction : public ScalarFieldBase<Size, ConstantFunction> {
+    struct ConstantField : public ScalarFieldBase<Size, ConstantField> {
         Scalar c_ = 0;
-        ConstantFunction(Scalar c) : c_(c) { }
+        ConstantField(Scalar c) : c_(c) { }
         constexpr Scalar operator()([[maybe_unused]] const InputType& x) const { return c_; }
     };
-    static constexpr ConstantFunction Constant(Scalar c) { return ConstantFunction(c); }
-    static constexpr ConstantFunction Zero() { return ConstantFunction(0.0); }
+    static constexpr ConstantField Constant(Scalar c) { return ConstantField(c); }
+    static constexpr ConstantField Zero() { return ConstantField(0.0); }
     constexpr int input_size() const { return StaticInputSize == Dynamic ? dynamic_input_size_ : StaticInputSize; }
     // evaluation at point
     constexpr Scalar operator()(const InputType& x) const { return f_(x); }
@@ -285,14 +319,13 @@ class ScalarField : public ScalarFieldBase<Size, ScalarField<Size, FunctorType_>
         for (int i = 0; i < points.rows(); ++i) { evals[i] = f_(points.row(i)); }
         return evals;
     }
-
     void resize(int dynamic_input_size) {
         fdapde_static_assert(StaticInputSize == Dynamic, YOU_CALLED_A_DYNAMIC_METHOD_ON_A_STATIC_SIZED_FIELD);
         dynamic_input_size_ = dynamic_input_size;
     }
    protected:
-    int dynamic_input_size_ = 0;   // run-time base space dimension
     FunctorType f_ {};
+    int dynamic_input_size_ = 0;   // run-time base space dimension
 };
 
 template <typename Derived, int Order> struct PartialDerivative;
@@ -416,6 +449,14 @@ template <int Size, typename Derived> struct ScalarFieldBase {
     double step_ = 1e-3;   // step size used in derivative approximation
 };
 
+#ifdef __FDAPDE_HAS_EIGEN__
+// special fields
+template <int StaticInputSize>
+struct ZeroField : public ScalarField<StaticInputSize, decltype([](const Eigen::Matrix<double, StaticInputSize, 1>&) {
+                                          return 0.0;
+                                      })> { };
+#endif
+  
 namespace internals {
 
 // for type Functor_ having just a call operator, xpr_wrap<Xpr_, Functor_> makes Functor_ a valid expression type to be
@@ -438,7 +479,7 @@ class xpr_scalar_wrap : ScalarFieldBase<StaticInputSize_, xpr_scalar_wrap<Static
     constexpr xpr_scalar_wrap() noexcept : f_() { }
     constexpr xpr_scalar_wrap(const Functor_& f) noexcept : f_(f) { }
     // accessors
-    constexpr Scalar operator()(const InputType& p) const { return xpr_(p); }
+    constexpr Scalar operator()(const InputType& p) const { return f_(p); }
     constexpr int input_size() const { return StaticInputSize; }
 };
 template <typename Xpr_, int StaticInputSize_, typename Functor_, int Bits_ = 0>

@@ -24,6 +24,7 @@
 #include "utility.h"
 #include "fields.h"
 #include "geometry.h"
+#include "multithreading.h"
 
 namespace fdapde{
 
@@ -42,15 +43,18 @@ struct finite_element_tag { };
 // assembly logic
 #include "src/assembly.h"
 #include "src/finite_elements/fe_assembler_base.h"
-#include "src/finite_elements/fe_bilinear_form_assembler.h"
+#include "src/finite_elements/fe_bilinear_form_assembler.h" 
 #include "src/finite_elements/fe_linear_form_assembler.h"
 #include "src/finite_elements/fe_mass_assembler.h"
+#include "src/finite_elements/fe_evaluator.h"
 // finite element spaces
 #include "src/finite_elements/lagrange_basis.h"
 #include "src/finite_elements/fe_p.h"
 #include "src/finite_elements/fe_space.h"
 // weak forms
 #include "src/finite_elements/fe_objects.h"
+// tensor product spaces
+#include "src/tp_space.h"
 
 // clang-format on
 

@@ -21,104 +21,94 @@
 
 namespace fdapde {
 
-// implementation of the Broyden–Fletcher–Goldfarb–Shanno algorithm for unconstrained nonlinear optimization
-template <int N, typename... Args> class BFGS {
+template <int N> class BFGS {
    private:
-    using VectorType =
-      typename std::conditional<N == Dynamic, Eigen::Matrix<double, Dynamic, 1>, Eigen::Matrix<double, N, 1>>::type;
-    using MatrixType = typename std::conditional<
-      N == Dynamic, Eigen::Matrix<double, Dynamic, Dynamic>, Eigen::Matrix<double, N, N>>::type;
+    using vector_t = std::conditional_t<N == Dynamic, Eigen::Matrix<double, Dynamic, 1>, Eigen::Matrix<double, N, 1>>;
+    using matrix_t =
+      std::conditional_t<N == Dynamic, Eigen::Matrix<double, Dynamic, Dynamic>, Eigen::Matrix<double, N, N>>;
+
+    vector_t optimum_;
+    double value_;                 // objective value at optimum
+    int n_iter_ = 0;               // current iteration number
+    std::vector<double> values_;   // explored objective values during optimization
+    matrix_t inv_hessian_;
+  
     int max_iter_;     // maximum number of iterations before forced stop
-    int n_iter_ = 0;   // current iteration number
     double tol_;       // tolerance on error before forced stop
     double step_;      // update step
-    std::tuple<Args...> callbacks_;
-
-    VectorType optimum_;
-    double value_;   // objective value at optimum
    public:
-    VectorType x_old, x_new, update, grad_old, grad_new;
-    MatrixType inv_hessian;
+    static constexpr bool gradient_free = false;
+    static constexpr int static_input_size = N;
+    vector_t x_old, x_new, update, grad_old, grad_new;
     double h;
-
     // constructor
-    BFGS() = default;
-    template <int N_ = sizeof...(Args), typename std::enable_if<N_ != 0, int>::type = 0>
+    BFGS() : max_iter_(500), tol_(1e-5), step_(1e-2) { }
     BFGS(int max_iter, double tol, double step) : max_iter_(max_iter), tol_(tol), step_(step) { }
-    BFGS(int max_iter, double tol, double step, Args&&... callbacks) :
-        max_iter_(max_iter), tol_(tol), step_(step), callbacks_(std::make_tuple(std::forward<Args>(callbacks)...)) { }
-    // copy semantic
-    BFGS(const BFGS& other) :
-        max_iter_(other.max_iter_), tol_(other.tol_), step_(other.step_), callbacks_(other.callbacks_) { }
+    BFGS(const BFGS& other) : max_iter_(other.max_iter_), tol_(other.tol_), step_(other.step_) { }
     BFGS& operator=(const BFGS& other) {
         max_iter_ = other.max_iter_;
         tol_ = other.tol_;
         step_ = other.step_;
-        callbacks_ = other.callbacks_;
         return *this;
     }
-    template <typename F> VectorType optimize(F& obj, const VectorType& x0) {
+    template <typename ObjectiveT, typename... Callbacks>
+    vector_t optimize(ObjectiveT&& objective, const vector_t& x0, Callbacks&&... callbacks) {
         fdapde_static_assert(
-          std::is_same<decltype(std::declval<F>().operator()(VectorType())) FDAPDE_COMMA double>::value,
-          INVALID_CALL_TO_OPTIMIZE_OBJECTIVE_FUNCTOR_NOT_ACCEPTING_VECTORTYPE);
+          std::is_same<decltype(std::declval<ObjectiveT>().operator()(vector_t())) FDAPDE_COMMA double>::value,
+          INVALID_CALL_TO_OPTIMIZE__OBJECTIVE_FUNCTOR_NOT_CALLABLE_AT_VECTOR_TYPE);
+        constexpr double NaN = std::numeric_limits<double>::quiet_NaN();
+        std::tuple<Callbacks...> callbacks_ {callbacks...};
         bool stop = false;   // asserted true in case of forced stop
-        VectorType zero;     // either statically or dynamically allocated depending on N
-        double error = 0;
-	auto grad = obj.derive();
-	n_iter_ = 0;
+        double error = std::numeric_limits<double>::max();
+        int size = N == Dynamic ? x0.rows() : N;
+        auto grad = objective.gradient();
         h = step_;
-        x_old = x0, x_new = x0;
+        n_iter_ = 0;
+        x_old = x0, x_new = vector_t::Constant(size, NaN);
+        grad_old = grad(x_old), grad_new = vector_t::Constant(size, NaN);
         if constexpr (N == Dynamic) {   // inv_hessian approximated with identity matrix
-            inv_hessian = MatrixType::Identity(x0.rows(), x0.rows());
-	    zero = VectorType::Zero(x0.rows());
+            inv_hessian_ = matrix_t::Identity(size, size);
         } else {
-            inv_hessian = MatrixType::Identity();
-	    zero = VectorType::Zero();
+            inv_hessian_ = matrix_t::Identity();
 	}
-        grad_old = grad(x_old);
-        if (grad_old.isApprox(zero)) {   // already at stationary point
-            optimum_ = x_old;
-            value_ = obj(optimum_);
-            return optimum_;
-        }
+	update = -inv_hessian_ * grad_old;
+	stop |= internals::exec_grad_hooks(*this, objective, callbacks_);
         error = grad_old.norm();
+        values_.push_back(objective(x_old));
 
         while (n_iter_ < max_iter_ && error > tol_ && !stop) {
-            // compute update direction
-            update = -inv_hessian * grad_old;
-            stop |= execute_pre_update_step(*this, obj, callbacks_);
+            stop |= internals::exec_adapt_hooks(*this, objective, callbacks_);
             // update along descent direction
             x_new = x_old + h * update;
             grad_new = grad(x_new);
-            if (grad_new.isApprox(zero)) {   // already at stationary point
-                optimum_ = x_old;
-                value_ = obj(optimum_);
-                return optimum_;
-            }
             // update inverse hessian approximation
-            VectorType delta_x = x_new - x_old;
-            VectorType delta_grad = grad_new - grad_old;
+            vector_t delta_x = x_new - x_old;
+            vector_t delta_grad = grad_new - grad_old;
             double xg = delta_x.dot(delta_grad);
-            VectorType hx = inv_hessian * delta_grad;
+            vector_t hx = inv_hessian_ * delta_grad;
 
-            MatrixType U = (1 + (delta_grad.dot(hx)) / xg) * ((delta_x * delta_x.transpose()) / xg);
-            MatrixType V = ((hx * delta_x.transpose() + delta_x * hx.transpose())) / xg;
-            inv_hessian += (U - V);
+            matrix_t U = (1 + (delta_grad.dot(hx)) / xg) * ((delta_x * delta_x.transpose()) / xg);
+            matrix_t V = ((hx * delta_x.transpose() + delta_x * hx.transpose())) / xg;
+            inv_hessian_ += (U - V);
             // prepare next iteration
-            error = grad_new.norm();
-            stop |= (execute_post_update_step(*this, obj, callbacks_) || execute_obj_stopping_criterion(*this, obj));
+            update = -inv_hessian_ * grad_new;
+            stop |=
+              (internals::exec_grad_hooks(*this, objective, callbacks_) || internals::exec_stop_if(*this, objective));
             x_old = x_new;
             grad_old = grad_new;
+            error = grad_new.norm();
+            values_.push_back(objective(x_old));
             n_iter_++;
         }	
         optimum_ = x_old;
-        value_ = obj(optimum_);
+        value_ = values_.back();
         return optimum_;
     }
-    // getters
-    VectorType optimum() const { return optimum_; }
+    // observers
+    const vector_t& optimum() const { return optimum_; }
     double value() const { return value_; }
     int n_iter() const { return n_iter_; }
+    const std::vector<double>& values() const { return values_; }
 };
 
 }   // namespace fdapde

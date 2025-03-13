@@ -154,7 +154,7 @@ template <template <typename> typename T, typename UnaryPred, typename Xpr> cons
     }
 }
 template <template <typename> typename T, typename UnaryPred, typename Xpr>
-constexpr auto xpr_wrap(Xpr&& xpr, UnaryPred p) {
+constexpr auto xpr_wrap(Xpr&& xpr, UnaryPred) {
     return xpr_wrap<T, std::decay_t<UnaryPred>>(xpr);
 }
 
@@ -186,7 +186,7 @@ constexpr decltype(auto) xpr_apply_if(Xpr&& xpr, Args&&... args) {
     }
 }
 template <typename UnaryFunc, typename UnaryPred, typename Xpr, typename... Args>
-constexpr decltype(auto) xpr_apply_if(Xpr&& xpr, UnaryPred p, UnaryFunc f, Args&&... args) {
+constexpr decltype(auto) xpr_apply_if(Xpr&& xpr, UnaryPred, UnaryFunc, Args&&... args) {
     return xpr_apply_if<std::decay_t<UnaryFunc>, std::decay_t<UnaryPred>>(
       std::forward<Xpr>(xpr), std::forward<Args>(args)...);
 }
@@ -220,7 +220,7 @@ constexpr void xpr_for_each(Xpr&& xpr, Args&&... args) {
     return;
 }
 template <typename UnaryFunc, typename UnaryPred, typename Xpr, typename... Args>
-constexpr decltype(auto) xpr_for_each(Xpr&& xpr, UnaryPred p, UnaryFunc f, Args&&... args) {
+constexpr decltype(auto) xpr_for_each(Xpr&& xpr, UnaryPred, UnaryFunc, Args&&... args) {
     return xpr_for_each<std::decay_t<UnaryFunc>, std::decay_t<UnaryPred>>(
       std::forward<Xpr>(xpr), std::forward<Args>(args)...);
 }

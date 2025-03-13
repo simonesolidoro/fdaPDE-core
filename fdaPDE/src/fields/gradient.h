@@ -45,7 +45,7 @@ template <typename Derived_> class Gradient : public MatrixFieldBase<Derived_::S
     constexpr const FunctorType& operator[](int i) { return data_[i]; }
     constexpr Scalar eval(int i, int j, const InputType& p) const { return data_[i * cols() + j](p); }
     constexpr Scalar eval(int i, const InputType& p) const { return data_[i](p); }
-    constexpr int rows() const { return Rows; }
+    constexpr int rows() const { return xpr_.input_size(); }
     constexpr int cols() const { return Cols; }
     constexpr int input_size() const { return xpr_.input_size(); }
     constexpr int size() const { return Rows; }
@@ -53,8 +53,9 @@ template <typename Derived_> class Gradient : public MatrixFieldBase<Derived_::S
     // evaluation at point
     constexpr auto operator()(const InputType& p) const { return Base::call_(p); }
    private:
-    using StorageType = typename std::conditional_t<
-      Derived::StaticInputSize == Dynamic, std::vector<FunctorType>, std::array<FunctorType, StaticInputSize>>;
+    using StorageType = std::conditional_t<
+      StaticInputSize == Dynamic, std::vector<FunctorType>,
+      std::array<FunctorType, StaticInputSize >= 0 ? StaticInputSize : 0>>;   // avoid -Wc++11-narrowing
     StorageType data_;
     internals::ref_select_t<Derived> xpr_;
 };
@@ -63,7 +64,24 @@ template <typename XprType>
 constexpr Gradient<XprType> grad(const XprType& xpr) requires(internals::is_scalar_field_v<XprType>) {
     return Gradient<XprType>(xpr);
 }
+// symbolic function objects
+// 1D spaces
+template <typename XprType> constexpr auto dx(const XprType& xpr) {
+    fdapde_static_assert(XprType::StaticInputSize >= 1, THIS_FUNCTION_IS_FOR_ONE_OR_HIGHER_DIMENSIONAL_SPACES_ONLY);
+    return Gradient<XprType>(xpr)[0];
+}
+// 2D spaces
+template <typename XprType> constexpr auto dy(const XprType& xpr) {
+    fdapde_static_assert(XprType::StaticInputSize >= 2, THIS_FUNCTION_IS_FOR_TWO_OR_HIGHER_DIMENSIONAL_SPACES_ONLY);
+    return Gradient<XprType>(xpr)[1];
+}
+// 3D spaces
+template <typename XprType> constexpr auto dz(const XprType& xpr) {
+    fdapde_static_assert(XprType::StaticInputSize == 3, THIS_FUNCTION_IS_FOR_THREE_DIMENSIONAL_SPACES_ONLY);
+    return Gradient<XprType>(xpr)[2];
+}
 
+  
 }   // namespace fdapde
 
 #endif // __FDAPDE_GRADIENT_H__

@@ -35,7 +35,7 @@ template <int LocalDim, int EmbedDim> class HyperPlane {
         basis_.col(0) = tmp.normalized();
         if constexpr (embed_dim == 2) normal_ << -tmp[0], tmp[1];
         if constexpr (embed_dim == 3) normal_ << -tmp[0], tmp[1], 0;   // one of the (infintely-many) normals to 3D line
-        normal_.normalized();
+        normal_ = normal_.normalized();
         offset_ = -x1.dot(normal_);
     }
     // constructs an hyperplane passing through 3 (non-collinear) points, e.g. a plane

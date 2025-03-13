@@ -282,17 +282,27 @@ struct FSPAI {
     Index cols() const { return L_.cols(); }
     MatrixL getL() const { return MatrixL(L_); }   // the Cholesky factor of the approximate inverse of matrix
     MatrixU getU() const { return MatrixU(L_.transpose()); }
-    SparseMatrixType inverse() const { return getL() * getU(); }   // the factorized sparse approximate inverse
+    SparseMatrixType inverse() const { return L_ * L_.transpose(); }   // the factorized sparse approximate inverse
 
     // linear system solve
-    template <typename Other> void solveInPlace(const Eigen::MatrixBase<Other>& other) const {
+    template <typename Other> void solveInPlace(Eigen::MatrixBase<Other>& other) const {
         fdapde_assert(L_.rows() == other.rows());
-        MatrixL(L_).solveInPlace(other);
+	other = inverse() * other;
     }
-    template <typename Other> Eigen::Matrix<Scalar, Dynamic, 1> solve(const Eigen::MatrixBase<Other>& other) const {
+    template <typename Other> void solveInPlace(Eigen::SparseMatrixBase<Other>& other) const {
         fdapde_assert(L_.rows() == other.rows());
-        return MatrixL(L_).solve(other);
+	other = inverse() * other;
+    }  
+    template <typename Other>
+    Eigen::Matrix<double, Dynamic, Dynamic> solve(const Eigen::MatrixBase<Other>& other) const {
+        fdapde_assert(L_.rows() == other.rows());
+        return inverse() * other;
     }
+    template <typename Other>
+    Eigen::SparseMatrix<double> solve(const Eigen::SparseMatrixBase<Other>& other) const {
+        fdapde_assert(L_.rows() == other.rows());
+        return inverse() * other;
+    }  
 };
 
 }   // namespace fdapde

@@ -40,14 +40,14 @@ template <typename Triangulation_> struct point_layer {
                 for (int j = 0; j < coords.cols(); ++j) { coords_.push_back(coords(i, j)); }
             }
             n_rows_ = coords.rows();
-        } else/* if constexpr(internals::is_stl_container<GeoDescriptor>) */{
+        } else {
             fdapde_assert(coords.size() % embed_dim == 0);
             coords_.reserve(coords.size());
-            std::copy(coords.begin(), coords.end(), coords_.data());
+            for (int i = 0, n = coords.size(); i < n; ++i) { coords_.push_back(coords[i]); }
             n_rows_ = coords.size() / embed_dim;
 	}
     }
-    // geometrical coordinates coincidint with triangulation nodes
+    // geometrical coordinates coincide with triangulation nodes
     point_layer(Triangulation_* triangulation) noexcept : triangulation_(triangulation), points_at_dofs_(true) {
         coords_.reserve(triangulation_->n_nodes() * embed_dim);
         const auto& coords = triangulation_->nodes();
@@ -116,10 +116,10 @@ template <typename Triangulation_> struct point_layer {
 	return triangulation_->locate(coords);
     }
    private:
-    bool points_at_dofs_ = false;
     Triangulation* triangulation_;
     std::vector<double> coords_;
     int n_rows_ = 0;
+    bool points_at_dofs_ = false;
 };
 
 }   // namespace internals

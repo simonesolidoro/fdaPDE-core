@@ -25,23 +25,24 @@ namespace fdapde {
 template <int LocalDim, int EmbedDim> class Triangulation;
 template <> class Triangulation<1, 1> : public TriangulationBase<1, 1, Triangulation<1, 1>> {
    public:
+    static constexpr int n_neighbors_per_cell = 2;
     using Base = TriangulationBase<1, 1, Triangulation<1, 1>>;
     using Base::cells_;       // N \times 2 matrix of nodes identifiers of each segment
     using Base::n_cells_;     // N: number of segments
     using Base::n_nodes_;     // number of nodes (N + 1)
-    using Base::neighbors_;   // N \times 2 matrix of neighboring cells identifiers
     using Base::nodes_;       // physical coordinates of nodes
 
     Triangulation() = default;
-    Triangulation(const Eigen::Matrix<double, Dynamic, 1>& nodes) : Base() {
+    Triangulation(const Eigen::Matrix<double, Dynamic, 1>& nodes, int flags = 0) : Base() {
         fdapde_assert(nodes.rows() > 1 && nodes.cols() == 1);
+	Base::flags_ = flags;
         nodes_ = nodes;
         // store number of nodes and elements
         n_nodes_ = nodes_.rows();
         n_cells_ = n_nodes_ - 1;
         // compute mesh limits
-        Base::range_[0] = nodes[0];
-        Base::range_[1] = nodes[n_nodes_ - 1];
+        Base::bbox_[0] = nodes[0];
+        Base::bbox_[1] = nodes[n_nodes_ - 1];
         // build elements and neighboring structure
         cells_.resize(n_cells_, 2);
         for (int i = 0; i < n_nodes_ - 1; ++i) {
@@ -62,11 +63,15 @@ template <> class Triangulation<1, 1> : public TriangulationBase<1, 1, Triangula
     };
     // construct from interval's bounds [a, b] and the number of equidistant nodes n used to split [a, b]
     Triangulation(double a, double b, int n) : Triangulation(Eigen::Matrix<double, Dynamic, 1>::LinSpaced(n, a, b)) { }
+    Triangulation(const std::string& nodes, bool header, bool index_col, int flags = 0) :
+        Triangulation(read_table<double>(nodes, header, index_col).as_matrix(), flags) { }
+
     // static constructors
     static Triangulation<1, 1> Interval(double a, double b, int n_nodes) { return Triangulation<1, 1>(a, b, n_nodes); }
     static Triangulation<1, 1> UnitInterval(int n_nodes) { return Triangulation<1, 1>::Interval(0.0, 1.0, n_nodes); }
 
     // getters
+    const Eigen::Matrix<int, Dynamic, Dynamic, Eigen::RowMajor>& neighbors() const { return neighbors_; }
     const typename Base::CellType& cell(int id) const {
         if (Base::flags_ & cache_cells) {   // cell caching enabled
             return cell_cache_[id];
@@ -77,7 +82,7 @@ template <> class Triangulation<1, 1> : public TriangulationBase<1, 1, Triangula
     }
     bool is_node_on_boundary(int id) const { return (id == 0 || id == (n_nodes_ - 1)); }
     constexpr int n_boundary_nodes() const { return 2; }
-    double measure() const { return std::abs(range_[1] - range_[0]); }
+    double measure() const { return std::abs(bbox_[1] - bbox_[0]); }
     // boundary iterator
     using boundary_iterator = Base::boundary_node_iterator;
     BoundaryIterator<Triangulation<1, 1>> boundary_begin(int marker = BoundaryAll) const {
@@ -121,7 +126,7 @@ template <> class Triangulation<1, 1> : public TriangulationBase<1, 1, Triangula
     // localize element containing point using a O(log(n)) binary search strategy
     int locate_(double p) const {
         // check if point is inside
-        if (p < range_[0] || p > range_[1]) {
+        if (p < bbox_[0] || p > bbox_[1]) {
             return -1;
         } else {
             // binary search strategy
@@ -141,6 +146,7 @@ template <> class Triangulation<1, 1> : public TriangulationBase<1, 1, Triangula
         }
         return -1;
     }
+    Eigen::Matrix<int, Dynamic, Dynamic, Eigen::RowMajor> neighbors_ {};   // adjacent cells ids (-1: no adjacent cell)
     // cell caching
     std::vector<typename Base::CellType> cell_cache_;
     mutable typename Base::CellType cell_;   // used in case cell caching is off

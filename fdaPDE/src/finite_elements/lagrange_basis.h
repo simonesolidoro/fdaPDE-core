@@ -42,7 +42,7 @@ template <int StaticInputSize_, int Order_> class LagrangeBasis {
                 for (int j = 1; j < n_basis; ++j) {
                     for (int k = 0; k < StaticInputSize; ++k) {
                         int exp = poly_table(j, k);
-                        if (exp) V(i, j) *= std::pow(nodes(i, k), exp);
+                        if (exp) V(i, j) *= fdapde::pow(nodes(i, k), exp);
                     }
                 }
             }

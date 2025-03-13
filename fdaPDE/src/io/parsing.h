@@ -36,7 +36,7 @@ concept is_char_buff =
 template <typename CharBuff>
     requires(is_char_buff<CharBuff>)
 size_t next_char_(const CharBuff& buff, std::size_t begin, std::size_t end, char c) {
-    int i = begin;
+    std::size_t i = begin;
     while (i < end && buff[i] != c) { i++; }
     return i - begin;
 }
@@ -44,8 +44,8 @@ size_t next_char_(const CharBuff& buff, std::size_t begin, std::size_t end, char
 template <typename CharBuff>
     requires(is_char_buff<CharBuff>)
 size_t next_char_or_newline_(const CharBuff& buff, std::size_t begin, std::size_t end, char c) {
-    int i = begin;
-    while (i < end && buff[i] != c && (buff[i] != EOF && buff[i] != '\n')) { i++; }
+    std::size_t i = begin;
+    while (i < end && buff[i] != c && (buff[i] != EOF && buff[i] != '\n' && buff[i] != '\r')) { i++; }
     return i - begin;
 }
 
@@ -56,9 +56,9 @@ template <typename CharT> struct token_stream {
 
     token_stream() = default;
     token_stream(CharT* buff, size_t buff_sz, char sep) :
-        buff_(buff), buff_sz_(buff_sz), head_(0), tail_(0), sep_(sep) { }
+        buff_(buff), sep_(sep), head_(0), tail_(0), buff_sz_(buff_sz) { }
     token_stream(const std::string& buff, char sep) :
-        buff_(buff.c_str()), buff_sz_(buff.size()), head_(0), tail_(0), sep_(sep) { }
+        buff_(buff.c_str()), sep_(sep), head_(0), tail_(0), buff_sz_(buff.size()) { }
 
     // a line is a contiguous portion of buffer encolsed between newline chars '\n'
     struct line_iterator {
@@ -68,7 +68,7 @@ template <typename CharT> struct token_stream {
       
         line_iterator() noexcept = default;
         line_iterator(buff_t buff, size_t buff_sz, size_t begin, size_t end, char sep) :
-            buff_(buff), token_sz_(0), buff_sz_(buff_sz), begin_(begin), end_(end), pos_(0), sep_(sep) {
+            buff_(buff), sep_(sep), token_sz_(0), buff_sz_(buff_sz), begin_(begin), end_(end), pos_(0) {
             fetch_token_();
         }
         bool has_token() const { return has_token_; }
@@ -129,9 +129,32 @@ template <typename CharT> struct token_stream {
 template <typename CharBuff>
     requires(is_char_buff<CharBuff>)
 double stod(CharBuff&& str) {
+    auto is_na = [](CharBuff& chr, int& i) -> bool {
+        if (chr[i] == 'N') {
+            i++;
+	    char c = chr[i];
+            if (c == 'A') {
+                i += 1;
+                return true;
+            }
+            if (c == 'a' && chr[i + 1] == 'N') {
+                i += 2;
+                return true;
+            }
+	    i--;
+            return false;
+        }
+        if (chr[i] == 'n' && chr[i + 1] == 'a' && chr[i + 2] == 'n') {
+            i += 3;
+            return true;
+        }
+        return false;
+    };
+
     double val = 0;
     int i = 0;
     while (str[i] == ' ') { i++; }   // skip leading whitespaces
+    if (is_na(str, i)) { return std::numeric_limits<double>::quiet_NaN(); }
     if (!(str[i] == '-' || (str[i] >= '0' && str[i] <= '9'))) { throw std::invalid_argument("stod parsing error."); }
     int sign = 1;
     if (str[i] == '-') {
@@ -161,7 +184,7 @@ double stod(CharBuff&& str) {
                 exp = exp * 10 + (str[i] - '0');
                 i++;;
             }
-            val *= (exp_sign > 1) ? std::pow(10, exp) : std::pow(0.1, exp);
+            val *= (exp_sign > 0) ? std::pow(10, exp) : std::pow(0.1, exp);
         }
     }
     return sign * val;
@@ -255,7 +278,7 @@ template <typename T> class table_reader {
     const std::vector<std::string>& colnames() const { return colnames_; }
     // parsing function
     void parse(
-      const char* filename, bool header = true, char sep = ',', bool index_col = false, bool skip_quote = true,
+      const char* filename, bool header = true, char sep = ',', bool index_col = true, bool skip_quote = true,
       std::size_t chunksize = 4) {
         std::string filename_ = std::filesystem::current_path().string() + "/" + filename;
         if (!std::filesystem::exists(filename_))
@@ -264,6 +287,7 @@ template <typename T> class table_reader {
         bool header_ = header;
 	std::size_t col_id = 0;
         std::string last_token;
+	std::size_t n_file_cols = 0;
 
         while (stream) {
             stream.read();
@@ -279,13 +303,18 @@ template <typename T> class table_reader {
                     header_ = false;
                     while (line.has_token()) {
                         std::string_view& token = skipquote_(skip_quote, line.get_token());
-                        if (index_col == false && n_cols_ != 0) { colnames_.push_back(std::string(token)); }
-                        n_cols_++;
+                        if (index_col == true) {
+                            if (n_file_cols != 0) colnames_.push_back(std::string(token));
+                        } else {
+                            colnames_.push_back(std::string(token));
+                        }
+                        n_file_cols++;
                         ++line;
                     }
+		    n_cols_ = n_file_cols - (index_col == true ? 1 : 0);
                 } else {   // data parsing logic
                     while (line.has_token()) {
-                        if (index_col == false && col_id == 0) {   // skip first column
+                        if (index_col == true && col_id == 0) {   // skip first column
                         } else {
                             std::string_view& token = skipquote_(skip_quote, line.get_token());
                             if (line.eof()) {   // skip parsing and wait for next block
@@ -300,7 +329,7 @@ template <typename T> class table_reader {
                                 }
                             }
                         }
-                        if (!line.eof() ) { col_id = (col_id + 1) % n_cols_; }
+                        if (!line.eof() ) { col_id = (col_id + 1) % n_file_cols; }
                         ++line;
                     }
                 }
@@ -308,14 +337,13 @@ template <typename T> class table_reader {
         }
         // process evantual last token of the last block of the stream
         if (!last_token.empty()) { data_.push_back(parse_value_(last_token)); }
-        if (index_col == false) n_cols_ = n_cols_ - 1;		
         if (data_.size() % n_cols_ != 0) throw std::invalid_argument("parsing error.");
         n_rows_ = data_.size() / n_cols_;
         return;
     }
 };
 
-}   // namespace internals
+}   // namespace internals  
 }   // namespace fdapde
 
 #endif   // __FDAPDE_PARSING_H__

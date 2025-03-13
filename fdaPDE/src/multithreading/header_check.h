@@ -14,23 +14,6 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-#ifndef __FDAPDE_CSV_H__
-#define __FDAPDE_CSV_H__
-
-#include "header_check.h"
-
-namespace fdapde {
-  
-// TODO: bug with index_col == true
-
-// parser for CSV, Comma Separated Values (RFC 4180 compliant)
-template <typename T>
-internals::table_reader<T> read_csv(const std::string& filename, bool header = true, bool index_col = false) {
-    internals::table_reader<T> csv(
-      filename.c_str(), header, /* sep = */ ',', index_col, /* skip_quote = */ true, /* chunksize = */ 1000);
-    return csv;
-}
-
-}   // namespace fdapde
-
-#endif // __FDAPDE_CSV_H__
+#ifndef __FDAPDE_MULTITHREADING_MODULE_H__
+#    error "Include fdaPDE/multithreading.h instead of including internal headers directly."
+#endif
