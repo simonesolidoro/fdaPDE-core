@@ -123,7 +123,7 @@ namespace fdapde {
             }
             bool empty(){
                 std::lock_guard loc(m);
-                return queue_.empy();
+                return queue_.empty();
             }
             
             // svuota queue_

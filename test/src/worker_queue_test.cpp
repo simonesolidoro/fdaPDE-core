@@ -18,35 +18,26 @@
 #include<iostream>  //per debug momentaneo
 
 
-
+void popola1(fdapde::Worker_queue<int> & coda){
+    for(int i=1 ; i<9; i++)
+        coda.push_back(i*10);
+}
+void popola2(fdapde::Worker_queue<int> & coda){
+    for(int i=1 ; i<9; i++)
+        coda.push_front(i);
+}
 
 int main(){
-    fdapde::Worker_queue<int> q(10);
-    fdapde::Worker_queue<int> p;
-    std::cout<<p.size()<<" "<<q.size()<<std::endl;
-    std::cout<<p.get_tail()<<" "<<q.get_head()<<std::endl;
-    for (int i =1; i<21; i++){
-        q.push_back(i);
-    }
-    
-    q.print();
-    q.flush();
-    q.print();
-    q.resize(3);
-    q.print();
-    /* pop_front
-    for(int j=0; j<20; j++)
-        q.pop_front();
-    
-    q.print();
-    */
+    fdapde::Worker_queue<int> q1(10);
 
-    /* pop_back()
-    for(int j=0; j<20; j++)
-        q.pop_back();
-    q.print();*/
 
+    std::thread t1(popola1, std::ref(q1));
+    std::thread t2(popola2, std::ref(q1));
+
+    t1.join();
+    t2.join();
     
+    q1.print();
     return 0;
 }
 
@@ -75,6 +66,37 @@ class toy_threadpool {
                 W.emplace_back(n)
             }
             
+        }
+
+};*/
+
+
+/*
+class toy_worker {
+    private:
+        fdapde::Worker_queue<int> coda;
+    public:
+        toy_worker(int n):coda(n){
+            std::thread t(&toy_worker::run,this);
+        };
+        void run(){
+            while(true){
+                if(! coda.empty()){
+                    int count= coda.pop_front();
+                    std::cout<<"da thread: "<<std::this_thread::get_id()<<" int: "<<count<<std::endl;
+                }
+            }
+        }
+};
+
+/*class toy_threadpool {
+    private:
+        std::vector<toy_worker> W;
+    public:
+        toy_threadpool(int n_coda, int n_thread){
+            for (int i = 0; i< n_thread; i++){
+                W.emplace_back(n_coda);
+            }
         }
 
 };*/
