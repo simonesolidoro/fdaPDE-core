@@ -17,25 +17,37 @@
 #include<fdaPDE/multithreading.h>
 #include<iostream>  //per debug momentaneo
 
-
-void popola1(fdapde::Worker_queue<int> & coda){
-    for(int i=1 ; i<9; i++)
-        coda.push_back(i*10);
+int size_coda=1000;
+void padronecoda(fdapde::Worker_queue<int> & coda){
+    int ii = size_coda;
+    while(ii!=0){
+        coda.pop_front();
+        ii--;
+    }
 }
-void popola2(fdapde::Worker_queue<int> & coda){
-    for(int i=1 ; i<9; i++)
-        coda.push_front(i);
+void rubalavoro(fdapde::Worker_queue<int> & coda){
+    int ii = size_coda/2;
+    while(ii!=0){
+        coda.pop_back();
+        ii--;
+    }
 }
 
 int main(){
-    fdapde::Worker_queue<int> q1(10);
+    fdapde::Worker_queue<int> q1(size_coda);
+    //popolo coda
+    for(int j=0; j<size_coda-1; j++){
+        q1.push_front(j);
+    }
+    q1.print();
 
-
-    std::thread t1(popola1, std::ref(q1));
-    std::thread t2(popola2, std::ref(q1));
+    std::thread t1(padronecoda, std::ref(q1));
+    std::thread t2(rubalavoro, std::ref(q1));
+    std::thread t3(rubalavoro, std::ref(q1));
 
     t1.join();
     t2.join();
+    t3.join();
     
     q1.print();
     return 0;
