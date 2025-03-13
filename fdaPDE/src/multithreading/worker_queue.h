@@ -30,7 +30,7 @@ namespace fdapde {
             int head_; //indx of 1 over "first" element
             int tail_; //indx of "last" element
             int size_;
-            bool empty_queue_;
+            bool empty_queue_; 
             std::mutex m;
         public:
             // default constructor credo poi da associare a metodo resize()
@@ -80,7 +80,19 @@ namespace fdapde {
             
             //member to be thread_safe (only )
             bool push_back(value_type t);
-            T pop_back();
+            T pop_back(){
+                std::lock_guard loc(m);
+                value_type new_empty;
+                if(empty_queue_ == true){
+                    //errore empty queue
+                }
+                int new_tail = (tail_ == size_-1)? (0):(tail_+1);
+                value_type ret = queue_[tail_];
+                queue_[tail_] = new_empty;
+                tail_ = new_tail;
+                if(head_==tail_) {empty_queue_ = true;}
+                return ret;
+            }
 
             // wrap of function size() empty() of vector
             int size(){

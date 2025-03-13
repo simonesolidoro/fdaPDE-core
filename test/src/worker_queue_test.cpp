@@ -27,10 +27,17 @@ int main(){
     }
     q.print();
   
+    /* pop_front
     for(int j=0; j<20; j++)
         q.pop_front();
     
     q.print();
+    */
+
+    /* pop_back()
+    for(int j=0; j<20; j++)
+        q.pop_back();
+    q.print();*/
 
     
     return 0;
