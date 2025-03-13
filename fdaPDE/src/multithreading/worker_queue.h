@@ -13,3 +13,16 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
+//
+//
+
+#ifndef __FDAPDE_WORKER_QUEUE_H__
+#define __FDAPDE_WORKER_QUEUE_H__
+
+#include "multithreading.h"
+
+namespace fdapde {
+    
+}
+
+#endif
