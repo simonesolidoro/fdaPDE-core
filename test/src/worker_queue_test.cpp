@@ -22,6 +22,15 @@ int main(){
     fdapde::Worker_queue<int> p;
     std::cout<<p.size()<<" "<<q.size()<<std::endl;
     std::cout<<p.get_tail()<<" "<<q.get_head()<<std::endl;
+    for (int i =1; i<21; i++){
+        q.push_front(i);
+    }
+    q.print();
+  
+    for(int j=0; j<20; j++)
+        q.pop_front();
+    
+    q.print();
 
     
     return 0;

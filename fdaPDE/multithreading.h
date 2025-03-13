@@ -20,6 +20,10 @@
 // clang-format off
 #include<vector>
 #include<mutex>
+
+// per debug momentaneo
+#include<iostream>
+
 // worker
 #include "src/multithreading/worker_queue.h"
 

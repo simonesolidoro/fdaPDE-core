@@ -26,25 +26,57 @@ namespace fdapde {
     class Worker_queue{
     using value_type= T;
         private:
-            std::vector<value_type> coda_;
-            int head;
-            int tail;
+            std::vector<value_type> queue_;
+            int head_; //indx of 1 over "first" element
+            int tail_; //indx of "last" element
+            int size_;
+            bool empty_queue_;
             std::mutex m;
         public:
-            // default constructor
+            // default constructor credo poi da associare a metodo resize()
             Worker_queue(){
-                head = 0;
-                tail = 0;
+                head_ = 0;
+                tail_ = 0;
+                empty_queue_ = true;
             };
-            // construct whit size of coda_=n;
+            // construct whit size of queue_=n;
             Worker_queue(int n){
-                coda_.resize(n);
-                head = 0;
-                tail = 0;
+                queue_.resize(n);
+                head_ = 0;
+                tail_ = 0;
+                size_ = n;
+                empty_queue_ = true;
             }
 
-            bool push_front(value_type t);
-            T pop_front();
+            bool push_front(value_type t){
+                int new_head = (head_ == size_-1)? (0) : (head_ + 1);
+                if (head_ != tail_ ){
+                    queue_[head_] = t;
+                    head_ = new_head;
+                    return 1;}
+                else if(empty_queue_==true){
+                    queue_[head_] = t;
+                    head_= new_head;
+                    empty_queue_ = false;
+                    return 1;} 
+                //std::cerr<<"queue full"<<std::endl;
+                return 0;   
+            }
+
+            T pop_front(){
+                value_type new_empty;
+                if (empty_queue_){
+                    //std::cerr<<"queue empty"<<std::endl;
+                    return new_empty;
+                }
+                int new_head = (head_== 0)? (size_-1) : (head_-1);
+                value_type ret = queue_[new_head];
+                queue_[new_head] = new_empty;
+                head_ = new_head;
+                if(head_==tail_) {empty_queue_ = true;}
+                return ret;
+                
+            }
             
             //member to be thread_safe (only )
             bool push_back(value_type t);
@@ -52,14 +84,21 @@ namespace fdapde {
 
             // wrap of function size() empty() of vector
             int size(){
-                return coda_.size();
+                return queue_.size();
             }
             bool empty(){
-                return coda_.empy();
+                return queue_.empy();
             }
 
-            int get_tail()const {return tail;}
-            int get_head()const {return head;}
+
+            //per debug momentanei
+            int get_tail()const {return tail_;}
+            int get_head()const {return head_;} 
+            void print(){
+                for (T i : queue_)
+                    std::cout<<i<<"  ";
+                std::cout<<std::endl;
+            }
 
 
 
