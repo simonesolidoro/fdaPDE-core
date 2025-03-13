@@ -32,10 +32,15 @@ namespace fdapde {
             std::mutex m;
         public:
             // default constructor
-            Worker_queue()=default;
+            Worker_queue(){
+                head = 0;
+                tail = 0;
+            };
             // construct whit size of coda_=n;
             Worker_queue(int n){
                 coda_.resize(n);
+                head = 0;
+                tail = 0;
             }
 
             bool push_front();
@@ -50,6 +55,9 @@ namespace fdapde {
             bool empty(){
                 return coda_.empy();
             }
+
+            int get_tail()const {return tail;}
+            int get_head()const {return head;}
 
 
 

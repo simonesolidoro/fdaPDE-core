@@ -21,6 +21,8 @@ int main(){
     fdapde::Worker_queue<int> q(10);
     fdapde::Worker_queue<int> p;
     std::cout<<p.size()<<" "<<q.size()<<std::endl;
+    std::cout<<p.get_tail()<<" "<<q.get_head()<<std::endl;
+
     
     return 0;
 }
