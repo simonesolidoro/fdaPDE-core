@@ -24,8 +24,35 @@
 namespace fdapde {
     template <typename T> 
     class Worker_queue{
+    using value_type= T;
         private:
-            std::vector<T> coda_;
+            std::vector<value_type> coda_;
+            int head;
+            int tail;
+            std::mutex m;
+        public:
+            // default constructor
+            Worker_queue()=default;
+            // construct whit size of coda_=n;
+            Worker_queue(int n){
+                coda_.resize(n);
+            }
+
+            bool push_front();
+            T pop_front();
+            bool push_back();
+            T pop_back();
+
+            // wrap of function size() empty() of vector
+            int size(){
+                return coda_.size();
+            }
+            bool empty(){
+                return coda_.empy();
+            }
+
+
+
     };
 
 };
