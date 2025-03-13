@@ -18,8 +18,9 @@
 #define __FDAPDE_MULTITHREADING_MODULE_H__
 
 // clang-format off
-
-#include <vector>
+#include<vector>
+#include<mutex>
+// worker
 #include "src/multithreading/worker_queue.h"
 
 // clang-format on
