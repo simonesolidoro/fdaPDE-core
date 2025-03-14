@@ -15,7 +15,6 @@
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 #include<fdaPDE/multithreading.h>
-#include<iostream>  //per debug momentaneo
 
 int size_coda=100000000;
 void padronecodatutta(fdapde::Worker_queue<int> & coda){

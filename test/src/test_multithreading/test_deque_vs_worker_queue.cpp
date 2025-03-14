@@ -15,7 +15,6 @@
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 #include<fdaPDE/multithreading.h>
-#include<iostream>  //per debug momentaneo
 
 // worker_queue con deque
 template <typename T>
