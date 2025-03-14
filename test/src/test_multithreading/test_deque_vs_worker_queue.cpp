@@ -111,3 +111,11 @@ int main(){
 }
 
 
+
+
+/* RISULTATI */
+/*push_frot worker_queue di n_elementi: 100 impiegato:1 microsecondi
+  push_frot deque di n_elementi: 100 impiegato:6 microsecondi
+*/
+
+
