@@ -711,6 +711,28 @@ BinaryVector<Dynamic> make_binary_vector(const Iterator& first, const Iterator& 
     return vec;
 }
 
+template <typename Data>
+    requires(internals::is_vector_like_v<Data> || internals::is_matrix_like_v<Data>)
+auto make_na_matrix(const Data& data) {
+    using storage_t =
+      std::conditional_t<internals::is_vector_like_v<Data>, BinaryVector<Dynamic>, BinaryMatrix<Dynamic, Dynamic>>;
+    storage_t na_mask;
+    if constexpr (internals::is_vector_like_v<Data>) {
+        na_mask.resize(data.size());
+        for (int i = 0; i < data.size(); ++i) {
+            if (std::isnan(internals::vector_like_access(data, i))) { na_mask.set(i); }
+        }
+    } else {
+        na_mask.resize(data.rows(), data.cols());
+        for (int i = 0; i < data.rows(); ++i) {
+            for (int j = 0; j < data.cols(); ++j) {
+                if (std::isnan(data(i, j))) { na_mask.set(i, j); }
+            }
+        }
+    }
+    return na_mask;
+}
+
 // map a memory region to a BinaryMatrix
 template <int Rows, int Cols, typename XprTypeNested>
 class BinaryMap : public BinMtxBase<Rows, Cols, BinaryMap<Rows, Cols, XprTypeNested>> {

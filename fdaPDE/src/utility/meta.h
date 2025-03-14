@@ -104,14 +104,55 @@ struct subscript_result_of {
 // deduces returned type of T's subscript operator with arguments Args...
 template <typename T, typename... Args> using subscript_result_of_t = typename subscript_result_of<T, Args...>::type;
 
+// detects if T is callable with Order arguments of type IndexT
+template <typename T, int Order, typename IndexT> class is_indexable {
+    using T_ = std::decay_t<T>;
+   public:
+    static constexpr bool value = []() {
+        return internals::apply_index_pack<Order>([]<int... Ns_>() {
+            if constexpr (requires(T_ t) { t(((void)Ns_, IndexT())...); }) {
+                return true;
+            } else {
+                return false;
+            }
+        });
+    }();
+};
+template <typename T, int Order, typename IndexT>
+static constexpr bool is_indexable_v = is_indexable<T, Order, IndexT>::value;
+  
+// detects if T behaves like a vector
 template <typename T> class is_vector_like {
     using T_ = std::decay_t<T>;
   public:
-   static constexpr bool value = is_subscriptable<T, int> && requires(T t) {
-       { t.size() } -> std::convertible_to<std::size_t>;
-   };
+   static constexpr bool value =
+     ((is_subscriptable<T_, int> || is_indexable_v<T_, 1, int>) && !is_indexable_v<T_, 2, int>) && requires(T_ t) {
+         { t.size() } -> std::convertible_to<int>;
+     };
 };
 template <typename T> static constexpr bool is_vector_like_v = is_vector_like<T>::value;
+
+template <typename T>
+    requires(is_vector_like_v<T>)
+decltype(auto) vector_like_access(T&& data, int index) {
+    using T_ = std::decay_t<T>;
+    if constexpr (is_subscriptable<T_, int>) {
+        return data[index];
+    } else {
+        return data(index);
+    }
+}
+  
+// detect if T behaves like a matrix
+template <typename T> class is_matrix_like {
+    using T_ = std::decay_t<T>;
+  public:
+   static constexpr bool value = internals::is_indexable_v<T_, 2, int> && requires(T_ t) {
+       { t.rows() } -> std::convertible_to<int>;
+       { t.cols() } -> std::convertible_to<int>;
+   };
+};
+template <typename T> static constexpr bool is_matrix_like_v = is_matrix_like<T>::value;
 
 // get i-th element from parameter pack
 template <int N, typename... Ts>

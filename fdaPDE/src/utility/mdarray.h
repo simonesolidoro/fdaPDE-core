@@ -58,22 +58,6 @@ struct md_traits<MdMap<Scalar_, Extents_, LayoutPolicy_>> {
     using const_reference = std::add_const_t<reference>;
 };
 
-template <typename T, int Order, typename IndexT> class is_indexable {
-    using T_ = std::decay_t<T>;
-   public:
-    static constexpr bool value = []() {
-        return internals::apply_index_pack<Order>([]<int... Ns_>() {
-            if constexpr (requires(T_ t) { t(((void)Ns_, IndexT())...); }) {
-                return true;
-            } else {
-                return false;
-            }
-        });
-    }();
-};
-template <typename T, int Order, typename IndexT>
-static constexpr bool is_indexable_v = is_indexable<T, Order, IndexT>::value;
-
 template <typename Extent, typename Idx>
 constexpr bool is_index_in_extent(Extent ext, Idx idx)
     requires(std::is_convertible_v<Extent, int> && std::is_convertible_v<Idx, int>) {
