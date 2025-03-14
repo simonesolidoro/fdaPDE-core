@@ -17,27 +17,34 @@
  #include<fdaPDE/multithreading.h>
  
  int main(){
-     fdapde::Worker_queue<int> q(10);
-     fdapde::Worker_queue<int> p;
-     std::cout<<p.size()<<" "<<q.size()<<std::endl;
-     std::cout<<p.get_tail()<<" "<<q.get_head()<<std::endl;
-     for (int i =1; i<21; i++){
-         q.push_front(i);
-         q.push_back(i);
-     }
-     q.print();
+    fdapde::Worker_queue<int> q(10);
+
+    //push_front()
+    for (int i =1; i<11; i++){
+        q.push_front(i);
+    }
+    std::cout<<"push_front():  "<<std::endl;
+    q.print();
  
-     /* pop_front
-     for(int j=0; j<20; j++)
-         q.pop_front();
-     
-     q.print();
-     */
+    //pop_front
+    for(int j=1; j<11; j++)
+        q.pop_front();
+    std::cout<<"pop_front():  "<<std::endl;
+    q.print();
+
+    //push_back()
+    for (int i =1; i<11; i++){
+        q.push_back(i);
+    }
+    std::cout<<"push_back():  "<<std::endl;
+    q.print();
  
-     /* pop_back()
-     for(int j=0; j<20; j++)
-         q.pop_back();
-     q.print();*/
+    //pop_back()
+    for(int j=1; j<11; j++)
+        q.pop_back();
+    std::cout<<"pop_back():  "<<std::endl;
+    q.print();
  
  
      return 0;
+    }
