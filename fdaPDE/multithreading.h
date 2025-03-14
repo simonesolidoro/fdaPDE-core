@@ -22,9 +22,10 @@
 #include<mutex>
 #include<thread>
 
-// per debug momentaneo
+// per debug e test momentaneo
 #include<iostream>
 #include<chrono>
+#include<deque>
 
 // worker
 #include "src/multithreading/worker_queue.h"
