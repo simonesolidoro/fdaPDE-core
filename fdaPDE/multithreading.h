@@ -22,6 +22,7 @@
 #include<mutex>
 #include<thread>
 #include<condition_variable>
+#include<memory>
 
 // per debug e test momentaneo
 #include<iostream>

@@ -73,7 +73,60 @@ class Worker_toy{
 
 }
 */
+template<typename T>
+class Workerpool_toy{
+    private:
+        std::vector<std::shared_ptr<fdapde::Worker_queue<T>>> coda_; //shared ptr perche classe Worker_queue ha mutex quindi non movable
+        std::vector<std::thread> threads;
+        int n_thread;
+        int n_el_wq; //size worker queue
+        bool is_active= true;
+    public:
+        Workerpool_toy(int n, int m):n_thread(n),n_el_wq(m){
+            for (int i=0; i<n; i++){
+                auto ptr= std::make_shared<fdapde::Worker_queue<T>> (n_el_wq);
+                coda_.push_back(ptr);
+                threads.emplace_back(&Workerpool_toy::run,this,coda_[i]);
+            }
+        }
+        
+        ~Workerpool_toy(){
+
+            is_active=false; // prima modifico cosi che thread finiscano esecuzione e poi faccio join() (se contarrio programma run all infinito)
+
+            for (int i =0; i<n_thread; i++){
+                threads[i].join();
+            }
+        }
+
+        // add same t to all worker_queue
+        void post_all(T t){
+            for (int i=0; i<n_thread; i++)
+                coda_[i]->push_back(t); 
+        }
+/*        bool all_empty(){
+            bool flag;
+            for (auto x: coda_){
+                if(! x->empty())
+                    return false;
+            }
+            return true;
+        }
+*/
+        void run (std::shared_ptr<fdapde::Worker_queue<T>> q){
+                while(is_active){
+                    while(!q->empty()){
+                        q->pop_front();
+                        std::cout<<"ciao da thread:"<<std::this_thread::get_id()<<std::endl;
+                        std::this_thread::sleep_for(10ms);
+                    }
+                }
+        }
+};
+
 int main(){
+
+    // unica deque threapool
     threadpool_toy<int> pool(3);
     std::vector<int> V;
     for(int i =0; i<100; i++){
@@ -81,6 +134,16 @@ int main(){
     }
     for (auto x: V){
         pool.post(x);
+    }
+
+    //threadpool con piu worker queue (workerpool)
+    Workerpool_toy<int> wpool(3,3);
+    std::vector<int> V2;
+    for(int i =0; i<3; i++){
+        V2.push_back(i);
+    }
+    for (auto x: V2){
+        wpool.post_all(x);
     }
     return 0;
 }
