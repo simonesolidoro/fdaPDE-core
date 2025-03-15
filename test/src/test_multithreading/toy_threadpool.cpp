@@ -51,7 +51,28 @@ class threadpool_toy{
             std::this_thread::sleep_for(10ms);
         }
 };
+/*
+template<typename T>
+class Worker_toy{
+    private:
+        fdapde::Worker_queue<T> q_;
+        std::thread t_;
+    public:
+        void post(T t){
+            q_.push_front(t);
+        }
+        void run(){
+            while(true){
+                T job=q_.pop_front();
+                t_=std::thread ([& job](){std::this_thread::sleep_for(10ms) //simula lavoro;
+                                    }
+                                )
+                t_.join();
+            }
+        }
 
+}
+*/
 int main(){
     threadpool_toy<int> pool(3);
     std::vector<int> V;
