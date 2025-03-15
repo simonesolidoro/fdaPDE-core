@@ -19,12 +19,9 @@
 int size_coda=10;
 using namespace std::chrono_literals;
 void padronecoda(fdapde::Worker_queue<int> & coda){
-    int i =0;
-    while(i<2){
-        coda.empty();
+    while(! coda.empty()){
         coda.pop_front();
         //std::this_thread::sleep_for(1ms); //simula lavoro
-        i++;
     }
 
 }

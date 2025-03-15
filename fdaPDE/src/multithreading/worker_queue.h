@@ -123,7 +123,7 @@ namespace fdapde {
             }
             bool empty(){
                 std::lock_guard<std::mutex> loc(m_);
-                return queue_.empty();
+                return empty_queue_;
             }
             
             // svuota queue_

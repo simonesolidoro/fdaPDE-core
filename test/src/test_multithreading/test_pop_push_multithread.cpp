@@ -20,6 +20,7 @@ void pushbackconc(std::vector<int> V, fdapde::Worker_queue<int> & q){
     for (auto x: V){
         q.push_back(x);
     }
+    if (q.empty()){std::cout<<"vuoto";}
 }
 
 int main(){
