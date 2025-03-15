@@ -16,6 +16,8 @@
 
 #include<fdaPDE/multithreading.h>
 
+/*test per verifica vector usato come array piu efficente di deque */
+
 // worker_queue con deque
 template <typename T>
 class Worker_queue_deque{
