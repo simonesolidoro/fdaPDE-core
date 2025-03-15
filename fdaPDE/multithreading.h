@@ -21,6 +21,7 @@
 #include<vector>
 #include<mutex>
 #include<thread>
+#include<condition_variable>
 
 // per debug e test momentaneo
 #include<iostream>
