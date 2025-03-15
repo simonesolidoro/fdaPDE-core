@@ -63,7 +63,6 @@ class Workerpool_toy{
         std::vector<std::thread> threads;
         int n_thread;
         int n_el_wq; //size worker queue
-        bool is_active= true;
     public:
         Workerpool_toy(int n, int m):n_thread(n),n_el_wq(m){
             // inizializzo singole worker_queue
@@ -73,23 +72,34 @@ class Workerpool_toy{
             }
             //inizializzo i thread
             for(int i=0; i<n; i++){
-                threads.emplace_back(&Workerpool_toy::run,this,coda_,i);
+                threads.emplace_back(&Workerpool_toy::run,this,std::ref(coda_),i);
             }
         }
         
         ~Workerpool_toy(){
 
-            is_active=false; // prima modifico cosi che thread finiscano esecuzione e poi faccio join() (se contarrio programma run all infinito perche join() aspetta fine di run che non arriva finche is_active non = false)
-
             for (int i =0; i<n_thread; i++){
                 threads[i].join();
             }
+
+            print_all();//per debug
         }
 
+        //per debug
+        void print_all(){
+            int k=0;
+            for (auto x: coda_){
+                std::cout<<"coda :"<<k<<" =";
+                x->print();
+                k++;
+            }
+
+        }
         // add same t to all worker_queue
         void post_all(T t){
             for (int i=0; i<n_thread; i++)
-                coda_[i]->push_back(t); 
+                for(int j=0; j<n_el_wq; j++)
+                    coda_[i]->push_back(t); 
         }
 /*        bool all_empty(){
             bool flag;
@@ -100,26 +110,27 @@ class Workerpool_toy{
             return true;
         }
 */
-        void run (std::vector<std::shared_ptr<fdapde::Worker_queue<T>>> q, int index){
-                while(is_active){
+        void run (std::vector<std::shared_ptr<fdapde::Worker_queue<T>>> & q, int index){
+                    int j=0; //per debug
+                    std::cout << "Thread " << index <<"con id:"<<std::this_thread::get_id()<<" sta iniziando"<<std::endl;
                     while(!q[index]->empty()){
                         q[index]->pop_front();
-                        std::cout<<"ciao da thread:"<<std::this_thread::get_id()<<std::endl;
+                        std::cout<<"da thread:"<<std::this_thread::get_id()<<"in index"<<index<<"j vale:"<<j<<std::endl;
                         std::this_thread::sleep_for(10ms);
+                        j++;
                     }
                     // finito con proprio thread passa a successivo
                     int i=0;
-                    while(i<n_thread-1){
-                        int new_index = (index!=n_thread-1)? (index + 1):(0);
+                    int new_index= index;
+                    while(i<n_thread){
+                        new_index = (new_index != n_thread-1)? (new_index + 1):(0);
                         while(!q[new_index]->empty()){
                             q[new_index]->pop_back(); // back perchè non è il suo
-                            std::cout<<"ciao da thread:"<<std::this_thread::get_id()<<std::endl;
-                            std::this_thread::sleep_for(10ms);
+                            //std::cout<<"thread:"<<std::this_thread::get_id()<<"in index"<<new_index<<std::endl;
+                            std::this_thread::sleep_for(1s);
                         }
                         i++;
                     }                    
-
-                }
         }
 };
 
@@ -136,13 +147,9 @@ int main(){
     }
 
     //threadpool con piu worker queue (workerpool)
-    Workerpool_toy<int> wpool(3,3);
-    std::vector<int> V2;
-    for(int i =0; i<3; i++){
-        V2.push_back(i);
-    }
-    for (auto x: V2){
-        wpool.post_all(x);
-    }
+    Workerpool_toy<int> wpool(2,3);
+    int x=2;
+    wpool.post_all(x);
+    
     return 0;
 }
