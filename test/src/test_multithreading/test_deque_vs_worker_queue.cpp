@@ -39,13 +39,13 @@ class Worker_queue_deque{
             
             //push_back() thread-safe 
             void push_back(value_type t){
-                std::lock_guard loc(m);
+                std::lock_guard<std::mutex> loc(m);
                 queue_.push_front(t);  
             }
 
             //pop_back() thrade-safe
             T pop_back(){
-                std::lock_guard loc(m);
+                std::lock_guard<std::mutex> loc(m);
                 value_type ret=queue_.front();
                 queue_.pop_front();
                 return ret;
@@ -53,11 +53,11 @@ class Worker_queue_deque{
 
             // wrap of function size() empty() of vector thrade-safe
             int size(){
-                std::lock_guard loc(m);
+                std::lock_guard<std::mutex> loc(m);
                 return queue_.size();
             }
             bool empty(){
-                std::lock_guard loc(m);
+                std::lock_guard<std::mutex> loc(m);
                 return queue_.empty();
             }
             //per debug momentanei
@@ -173,13 +173,13 @@ int main(){
 /* RISULTATI */
 /*
 push_frot worker_queue di n_elementi: 100 impiegato:1 microsecondi
-push_frot deque di n_elementi: 100 impiegato:4 microsecondi
-pop_frot worker_queue di n_elementi: 100 impiegato:2 microsecondi
-pop_frot deque di n_elementi: 100 impiegato:7 microsecondi
-push_back() worker_queue di n_elementi: 100 impiegato:18 microsecondi
-push_back() deque di n_elementi: 100 impiegato:15 microsecondi
-pop_back() worker_queue di n_elementi: 100 impiegato:12 microsecondi
-pop_back() deque di n_elementi: 100 impiegato:26 microsecondi
+push_frot deque di n_elementi: 100 impiegato:2 microsecondi
+pop_frot worker_queue di n_elementi: 100 impiegato:1 microsecondi
+pop_frot deque di n_elementi: 100 impiegato:2 microsecondi
+push_back() worker_queue di n_elementi: 100 impiegato:5 microsecondi
+push_back() deque di n_elementi: 100 impiegato:4 microsecondi
+pop_back() worker_queue di n_elementi: 100 impiegato:3 microsecondi
+pop_back() deque di n_elementi: 100 impiegato:31 microsecondi
 */
 
 
