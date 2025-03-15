@@ -37,7 +37,6 @@ class threadpool_toy{
         }
         
         ~threadpool_toy(){
-            cv.notify_all();
             for (int i =0; i<n_thread; i++){
                 threads[i].join();
             }
