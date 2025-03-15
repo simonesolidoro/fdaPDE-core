@@ -432,8 +432,8 @@ struct GeoLayer {
     }
     void load_shp(const std::string& filename) {
         fdapde_static_assert(
-          Order == 1 &&
-            std::is_same_v<std::tuple_element_t<0 FDAPDE_COMMA GeoInfo> FDAPDE_COMMA internals::polygon_layer_descriptor>,
+          Order == 1 && std::is_same_v<std::tuple_element_t<0 FDAPDE_COMMA GeoInfo> FDAPDE_COMMA
+                                         internals::polygon_layer_descriptor>,
           THIS_METHOD_IS_FOR_POLYGONAL_ORDER_ONE_LAYERS_ONLY);
         std::string filename_ = std::filesystem::current_path().string() + "/" + filename;
         if (!std::filesystem::exists(filename_)) { throw std::runtime_error("file " + filename_ + " not found."); }
@@ -730,6 +730,7 @@ struct GeoLayer {
     template <int N> void load_geometry_index_(const Eigen::Matrix<double, Dynamic, Dynamic>& coords) {
         fdapde_assert(coords.cols() == embed_dim[N]);
         std::get<N>(geo_data_) = std::tuple_element_t<N, geo_storage_t>(std::get<N>(triangulation_), coords);
+        if (n_rows_ == 0) { n_rows_ = coords.rows(); }
         return;
     }
     template <int N> void load_geometry_index_(int flag) {
@@ -738,6 +739,7 @@ struct GeoLayer {
           THIS_METHOD_IS_FOR_POINT_INDEXES_ONLY);
         fdapde_assert(flag == MESH_NODES);
         std::get<N>(geo_data_) = std::tuple_element_t<N, geo_storage_t>(std::get<N>(triangulation_));
+        if (n_rows_ == 0) { n_rows_ = std::get<N>(triangulation_)->nodes().rows(); }
         return;
     }
     template <int N>

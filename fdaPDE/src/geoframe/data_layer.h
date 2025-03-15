@@ -146,13 +146,14 @@ template <typename Scalar_, typename DataObj> struct plain_col_view {
     logical_t operator<=(const Scalar& rhs) const { return logical_apply_(rhs, std::less_equal<Scalar>    {}); }
     logical_t operator>=(const Scalar& rhs) const { return logical_apply_(rhs, std::greater_equal<Scalar> {}); }
 #ifdef __FDAPDE_HAS_EIGEN__
-    Eigen::Map<Eigen::Matrix<Scalar, Dynamic, Dynamic, Eigen::ColMajor>> as_matrix() {
+    Eigen::Map<Eigen::Matrix<Scalar, Dynamic, Dynamic, Eigen::ColMajor>> as_matrix()
+        requires(!std::is_const_v<DataObj>) {
         fdapde_static_assert(Order == 2, THIS_METHOD_IS_FOR_ORDER_TWO_MDARRAYS_ONLY);
         return Eigen::Map<Eigen::Matrix<Scalar, Dynamic, Dynamic, Eigen::ColMajor>>(block_.data(), rows(), blk_sz_);
     }
-    Eigen::Map<Eigen::Matrix<const Scalar, Dynamic, Dynamic, Eigen::ColMajor>> as_matrix() const {
+    Eigen::Map<const Eigen::Matrix<Scalar, Dynamic, Dynamic, Eigen::ColMajor>> as_matrix() const {
         fdapde_static_assert(Order == 2, THIS_METHOD_IS_FOR_ORDER_TWO_MDARRAYS_ONLY);
-        return Eigen::Map<Eigen::Matrix<const Scalar, Dynamic, Dynamic, Eigen::ColMajor>>(
+        return Eigen::Map<const Eigen::Matrix<Scalar, Dynamic, Dynamic, Eigen::ColMajor>>(
           block_.data(), rows(), blk_sz_);
     }
 #endif
@@ -1041,6 +1042,31 @@ class scalar_data_layer {
         cols_--;
     }
     void shrink_to_fit() { }
+
+    // merge all columns of type T in a single block
+    template <typename T> void merge(const std::string& colname) {
+        using MappedT = mapped_type_t<T>;
+        dtype type_id = internals::dtype_from_static_type<MappedT>().type_id;
+	int size = 0, index = -1;;
+        // erase all columns of type T from header
+        for (auto it = header_.begin(); it != header_.end();) {
+            if (it->type_id() == type_id) {
+                if (index == -1) { index = col_idx_.at(it->colname()); }
+                col_idx_.erase(it->colname());
+                it = header_.erase(it);
+		cols_--;
+		size++;
+            } else {
+                ++it;
+            }
+        }
+        if (index == -1) { return; }   // nothing to merge
+        // update header
+        header_.emplace_back(colname, 0, size, type_id);
+	cols_++;
+	col_idx_[colname] = index;
+	return;
+    }
 
     // output stream
     friend std::ostream& operator<<(std::ostream& os, const scalar_data_layer& data) {

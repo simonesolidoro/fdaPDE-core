@@ -126,7 +126,7 @@ template <typename T> class is_vector_like {
     using T_ = std::decay_t<T>;
   public:
    static constexpr bool value =
-     ((is_subscriptable<T_, int> || is_indexable_v<T_, 1, int>) && !is_indexable_v<T_, 2, int>) && requires(T_ t) {
+     (is_subscriptable<T_, int> || (is_indexable_v<T_, 1, int> && !is_indexable_v<T_, 2, int>)) && requires(T_ t) {
          { t.size() } -> std::convertible_to<int>;
      };
 };
