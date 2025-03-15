@@ -55,7 +55,7 @@ class threadpool_toy{
 };
 
 
-//threadpool con piu worker_queue
+//threadpool con piu worker_queue 
 template<typename T>
 class Workerpool_toy{
     private:
@@ -66,10 +66,14 @@ class Workerpool_toy{
         bool is_active= true;
     public:
         Workerpool_toy(int n, int m):n_thread(n),n_el_wq(m){
+            // inizializzo singole worker_queue
             for (int i=0; i<n; i++){
                 auto ptr= std::make_shared<fdapde::Worker_queue<T>> (n_el_wq);
                 coda_.push_back(ptr);
-                threads.emplace_back(&Workerpool_toy::run,this,coda_[i]);
+            }
+            //inizializzo i thread
+            for(int i=0; i<n; i++){
+                threads.emplace_back(&Workerpool_toy::run,this,coda_,i);
             }
         }
         
@@ -96,13 +100,25 @@ class Workerpool_toy{
             return true;
         }
 */
-        void run (std::shared_ptr<fdapde::Worker_queue<T>> q){
+        void run (std::vector<std::shared_ptr<fdapde::Worker_queue<T>>> q, int index){
                 while(is_active){
-                    while(!q->empty()){
-                        q->pop_front();
+                    while(!q[index]->empty()){
+                        q[index]->pop_front();
                         std::cout<<"ciao da thread:"<<std::this_thread::get_id()<<std::endl;
                         std::this_thread::sleep_for(10ms);
                     }
+                    // finito con proprio thread passa a successivo
+                    int i=0;
+                    while(i<n_thread-1){
+                        int new_index = (index!=n_thread-1)? (index + 1):(0);
+                        while(!q[new_index]->empty()){
+                            q[new_index]->pop_back(); // back perchè non è il suo
+                            std::cout<<"ciao da thread:"<<std::this_thread::get_id()<<std::endl;
+                            std::this_thread::sleep_for(10ms);
+                        }
+                        i++;
+                    }                    
+
                 }
         }
 };
