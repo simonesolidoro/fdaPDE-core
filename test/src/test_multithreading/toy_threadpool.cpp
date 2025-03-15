@@ -29,6 +29,7 @@ class threadpool_toy{
         std::mutex m_; //protegge accesso coda
         std::condition_variable cv;
         int n_thread;
+        bool is_active = true;
     public:
         threadpool_toy(int n):n_thread(n){
             for (int i=0; i<n; i++){
@@ -37,6 +38,8 @@ class threadpool_toy{
         }
         
         ~threadpool_toy(){
+            is_active= false;
+            cv.notify_all(); //notifica a tutti che is_active ora falsa cosi si svegliano e con if(!is_active){break;} terminano la funzione run
             for (int i =0; i<n_thread; i++){
                 threads[i].join();
             }
@@ -48,10 +51,15 @@ class threadpool_toy{
         }
 
         void run (){
-            std::unique_lock<std::mutex> loc(m_); //con cv serve unique_lock non lock_guard
-            cv.wait(loc,[this](){return ! coda_.empty();});
-            coda_.pop_back();
-            std::this_thread::sleep_for(100ms);
+            while(true){
+                {// in {} cosi che lock di mutez rilasciato una volta copiato il job e poi esecuzione fatta con mutex rilasciato per non bloccare accesso a coda ad altri thread
+                    std::unique_lock<std::mutex> loc(m_); //con cv serve unique_lock non lock_guard
+                    cv.wait(loc,[this](){return ! coda_.empty() || !is_active;});
+                    if(!is_active){break;};
+                    coda_.pop_back();
+                }
+                std::this_thread::sleep_for(10ms);
+            }
         }
 };
 
@@ -123,7 +131,7 @@ class Workerpool_toy{
                     while(!q[index]->empty()){
                         q[index]->pop_front();
                         //std::cout<<"da thread:"<<std::this_thread::get_id()<<"in index"<<index<<"j vale:"<<j<<std::endl;
-                        std::this_thread::sleep_for(100ms);
+                        std::this_thread::sleep_for(10ms);
                         //j++;
                     }
                     // finito con proprio thread passa a successivo
@@ -134,7 +142,7 @@ class Workerpool_toy{
                         while(!q[new_index]->empty()){
                             q[new_index]->pop_back(); // back perchè non è il suo
                             //std::cout<<"thread:"<<std::this_thread::get_id()<<"in index"<<new_index<<std::endl;
-                            std::this_thread::sleep_for(100ms);
+                            std::this_thread::sleep_for(10ms);
                         }
                         i++;
                     }                    
