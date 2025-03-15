@@ -86,7 +86,7 @@ namespace fdapde {
             
             //push_back() thread-safe 
             bool push_back(value_type t){
-                std::lock_guard loc(m_);
+                std::lock_guard<std::mutex> loc(m_);
                 int new_tail = (tail_ == 0)? (size_-1) : (tail_ -1);
                 if (head_ != tail_){ //se non pieno
                     queue_[new_tail] = t;
@@ -103,7 +103,7 @@ namespace fdapde {
 
             //pop_back() thrade-safe
             value_type pop_back(){
-                std::lock_guard loc(m_);
+                std::lock_guard<std::mutex> loc(m_);
                 value_type new_empty;
                 if(empty_queue_ == true){
                     //errore empty queue
@@ -118,11 +118,11 @@ namespace fdapde {
 
             // wrap of function size() empty() of vector thrade-safe
             int size(){
-                std::lock_guard loc(m_);
+                std::lock_guard<std::mutex> loc(m_);
                 return queue_.size();
             }
             bool empty(){
-                std::lock_guard loc(m_);
+                std::lock_guard<std::mutex> loc(m_);
                 return queue_.empty();
             }
             
