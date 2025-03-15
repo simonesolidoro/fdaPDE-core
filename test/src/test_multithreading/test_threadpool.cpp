@@ -16,49 +16,59 @@
 
 #include<fdaPDE/multithreading.h>
 
-int size_coda=100000000;
-void padronecodatutta(fdapde::Worker_queue<int> & coda){
-    int ii = size_coda;
-    while(ii!=0){
+int size_coda=10;
+using namespace std::chrono_literals;
+void padronecoda(fdapde::Worker_queue<int> & coda){
+    
+    while(!coda.empty()){
         coda.pop_front();
-        ii--;
+        //std::this_thread::sleep_for(1ms); //simula lavoro
     }
+
 }
 
-void padronecodamulti(fdapde::Worker_queue<int> & coda){
-    int ii = size_coda/2;
-    while(ii!=0){
-        coda.pop_front();
-        ii--;
-    }
-}
 
-void rubalavoro(fdapde::Worker_queue<int> & coda){
-    int ii = size_coda/4;
-    while(ii!=0){
-        coda.pop_back();
-        ii--;
+
+void rubalavoro(fdapde::Worker_queue<int> & coda1,fdapde::Worker_queue<int> & coda2){
+    while(!coda1.empty()){
+        coda1.pop_back();
+        //std::this_thread::sleep_for(1ms);
+    }
+    while(!coda1.empty()){
+        coda2.pop_back();
+        //std::this_thread::sleep_for(1ms);
     }
 }
+    
 
 int main(){
+
     fdapde::Worker_queue<int> q1(size_coda);
+    fdapde::Worker_queue<int> q2(size_coda);
+
     //popolo coda
-    for(int j=0; j<size_coda-1; j++){
+    for(int j=1; j<=size_coda; j++){
         q1.push_front(j);
     }
-    //q1.print();
+    for(int j=1; j<=size_coda; j++){
+        q2.push_front(j);
+    }
+    q1.print();
+    q2.print();
 
-    auto start = std::chrono::high_resolution_clock::now();
-    std::thread t1(padronecodamulti, std::ref(q1));
-    std::thread t2(rubalavoro, std::ref(q1));
-    std::thread t3(rubalavoro, std::ref(q1));
+    
+    std::thread t1(padronecoda, std::ref(q1));
+    std::thread t2(padronecoda, std::ref(q2));
+    //std::thread t3(rubalavoro, std::ref(q1),std::ref(q2));
 
 
     t1.join();
     t2.join();
-    t3.join();
-    //q1.print();
+    //t3.join();
+    q1.print();
+    q2.print();
+
+/*  
     auto end = std::chrono::high_resolution_clock::now();
     auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start);  
     std::cout<<"svuotare coda di n_elementi: "<<size_coda<<" con multithrading impiegato:"<<duration.count()<< " microsecondi\n";
@@ -77,7 +87,7 @@ int main(){
     auto end2 = std::chrono::high_resolution_clock::now();
     auto duration2 = std::chrono::duration_cast<std::chrono::microseconds>(end2 - start2);  
     std::cout<<"svuotare coda di n_elementi: "<<size_coda<<" con 1 thrad impiegato:"<<duration2.count()<< " microsecondi\n";
-
+*/
     return 0;
 }
 
