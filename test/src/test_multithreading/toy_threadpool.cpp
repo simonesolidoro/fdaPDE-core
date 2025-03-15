@@ -50,6 +50,7 @@ class threadpool_toy{
         void run (){
             std::unique_lock<std::mutex> loc(m_); //con cv serve unique_lock non lock_guard
             cv.wait(loc,[this](){return ! coda_.empty();});
+            coda_.pop_back();
             std::this_thread::sleep_for(100ms);
         }
 };
