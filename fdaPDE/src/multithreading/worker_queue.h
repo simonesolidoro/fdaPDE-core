@@ -50,7 +50,12 @@ namespace fdapde {
 
             // resize() di queue_ super easy for the moment
             void resize(int n){
+                std::lock_guard<std::mutex> loc(m_);
                 queue_ = std::vector<value_type> (n);
+                head_=0;
+                tail_=0;
+                size_=n;
+                empty_queue_= true;
             }
 
 
