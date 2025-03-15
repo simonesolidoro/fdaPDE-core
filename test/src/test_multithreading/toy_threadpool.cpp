@@ -16,8 +16,11 @@
 
 #include<fdaPDE/multithreading.h>
 
+/*test per confronto threadpool con singola deque e threadpool con piu worker_queue*/
+
 using namespace std::chrono_literals;
 
+//threadpool con singola deque
 template<typename T>
 class threadpool_toy{
     private:
@@ -51,28 +54,9 @@ class threadpool_toy{
             std::this_thread::sleep_for(10ms);
         }
 };
-/*
-template<typename T>
-class Worker_toy{
-    private:
-        fdapde::Worker_queue<T> q_;
-        std::thread t_;
-    public:
-        void post(T t){
-            q_.push_front(t);
-        }
-        void run(){
-            while(true){
-                T job=q_.pop_front();
-                t_=std::thread ([& job](){std::this_thread::sleep_for(10ms) //simula lavoro;
-                                    }
-                                )
-                t_.join();
-            }
-        }
 
-}
-*/
+
+//threadpool con piu worker_queue
 template<typename T>
 class Workerpool_toy{
     private:
@@ -92,7 +76,7 @@ class Workerpool_toy{
         
         ~Workerpool_toy(){
 
-            is_active=false; // prima modifico cosi che thread finiscano esecuzione e poi faccio join() (se contarrio programma run all infinito)
+            is_active=false; // prima modifico cosi che thread finiscano esecuzione e poi faccio join() (se contarrio programma run all infinito perche join() aspetta fine di run che non arriva finche is_active non = false)
 
             for (int i =0; i<n_thread; i++){
                 threads[i].join();
