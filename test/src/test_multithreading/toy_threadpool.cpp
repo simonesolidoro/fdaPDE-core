@@ -50,7 +50,7 @@ class threadpool_toy{
         void run (){
             std::unique_lock<std::mutex> loc(m_); //con cv serve unique_lock non lock_guard
             cv.wait(loc,[this](){return ! coda_.empty();});
-            std::this_thread::sleep_for(10ms);
+            std::this_thread::sleep_for(100ms);
         }
 };
 
@@ -82,7 +82,7 @@ class Workerpool_toy{
                 threads[i].join();
             }
 
-            print_all();//per debug
+            //print_all();//per debug
         }
 
         //per debug
@@ -95,11 +95,17 @@ class Workerpool_toy{
             }
 
         }
-        // add same t to all worker_queue
+        // add same t to all space in all worker_queue
         void post_all(T t){
             for (int i=0; i<n_thread; i++)
                 for(int j=0; j<n_el_wq; j++)
                     coda_[i]->push_back(t); 
+        }
+
+        // add same t to all worker_queue
+        void post(T t){
+            for (int i=0; i<n_thread; i++)
+                coda_[i]->push_back(t);
         }
 /*        bool all_empty(){
             bool flag;
@@ -111,13 +117,13 @@ class Workerpool_toy{
         }
 */
         void run (std::vector<std::shared_ptr<fdapde::Worker_queue<T>>> & q, int index){
-                    int j=0; //per debug
-                    std::cout << "Thread " << index <<"con id:"<<std::this_thread::get_id()<<" sta iniziando"<<std::endl;
+                    //int j=0; //per debug
+                    //std::cout << "Thread " << index <<"con id:"<<std::this_thread::get_id()<<" sta iniziando"<<std::endl;
                     while(!q[index]->empty()){
                         q[index]->pop_front();
-                        std::cout<<"da thread:"<<std::this_thread::get_id()<<"in index"<<index<<"j vale:"<<j<<std::endl;
-                        std::this_thread::sleep_for(10ms);
-                        j++;
+                        //std::cout<<"da thread:"<<std::this_thread::get_id()<<"in index"<<index<<"j vale:"<<j<<std::endl;
+                        std::this_thread::sleep_for(100ms);
+                        //j++;
                     }
                     // finito con proprio thread passa a successivo
                     int i=0;
@@ -127,7 +133,7 @@ class Workerpool_toy{
                         while(!q[new_index]->empty()){
                             q[new_index]->pop_back(); // back perchè non è il suo
                             //std::cout<<"thread:"<<std::this_thread::get_id()<<"in index"<<new_index<<std::endl;
-                            std::this_thread::sleep_for(1s);
+                            std::this_thread::sleep_for(100ms);
                         }
                         i++;
                     }                    
@@ -135,21 +141,30 @@ class Workerpool_toy{
 };
 
 int main(){
-
+    int size_worker_queue=100;
+    int n_thread= 4;
+    int size_coda= size_worker_queue*n_thread;
     // unica deque threapool
-    threadpool_toy<int> pool(3);
-    std::vector<int> V;
-    for(int i =0; i<100; i++){
-        V.push_back(i);
-    }
-    for (auto x: V){
-        pool.post(x);
-    }
+    threadpool_toy<int> pool(n_thread);
+    Workerpool_toy<int> wpool(n_thread,size_worker_queue);
 
-    //threadpool con piu worker queue (workerpool)
-    Workerpool_toy<int> wpool(2,3);
-    int x=2;
-    wpool.post_all(x);
+    auto start = std::chrono::high_resolution_clock::now();
+    for(int i =0; i<size_coda; i++){
+        pool.post(i);
+    }
+    auto end = std::chrono::high_resolution_clock::now();
+    auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start);  
+    std::cout<<"push e pop di n_elementi: "<<size_coda<<" con threadpool impiegato:"<<duration.count()<< " microsecondi\n";
+ 
+
+
+    auto start1 = std::chrono::high_resolution_clock::now();
+    for(int i=0; i<size_worker_queue; i++){
+        pool.post(i);
+    }
+    auto end1 = std::chrono::high_resolution_clock::now();
+    auto duration1 = std::chrono::duration_cast<std::chrono::microseconds>(end1 - start1);  
+    std::cout<<"push e pop di n_elementi: "<<size_coda<<" divisi in "<<size_worker_queue<<" su "<<n_thread<<" worker"<<" impiegato:"<<duration1.count()<< " microsecondi\n";
     
     return 0;
 }
