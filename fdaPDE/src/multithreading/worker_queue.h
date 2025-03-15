@@ -31,7 +31,7 @@ namespace fdapde {
             int tail_; //indx of "last" element
             int size_;
             bool empty_queue_; 
-            std::mutex m;
+            std::mutex m_;
         public:
             // default constructor credo poi da associare a metodo resize()
             Worker_queue(){
@@ -69,7 +69,7 @@ namespace fdapde {
                 return 0;   
             }
 
-            T pop_front(){
+            value_type pop_front(){
                 value_type new_empty;
                 if (empty_queue_){
                     //std::cerr<<"queue empty"<<std::endl;
@@ -86,7 +86,7 @@ namespace fdapde {
             
             //push_back() thread-safe 
             bool push_back(value_type t){
-                std::lock_guard loc(m);
+                std::lock_guard loc(m_);
                 int new_tail = (tail_ == 0)? (size_-1) : (tail_ -1);
                 if (head_ != tail_){ //se non pieno
                     queue_[new_tail] = t;
@@ -102,8 +102,8 @@ namespace fdapde {
             }
 
             //pop_back() thrade-safe
-            T pop_back(){
-                std::lock_guard loc(m);
+            value_type pop_back(){
+                std::lock_guard loc(m_);
                 value_type new_empty;
                 if(empty_queue_ == true){
                     //errore empty queue
@@ -118,17 +118,17 @@ namespace fdapde {
 
             // wrap of function size() empty() of vector thrade-safe
             int size(){
-                std::lock_guard loc(m);
+                std::lock_guard loc(m_);
                 return queue_.size();
             }
             bool empty(){
-                std::lock_guard loc(m);
+                std::lock_guard loc(m_);
                 return queue_.empty();
             }
             
             // svuota queue_
             void flush(){ 
-                std::lock_guard loc(m);
+                std::lock_guard loc(m_);
                 value_type new_empty;
                 if (head_ > tail_)
                     for(int i = tail_ ; i< head_ ; i++){
@@ -154,7 +154,7 @@ namespace fdapde {
             int get_tail()const {return tail_;}
             int get_head()const {return head_;} 
             void print(){
-                for (T i : queue_)
+                for (value_type i : queue_)
                     std::cout<<i<<"  ";
                 std::cout<<std::endl;
             }
