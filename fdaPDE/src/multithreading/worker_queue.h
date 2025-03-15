@@ -25,8 +25,9 @@ namespace fdapde {
     template <typename T> 
     class Worker_queue{
     using value_type= T;
+    typedef std::vector<value_type> container;
         private:
-            std::vector<value_type> queue_;
+            container queue_;
             int head_; //indx of 1 over "first" element
             int tail_; //indx of "last" element
             int size_;
