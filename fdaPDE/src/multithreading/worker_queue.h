@@ -62,7 +62,7 @@ namespace fdapde {
 
             bool push_front(value_type t){
                 int new_head = (head_ == size_-1)? (0) : (head_ + 1);
-                if (head_ != tail_ ){
+                if (head_ != tail_){
                     queue_[head_] = t;
                     head_ = new_head;
                     return 1;}
@@ -79,7 +79,7 @@ namespace fdapde {
                 value_type new_empty;
                 if (empty_queue_){
                     //std::cerr<<"queue empty"<<std::endl;
-                    return new_empty;
+                    return new_empty;  //forse break;
                 }
                 int new_head = (head_== 0)? (size_-1) : (head_-1);
                 value_type ret = queue_[new_head];
