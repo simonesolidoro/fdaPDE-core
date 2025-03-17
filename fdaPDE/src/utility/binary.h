@@ -615,26 +615,72 @@ template <int Rows, int Cols, typename XprType> class BinMtxBase {
   
 #ifdef __FDAPDE_HAS_EIGEN__
     // selection on eigen expressions
-    template <typename ExprType>
-    Eigen::Matrix<typename ExprType::Scalar, Dynamic, Dynamic> select(const Eigen::MatrixBase<ExprType>& mtx) const {
+    template <typename ExprType, typename Scalar>
+        requires(internals::is_eigen_dense_xpr_v<ExprType> && std::is_convertible_v<Scalar, typename ExprType::Scalar>)
+    Eigen::Matrix<typename ExprType::Scalar, Dynamic, Dynamic>
+    select(const Eigen::MatrixBase<ExprType>& mtx, Scalar false_val = Scalar(0)) const {
         fdapde_assert(n_rows_ == mtx.rows() && n_cols_ == mtx.cols());
         using Scalar_ = typename ExprType::Scalar;
-	Eigen::Matrix<Scalar_, Dynamic, Dynamic> masked_mtx = mtx;   // assign to dense storage
-        for (int i = 0; i < mtx.rows(); ++i)
-            for (int j = 0; j < mtx.cols(); ++j) {
-                if (!get().operator()(i, j)) masked_mtx(i, j) = 0;
+        Eigen::Matrix<Scalar_, Dynamic, Dynamic> masked_mtx = mtx;   // assign to dense storage
+        for (int i = 0; i < n_rows_; ++i) {
+            for (int j = 0; j < n_cols_; ++j) {
+                if (!get().operator()(i, j)) masked_mtx(i, j) = false_val;
             }
+        }
         return masked_mtx;
     }
-    template <typename ExprType>
-    Eigen::SparseMatrix<typename ExprType::Scalar> select(const Eigen::SparseMatrixBase<ExprType>& mtx) const {
+    // select between true_expr and false_expr based on binary mask
+    template <typename TrueExpr, typename FalseExpr>
+        requires(
+          internals::is_eigen_dense_xpr_v<TrueExpr> && internals::is_eigen_dense_xpr_v<FalseExpr> &&
+          std::is_same_v<typename TrueExpr::Scalar, typename FalseExpr::Scalar>)
+    Eigen::Matrix<typename TrueExpr::Scalar, Dynamic, Dynamic>
+    select(const Eigen::MatrixBase<TrueExpr>& true_expr, const Eigen::MatrixBase<FalseExpr>& false_expr) {
+        fdapde_assert(
+          n_rows_ == true_expr.rows() && n_cols_ == true_expr.cols() && true_expr.rows() == false_expr.rows() &&
+          true_expr.cols() == false_expr.cols());
+        using Scalar_ = typename TrueExpr::Scalar;
+        Eigen::Matrix<Scalar_, Dynamic, Dynamic> masked_mtx = true_expr;
+        Eigen::Matrix<Scalar_, Dynamic, Dynamic> tmp = false_expr;   // evaluate false_expr in temporary
+        for (int i = 0; i < n_rows_; ++i) {
+            for (int j = 0; j < n_cols_; ++j) {
+	      if (!get().operator()(i, j)) masked_mtx(i, j) = tmp(i, j);
+            }
+        }
+        return masked_mtx;
+    }
+
+    template <typename ExprType, typename Scalar>
+        requires(internals::is_eigen_sparse_xpr_v<ExprType> && std::is_convertible_v<Scalar, typename ExprType::Scalar>)
+    Eigen::SparseMatrix<typename ExprType::Scalar>
+    select(const Eigen::SparseMatrixBase<ExprType>& mtx, Scalar false_val = Scalar(0)) const {
         fdapde_assert(n_rows_ == mtx.rows() && n_cols_ == mtx.cols());
         using Scalar_ = typename ExprType::Scalar;
 	Eigen::SparseMatrix<Scalar_> masked_mtx = mtx;   // assign to sparse storage
-        for (int k = 0; k < masked_mtx.outerSize(); ++k)
+        for (int k = 0; k < masked_mtx.outerSize(); ++k) {
             for (typename Eigen::SparseMatrix<Scalar_>::InnerIterator it(masked_mtx, k); it; ++it) {
-                if (!get().operator()(it.row(), it.col())) { it.valueRef() = 0; }
+                if (!get().operator()(it.row(), it.col())) { it.valueRef() = false_val; }
             }
+	}
+        return masked_mtx;
+    }
+    template <typename TrueExpr, typename FalseExpr>
+        requires(
+          internals::is_eigen_sparse_xpr_v<TrueExpr> && internals::is_eigen_sparse_xpr_v<FalseExpr> &&
+          std::is_same_v<typename TrueExpr::Scalar, typename FalseExpr::Scalar>)
+    Eigen::SparseMatrix<typename TrueExpr::Scalar>
+    select(const Eigen::SparseMatrixBase<TrueExpr>& true_expr, const Eigen::SparseMatrixBase<FalseExpr>& false_expr) {
+        fdapde_assert(
+          n_rows_ == true_expr.rows() && n_cols_ == true_expr.cols() && true_expr.rows() == false_expr.rows() &&
+          true_expr.cols() == false_expr.cols());
+        using Scalar_ = typename TrueExpr::Scalar;
+        Eigen::SparseMatrix<Scalar_> masked_mtx = true_expr;
+        Eigen::SparseMatrix<Scalar_> tmp = false_expr;   // evaluate false_expr in temporary
+        for (int k = 0; k < masked_mtx.outerSize(); ++k) {
+            for (typename Eigen::SparseMatrix<Scalar_>::InnerIterator it(masked_mtx, k); it; ++it) {
+                if (!get().operator()(it.row(), it.col())) { it.valueRef() = tmp.coeffRef(it.row(), it.col()); }
+            }
+	}
         return masked_mtx;
     }
 #endif
@@ -713,7 +759,7 @@ BinaryVector<Dynamic> make_binary_vector(const Iterator& first, const Iterator& 
 
 template <typename Data>
     requires(internals::is_vector_like_v<Data> || internals::is_matrix_like_v<Data>)
-auto make_na_matrix(const Data& data) {
+auto na_matrix(const Data& data) {
     using storage_t =
       std::conditional_t<internals::is_vector_like_v<Data>, BinaryVector<Dynamic>, BinaryMatrix<Dynamic, Dynamic>>;
     storage_t na_mask;

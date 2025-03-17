@@ -22,37 +22,55 @@
 namespace fdapde {
 
 // searches for the point in a given grid minimizing a given nonlinear objective
-template <int N, typename... Args> class Grid {
+template <int N, typename... Args> class GridOptimizer {
    private:
-    using VectorType =
-      typename std::conditional<N == Dynamic, Eigen::Matrix<double, Dynamic, 1>, Eigen::Matrix<double, N, 1>>::type;
-    using GridType = Eigen::Matrix<double, Eigen::Dynamic, N>;
+    using vector_t = std::conditional_t<N == Dynamic, std::vector<double>, std::array<double, N>>;
+    using grid_t   = MdMap<const double, MdExtents<Dynamic, Dynamic>>;
+  
     std::tuple<Args...> callbacks_ {};
-    VectorType optimum_;
+    vector_t optimum_;
     double value_;   // objective value at optimum
+    int size_;
    public:
-    VectorType x_current;
+    vector_t x_current;
     // constructor
-    Grid() requires(sizeof...(Args) != 0) { }
-    Grid(Args&&... callbacks) : callbacks_(std::make_tuple(std::forward<Args>(callbacks)...)) { }
+    GridOptimizer() requires(N != Dynamic && sizeof...(Args) != 0) : size_(N) { }
+    GridOptimizer(int size) requires(N == Dynamic && sizeof...(Args) != 0) : size_(size) { }
+    GridOptimizer(Args&&... callbacks)
+        requires(N != Dynamic)
+        : callbacks_(std::make_tuple(std::forward<Args>(callbacks)...)), size_(N) { }
+    GridOptimizer(int size, Args&&... callbacks)
+        requires(N == Dynamic)
+        : callbacks_(std::make_tuple(std::forward<Args>(callbacks)...)), size_(size) { }
     // copy semantic
-    Grid(const Grid& other) : callbacks_(other.callbacks_) { }
-    Grid& operator=(const Grid& other) {
+    GridOptimizer(const GridOptimizer& other) : callbacks_(other.callbacks_), size_(other.size) { }
+    GridOptimizer& operator=(const GridOptimizer& other) {
         callbacks_ = other.callbacks_;
+	size_ = other.size_;
         return *this;
     }
-    template <typename F> VectorType optimize(F& objective, const GridType& grid) {
+    template <typename ObjectiveT, typename GridT>
+        requires(internals::is_vector_like_v<GridT> || internals::is_matrix_like_v<GridT>)
+    vector_t optimize(ObjectiveT& objective, const GridT& grid) {
         fdapde_static_assert(
-          std::is_same<decltype(std::declval<F>().operator()(VectorType())) FDAPDE_COMMA double>::value,
-          INVALID_CALL_TO_OPTIMIZE_OBJECTIVE_FUNCTOR_NOT_ACCEPTING_VECTORTYPE);
+          std::is_same<decltype(std::declval<ObjectiveT>().operator()(vector_t())) FDAPDE_COMMA double>::value,
+          INVALID_CALL_TO_OPTIMIZE__OBJECTIVE_FUNCTOR_NOT_ACCEPTING_VECTORTYPE);
+        grid_t grid_;
+        if constexpr (internals::is_vector_like_v<GridT>) {
+            fdapde_assert(grid.size() % size_ == 0);
+            grid_ = grid_t(grid.data(), grid.size() / size_, size_);
+        } else {
+            fdapde_assert(grid.cols() == size_);
+            grid_ = grid_t(grid.data(), grid.rows(), size_);
+        }
         bool stop = false;   // asserted true in case of forced stop
         // algorithm initialization
-        x_current = grid.row(0);
+        grid_.row(0).assign_to(x_current);
         value_ = objective(x_current);
         optimum_ = x_current;
         // optimize field over supplied grid
-        for (int i = 1; i < grid.rows() && !stop; ++i) {
-            x_current = grid.row(i);
+        for (int i = 1; i < grid_.rows() && !stop; ++i) {
+            grid_.row(i).assign_to(x_current);
             double x = objective(x_current);
             stop |= execute_post_update_step(*this, objective, callbacks_);
             // update minimum if better optimum found
@@ -64,7 +82,7 @@ template <int N, typename... Args> class Grid {
         return optimum_;
     }
     // getters
-    VectorType optimum() const { return optimum_; }
+    vector_t optimum() const { return optimum_; }
     double value() const { return value_; }
 };
 

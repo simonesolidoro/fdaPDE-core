@@ -43,6 +43,9 @@ template <typename SolverType_> class eigen_sparse_solver_movable_wrap {
    private:
     using SolverType = std::decay_t<SolverType_>;
     std::shared_ptr<SolverType> solver_;   // wrap solver in movable wrapper
+    void alloc_() {
+        if (!solver_) { solver_ = std::make_shared<SolverType>(); }
+    }
    public:
     using Scalar = typename SolverType::Scalar;
     using MatrixType = typename SolverType::MatrixType;
@@ -54,15 +57,26 @@ template <typename SolverType_> class eigen_sparse_solver_movable_wrap {
         solver_ = std::make_shared<SolverType>(solver);
         return *this;
     }
-    void compute(const MatrixType& matrix) { solver_->compute(matrix); }
-    void analyzePattern(const MatrixType& matrix) { solver_->analyzePattern(matrix); }
-    void factorize(const MatrixType& matrix) { solver_->factorize(matrix); }
+    void compute(const MatrixType& matrix) {
+        alloc_();
+        solver_->compute(matrix);
+    }
+    void analyzePattern(const MatrixType& matrix) {
+        alloc_();
+        solver_->analyzePattern(matrix);
+    }
+    void factorize(const MatrixType& matrix) {
+        alloc_();
+        solver_->factorize(matrix);
+    }
     template <typename XprType>   // solve method, dense  rhs operand
     const Eigen::Solve<SolverType, XprType> solve(const Eigen::MatrixBase<XprType>& b) const {
+        fdapde_assert(bool(solver_) == true);
         return solver_->solve(b);
     }
     template <typename XprType>   // solve method, sparse rhs operand
     const Eigen::Solve<SolverType, XprType> solve(const Eigen::SparseMatrixBase<XprType>& b) const {
+        fdapde_assert(bool(solver_) == true);
         return solver_->solve(b);
     }
     // observers

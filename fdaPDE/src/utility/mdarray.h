@@ -756,14 +756,14 @@ template <typename MdArray, int... Slicers> class MdArraySlice {
         constexpr int rows = MdArray::static_extents[free_extents_idxs_[0]];
         if constexpr (Order == 2) {
             constexpr int cols = MdArray::static_extents[free_extents_idxs_[1]];
-            fdapde_static_assert(rows != Dynamic && cols != Dynamic, THIS_METHOD_IS_FOR_STATIC_SIZED_MDARRAY_ONLY);
+            fdapde_static_assert(rows != Dynamic && cols != Dynamic, THIS_METHOD_IS_FOR_STATIC_SIZED_MDARRAYS_ONLY);
             Matrix<Scalar, rows, cols> mtx {};
             for (size_t i = 0, n = rows; i < n; ++i) {
                 for (size_t j = 0, n = cols; j < n; ++j) { mtx(i, j) = operator()(i, j); }
             }
             return mtx;
         } else {
-            fdapde_static_assert(rows != Dynamic, THIS_METHOD_IS_FOR_STATIC_SIZED_MDARRAY_ONLY);
+            fdapde_static_assert(rows != Dynamic, THIS_METHOD_IS_FOR_STATIC_SIZED_MDARRAYS_ONLY);
             Vector<Scalar, rows> vec {};
             for (size_t i = 0, n = rows; i < n; ++i) { vec[i] = operator()(i); }
             return vec;
@@ -910,11 +910,11 @@ template <typename Derived> class md_handler_base {
     constexpr size_t extent(order_t r) const { return extents_.extent(r); }
     constexpr const extents_t& extents() const { return extents_; }
     constexpr size_t rows() const {
-        fdapde_static_assert(Order == 1 || Order == 2, THIS_METHOD_IS_FOR_MATRIX_LIKE_MDARRAY_ONLY);
+        fdapde_static_assert(Order == 1 || Order == 2, THIS_METHOD_IS_FOR_MATRIX_LIKE_MDARRAYS_ONLY);
         return extent(0);
     }
     constexpr size_t cols() const {
-        fdapde_static_assert(Order == 1 || Order == 2, THIS_METHOD_IS_FOR_MATRIX_LIKE_MDARRAY_ONLY);
+        fdapde_static_assert(Order == 1 || Order == 2, THIS_METHOD_IS_FOR_MATRIX_LIKE_MDARRAYS_ONLY);
         return Order == 1 ? 1 : extent(1);
     }  
     constexpr const mapping_t& mapping() const { return mapping_; }
@@ -1059,6 +1059,27 @@ template <typename Derived> class md_handler_base {
           },
           slicers...);
         return MdArrayBlock<Derived, MdExtents<Exts_...>>(std::addressof(derived()), MdExtents<Exts_...>(), slicers...);
+    }
+    // special matrix-like accessors
+    constexpr auto row(index_t i) {
+        fdapde_static_assert(Order == 1 || Order == 2, THIS_METHOD_IS_FOR_MATRIX_LIKE_MDARRAYS_ONLY);
+	fdapde_assert(i >= 0 && i < extent(0));
+        return block(i, full_extent);
+    }
+    constexpr auto row(index_t i) const {
+        fdapde_static_assert(Order == 1 || Order == 2, THIS_METHOD_IS_FOR_MATRIX_LIKE_MDARRAYS_ONLY);
+	fdapde_assert(i >= 0 && i < extent(0));
+        return block(i, full_extent);
+    }
+    constexpr auto col(index_t i) {
+        fdapde_static_assert(Order == 1 || Order == 2, THIS_METHOD_IS_FOR_MATRIX_LIKE_MDARRAYS_ONLY);
+	fdapde_assert(i >= 0 && i < extent(1));
+        return block(full_extent, i);
+    }
+    constexpr auto col(index_t i) const {
+        fdapde_static_assert(Order == 1 || Order == 2, THIS_METHOD_IS_FOR_MATRIX_LIKE_MDARRAYS_ONLY);
+	fdapde_assert(i >= 0 && i < extent(1));
+        return block(full_extent, i);
     }
     // slicing operations
     template <int... Slicers, typename... Slicers__>
