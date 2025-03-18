@@ -50,6 +50,9 @@ namespace fdapde {
             }
             // TODO: implement a constructor that takes as input a vector of value_type?
 
+            Worker_queue(Const Worker_queue&) = delete;
+            void operator=(const Worker_queue&) = delete;
+
 
             // TODO: resize to sizes smaller than the current one? Clear the queue when resizing?
             bool resize(int n){
