@@ -48,10 +48,12 @@ namespace fdapde {
                 size_ = n;
                 empty_queue_ = true;
             }
+            // TODO: implement a constructor that takes as input a vector of value_type?
 
 
-            // resize() di queue_ super easy for the moment
+            // TODO: resize to sizes smaller than the current one? Clear the queue when resizing?
             bool resize(int n){
+
                 std::lock_guard<std::mutex> loc(m_);
                 if(n < size_){
                     std::cerr << "Cannot resize to smaller size" << std::endl;
@@ -64,7 +66,7 @@ namespace fdapde {
                 
             }
 
-
+            //TODO: mutexes should be used for operations in the front too since we can go to the back when we reach the end
             bool push_front(value_type t){
                 std::lock_guard<std::mutex> loc(m_);
                 int new_head = (head_ == size_-1)? (0) : (head_ + 1);
@@ -130,11 +132,11 @@ namespace fdapde {
             }
 
             // wrap of function size() empty() of vector thrade-safe
-            int size(){
+            int size() const{
                 std::lock_guard<std::mutex> loc(m_);
                 return queue_.size();
             }
-            bool empty(){
+            bool empty() const{
                 std::lock_guard<std::mutex> loc(m_);
                 return empty_queue_;
             }
