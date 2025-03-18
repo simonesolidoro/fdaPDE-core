@@ -54,7 +54,7 @@ namespace fdapde {
             bool resize(int n){
                 std::lock_guard<std::mutex> loc(m_);
                 if(n < size_){
-                    std:cerr << "Cannot resize to smaller size" << std::endl;
+                    std::cerr << "Cannot resize to smaller size" << std::endl;
                     return 0;
                 }
                 
@@ -118,7 +118,7 @@ namespace fdapde {
                 std::lock_guard<std::mutex> loc(m_);
 
                 if(empty_queue_ == true){
-                    std::cerr << "Queue is empty" << std::endl
+                    std::cerr << "Queue is empty" << std::endl;
                     return value_type();
                 }
                 int new_tail = (tail_ == size_-1)? (0):(tail_+1);

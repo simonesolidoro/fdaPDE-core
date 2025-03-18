@@ -70,6 +70,7 @@ class Workerpool_toy{
     private:
         std::vector<std::shared_ptr<fdapde::Worker_queue<T>>> coda_; //shared ptr perche classe Worker_queue ha mutex quindi non movable
         std::vector<std::thread> threads;
+        // vector of cv 1 per ogni worker_queue ?? 
         int n_thread;
         int n_el_wq; //size worker queue
     public:

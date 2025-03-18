@@ -44,7 +44,6 @@
         q.pop_back();
     std::cout<<"pop_back():  "<<std::endl;
     q.print();
- 
- 
+
      return 0;
     }
