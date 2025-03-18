@@ -135,11 +135,11 @@ namespace fdapde {
             }
 
             // wrap of function size() empty() of vector thrade-safe
-            int size() const{
+            int size() {
                 std::lock_guard<std::mutex> loc(m_);
                 return queue_.size();
             }
-            bool empty() const{
+            bool empty() {
                 std::lock_guard<std::mutex> loc(m_);
                 return empty_queue_;
             }
