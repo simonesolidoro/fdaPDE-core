@@ -49,41 +49,47 @@ namespace fdapde {
                 empty_queue_ = true;
             }
 
+
             // resize() di queue_ super easy for the moment
-            void resize(int n){
+            bool resize(int n){
                 std::lock_guard<std::mutex> loc(m_);
-                queue_ = std::vector<value_type> (n);
-                head_=0;
-                tail_=0;
-                size_=n;
-                empty_queue_= true;
+                if(n < size_){
+                    std:cerr << "Cannot resize to smaller size" << std::endl;
+                    return 0;
+                }
+                
+                queue_.resize(n);
+
+                return 1;
+                
             }
 
 
             bool push_front(value_type t){
+                std::lock_guard<std::mutex> loc(m_);
                 int new_head = (head_ == size_-1)? (0) : (head_ + 1);
                 if (head_ != tail_){
-                    queue_[head_] = t;
+                    queue_[head_] = std::move(t);
                     head_ = new_head;
                     return 1;}
                 else if(empty_queue_==true){
-                    queue_[head_] = t;
+                    queue_[head_] = std::move(t);
                     head_= new_head;
                     empty_queue_ = false;
                     return 1;} 
-                //std::cerr<<"queue full"<<std::endl;
+                std::cerr<<"queue full"<<std::endl;
                 return 0;   
             }
 
             value_type pop_front(){
-                value_type new_empty;
+                std::lock_guard<std::mutex> loc(m_);
                 if (empty_queue_){
-                    //std::cerr<<"queue empty"<<std::endl;
-                    return new_empty;  //forse break;
+                    std::cerr<<"queue empty"<<std::endl;
+                    return value_type();
                 }
                 int new_head = (head_== 0)? (size_-1) : (head_-1);
                 value_type ret = queue_[new_head];
-                queue_[new_head] = new_empty;
+                queue_[new_head] = value_type();
                 head_ = new_head;
                 if(head_==tail_) {empty_queue_ = true;}  //head_ ==tail_ after pop() means empty, in general means full  
                 return ret;
@@ -110,13 +116,14 @@ namespace fdapde {
             //pop_back() thrade-safe
             value_type pop_back(){
                 std::lock_guard<std::mutex> loc(m_);
-                value_type new_empty;
+
                 if(empty_queue_ == true){
-                    //errore empty queue
+                    std::cerr << "Queue is empty" << std::endl
+                    return value_type();
                 }
                 int new_tail = (tail_ == size_-1)? (0):(tail_+1);
-                value_type ret = queue_[tail_];
-                queue_[tail_] = new_empty;
+                value_type ret = std::move(queue_[tail_]);
+                queue_[tail_] = value_type();
                 tail_ = new_tail;
                 if(head_==tail_) {empty_queue_ = true;}
                 return ret;
@@ -133,25 +140,12 @@ namespace fdapde {
             }
             
             // svuota queue_
-            void flush(){ 
+            void clear(){ 
                 std::lock_guard loc(m_);
-                value_type new_empty;
-                if (head_ > tail_)
-                    for(int i = tail_ ; i< head_ ; i++){
-                        queue_[i] = new_empty; 
-                    }
-                else if(head_ < tail_)
-                    for(int i = head_ ; i< tail_ ; i++){
-                        queue_[i] = new_empty; 
-                    }
-                if (head_==tail_){
-                    for(int i=0; i<size_; i++)
-                        queue_[i] = new_empty;
-                } 
-                /*forse piu efficente direttamente svuotare tutto senza vedere dovè pieno
-                        for(int i=0; i<size_; i++)
-                            queue_[i] = new_empty;
-                */
+                queue_.clear();
+                head_ = 0;
+                tail_ = 0;
+                empty_queue_ = true;
             } 
         
 
