@@ -50,7 +50,7 @@ namespace fdapde {
             }
             // TODO: implement a constructor that takes as input a vector of value_type?
 
-            Worker_queue(Const Worker_queue&) = delete;
+            Worker_queue(const Worker_queue&) = delete;
             void operator=(const Worker_queue&) = delete;
 
 
