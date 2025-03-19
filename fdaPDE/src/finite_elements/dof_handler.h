@@ -245,7 +245,7 @@ template <int LocalDim, int EmbedDim, typename Derived> class fe_dof_handler_bas
         return;
     }
     template <typename FEType> void enumerate([[maybe_unused]] FEType) {
-        using dof_descriptor = typename FEType::cell_dof_descriptor<TriangulationType::local_dim>;
+        using dof_descriptor = typename FEType::template cell_dof_descriptor<TriangulationType::local_dim>;
         fdapde_static_assert(
           dof_descriptor::local_dim == TriangulationType::local_dim, YOU_PROVIDED_A_WRONG_FINITE_ELEMENT_DESCRIPTOR);
         fdapde_static_assert(
@@ -305,7 +305,7 @@ class DofHandler<2, EmbedDim, finite_element_tag> :
     DofHandler(const TriangulationType& triangulation) : Base(triangulation) { }
 
     template <typename FEType> void enumerate(FEType fe) {
-        using dof_descriptor = typename FEType::cell_dof_descriptor<TriangulationType::local_dim>;
+        using dof_descriptor = typename FEType::template cell_dof_descriptor<TriangulationType::local_dim>;
         Base::enumerate(fe);   // enumerate dofs at nodes
         n_dofs_internal_per_cell_ = dof_descriptor::n_dofs_internal;
 	n_dofs_per_node_ = dof_descriptor::n_dofs_per_node;
@@ -495,7 +495,7 @@ class DofHandler<3, 3, finite_element_tag> :
     DofHandler(const TriangulationType& triangulation) : Base(triangulation) { }
 
     template <typename FEType> void enumerate(FEType fe) {
-        using dof_descriptor = typename FEType::cell_dof_descriptor<TriangulationType::local_dim>;
+        using dof_descriptor = typename FEType::template cell_dof_descriptor<TriangulationType::local_dim>;
         Base::enumerate(fe);   // enumerate dofs at nodes
         n_dofs_internal_per_cell_ = dof_descriptor::n_dofs_internal;
         n_dofs_per_node_ = dof_descriptor::n_dofs_per_node;
@@ -801,7 +801,7 @@ class DofHandler<1, EmbedDim, finite_element_tag> :
     DofHandler(const TriangulationType& triangulation) : Base(triangulation) { }
 
     template <typename FEType> void enumerate(FEType fe) {
-        using dof_descriptor = typename FEType::cell_dof_descriptor<TriangulationType::local_dim>;
+        using dof_descriptor = typename FEType::template cell_dof_descriptor<TriangulationType::local_dim>;
         Base::enumerate(fe);   // enumerate dofs at nodes
         n_dofs_internal_per_cell_ = dof_descriptor::n_dofs_internal;
         n_dofs_per_node_ = dof_descriptor::n_dofs_per_node;

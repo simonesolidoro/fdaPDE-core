@@ -37,7 +37,7 @@ struct md_traits<MdArray<Scalar_, Extents_, LayoutPolicy_>> {
     using order_t = typename extents_t::order_t;
     using size_t  = typename extents_t::size_t;
     using layout_t = LayoutPolicy_;
-    using mapping_t = typename layout_t::mapping<extents_t>;;
+    using mapping_t = typename layout_t::template mapping<extents_t>;;
     using Scalar = Scalar_;
     using storage_t = std::conditional_t<
       extents_t::DynamicOrder != 0, std::vector<Scalar>, std::array<Scalar, std::size_t(extents_t::StaticSize)>>;
@@ -51,7 +51,7 @@ struct md_traits<MdMap<Scalar_, Extents_, LayoutPolicy_>> {
     using order_t = typename extents_t::order_t;
     using size_t  = typename extents_t::size_t;
     using layout_t = LayoutPolicy_;
-    using mapping_t = typename layout_t::mapping<extents_t>;
+    using mapping_t = typename layout_t::template mapping<extents_t>;
     using Scalar = Scalar_;
     using storage_t = std::add_pointer_t<Scalar_>;
     using reference = std::add_lvalue_reference_t<Scalar>;
@@ -1362,7 +1362,7 @@ template <typename Extents_, typename LayoutPolicy_> struct md_traits<MdArray<bo
     }
    public:
     using layout_t = LayoutPolicy_;
-    using mapping_t = typename layout_t::mapping<extents_t>;
+    using mapping_t = typename layout_t::template mapping<extents_t>;
     // struct to proxy the behaviour of reference to a single bit of the MdArray
     template <typename BitPackT>
         requires(std::is_same_v<std::decay_t<BitPackT>, bitpack_t>)

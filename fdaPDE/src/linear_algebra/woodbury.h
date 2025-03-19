@@ -46,8 +46,8 @@ template <typename SparseSolver_> struct Woodbury {
     }
    private:
     DenseSolver invG_;
-    std::add_pointer_t<SparseSolver> invA_;
-    std::add_pointer_t<MatrixType> V_, U_;
+    std::add_pointer_t<const SparseSolver> invA_;
+    std::add_pointer_t<const MatrixType> V_, U_;
 };
 
 // solves linear system (A + U*C^{-1}*V)x = b using woodbury formula. For repated applications, use Woodbury class

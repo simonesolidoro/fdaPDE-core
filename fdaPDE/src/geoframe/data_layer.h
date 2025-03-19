@@ -57,8 +57,8 @@ template <typename Scalar_, typename DataObj> struct plain_col_view {
     using storage_t = std::conditional_t<
       std::is_const_v<DataObj>, MdArrayBlock<std::add_const_t<data_table>, extents_t>,
       MdArrayBlock<data_table, extents_t>>;
-    using reference = typename DataObj::reference<Scalar>;
-    using const_reference = typename DataObj::const_reference<Scalar>;
+    using reference = typename DataObj::template reference<Scalar>;
+    using const_reference = typename DataObj::template const_reference<Scalar>;
     using logical_t = MdArray<bool, extents_t, internals::layout_left>;
 
     plain_col_view() noexcept = default;
@@ -222,8 +222,8 @@ template <typename Scalar_, typename DataObj> struct random_access_col_view {
     using storage_t = std::conditional_t<
       std::is_const_v<DataObj>, MdArrayBlock<std::add_const_t<data_table>, extents_t>,
       MdArrayBlock<data_table, extents_t>>;
-    using reference = typename DataObj::reference<Scalar>;
-    using const_reference = typename DataObj::const_reference<Scalar>;
+    using reference = typename DataObj::template reference<Scalar>;
+    using const_reference = typename DataObj::template const_reference<Scalar>;
     using logical_t = MdArray<bool, extents_t, internals::layout_left>;
 
     random_access_col_view() noexcept = default;

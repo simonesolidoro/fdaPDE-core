@@ -43,7 +43,7 @@ template <int N, typename... Args> class GridOptimizer {
         requires(N == Dynamic)
         : callbacks_(std::make_tuple(std::forward<Args>(callbacks)...)), size_(size) { }
     // copy semantic
-    GridOptimizer(const GridOptimizer& other) : callbacks_(other.callbacks_), size_(other.size) { }
+    GridOptimizer(const GridOptimizer& other) : callbacks_(other.callbacks_), size_(other.size_) { }
     GridOptimizer& operator=(const GridOptimizer& other) {
         callbacks_ = other.callbacks_;
 	size_ = other.size_;
