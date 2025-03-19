@@ -43,32 +43,24 @@ template <typename SolverType_> class eigen_sparse_solver_movable_wrap {
    private:
     using SolverType = std::decay_t<SolverType_>;
     std::shared_ptr<SolverType> solver_;   // wrap solver in movable wrapper
-    void alloc_() {
-        if (!solver_) { solver_ = std::make_shared<SolverType>(); }
-    }
+    bool computed_ = false;
    public:
     using Scalar = typename SolverType::Scalar;
     using MatrixType = typename SolverType::MatrixType;
-  
-    eigen_sparse_solver_movable_wrap() : solver_(std::make_shared<SolverType>()) { }
-    explicit eigen_sparse_solver_movable_wrap(const SolverType_& solver) :
+
+    eigen_sparse_solver_movable_wrap() noexcept : solver_(std::make_shared<SolverType>()) { }
+    explicit eigen_sparse_solver_movable_wrap(const SolverType_& solver) noexcept :
         solver_(std::make_shared<SolverType>(solver)) { }
     eigen_sparse_solver_movable_wrap& operator=(const SolverType_& solver) {
         solver_ = std::make_shared<SolverType>(solver);
         return *this;
     }
     void compute(const MatrixType& matrix) {
-        alloc_();
         solver_->compute(matrix);
+        if (solver_->info() == Eigen::Success) { computed_ = true; }
     }
-    void analyzePattern(const MatrixType& matrix) {
-        alloc_();
-        solver_->analyzePattern(matrix);
-    }
-    void factorize(const MatrixType& matrix) {
-        alloc_();
-        solver_->factorize(matrix);
-    }
+    void analyzePattern(const MatrixType& matrix) { solver_->analyzePattern(matrix); }
+    void factorize(const MatrixType& matrix) { solver_->factorize(matrix); }
     template <typename XprType>   // solve method, dense  rhs operand
     const Eigen::Solve<SolverType, XprType> solve(const Eigen::MatrixBase<XprType>& b) const {
         fdapde_assert(bool(solver_) == true);
@@ -83,9 +75,10 @@ template <typename SolverType_> class eigen_sparse_solver_movable_wrap {
     const SolverType& operator->() const { return *solver_; }
     SolverType& operator->() { return *solver_; }
     Eigen::ComputationInfo info() const { return solver_->info(); }
-    operator bool() const { return solver_->info() == Eigen::Success; }
+    operator bool() const { return computed_; }
+    bool has_value() const { return computed_; }
 };
-
+  
 // ordering relation for eigen vectors
 struct eigen_vector_compare {
   template <typename Scalar, int Rows>
