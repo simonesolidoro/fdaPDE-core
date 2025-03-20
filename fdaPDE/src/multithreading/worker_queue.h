@@ -25,15 +25,28 @@ namespace fdapde {
     template <typename T> 
     class Worker_queue{
     using value_type= T;
-    typedef std::vector<value_type> container;
+    enum Stato{
+        empty, //elem vuoto OSS: evitera di dover verificare se head==tail (queue piena) 
+        busy,// si sta modificando elem
+        ready, //elem ha v pronto per essere pop
+    };
+    struct elem{
+        std::atomic<int> stato;
+        value_type v;
+    };
+
+
+    typedef std::vector<elem> container;
         private:
             container queue_;
-            int head_; //indx of 1 over "first" element
-            int tail_; //indx of "last" element
+            std::atomic<int> head_; //indx of 1 over "first" element
+            std::atomic<int> tail_; //indx of "last" element
             int size_;
-            bool empty_queue_; 
+            std::atomic<bool> empty_queue_; // va eliminato eigen non lo usa (aggiornalo dopo pop_* vredo renderebbe ogni pop sequenziale e quindi tutto inutile le atomic variabili )
             std::mutex m_;
         public:
+            Worker_queue(const Worker_queue&) = delete;
+            void operator=(const Worker_queue&) = delete;
             // default constructor credo poi da associare a metodo resize()
             Worker_queue(){
                 head_ = 0;
@@ -47,6 +60,8 @@ namespace fdapde {
                 tail_ = 0;
                 size_ = n;
                 empty_queue_ = true;
+                for (int i = 0; i < size_; i++)
+                    queue_[i].stato.store(Stato::empty, std::memory_order_relaxed);
             }
 
 
@@ -66,65 +81,65 @@ namespace fdapde {
 
 
             bool push_front(value_type t){
-                std::lock_guard<std::mutex> loc(m_);
-                int new_head = (head_ == size_-1)? (0) : (head_ + 1);
-                if (head_ != tail_){
-                    queue_[head_] = std::move(t);
-                    head_ = new_head;
-                    return 1;}
-                else if(empty_queue_==true){
-                    queue_[head_] = std::move(t);
-                    head_= new_head;
-                    empty_queue_ = false;
-                    return 1;} 
-                std::cerr<<"queue full"<<std::endl;
-                return 0;   
+                int h= head_.load(std::memory_order_relaxed);
+                int new_head = (h == size_-1)? (0) : (h + 1);
+                elem* e= &queue_[h]; //puntatore ad elem di arry in posizione head (dove si vuole inserire elemento)
+                int s= e->stato.load(std::memory_order_relaxed); //copia di stato di elem in head
+                if(s!= Stato::empty || !e->stato.compare_exchange_strong(s, Stato::busy, std::memory_order_acquire)) //operazioni di lettura di e->state sincronizzate a dopo questa modifica 
+                    return false; //se elem non vuoto o stato di elem nel mentre è stato modificato (da altro thread) 
+                head_.store(new_head,std::memory_order_relaxed);
+                e->v = std::move(t); 
+                e->stato.store(ready,std::memory_order_release);
+                return true;   
             }
 
             value_type pop_front(){
-                std::lock_guard<std::mutex> loc(m_);
-                if (empty_queue_){
-                    std::cerr<<"queue empty"<<std::endl;
+                int h= head_.load(std::memory_order_relaxed);
+                int new_head = (h== 0)? (size_-1) : (h-1);
+                elem* e =& queue_[new_head]; //(puntatore ad elem che si vuole pop)
+                int s = e->stato.load(std::memory_order_relaxed);
+                if(s!= Stato::ready || !e->stato.compare_exchange_strong(s, Stato::busy, std::memory_order_acquire)) //operazioni di lettura di e->state sincronizzate a dopo questa modifica 
                     return value_type();
-                }
-                int new_head = (head_== 0)? (size_-1) : (head_-1);
-                value_type ret = queue_[new_head];
-                queue_[new_head] = value_type();
-                head_ = new_head;
-                if(head_==tail_) {empty_queue_ = true;}  //head_ ==tail_ after pop() means empty, in general means full  
+                value_type ret= std::move(e->v);
+                e->stato.store(Stato::empty, std::memory_order_release);
+                head_.store(new_head, std::memory_order_relaxed);  
                 return ret;
                 
             }
             
             //push_back() thread-safe 
             bool push_back(value_type t){
-                std::lock_guard<std::mutex> loc(m_);
+                std::lock_guard<std::mutex> loc(m_); 
+                int tail = tail_.load(std::memory_order_relaxed);
                 int new_tail = (tail_ == 0)? (size_-1) : (tail_ -1);
-                if (head_ != tail_){ //se non pieno
-                    queue_[new_tail] = t;
-                    tail_ = new_tail;
-                    return 1;}
-                else if(empty_queue_==true){
-                    queue_[tail_] = t;
-                    head_++;
-                    empty_queue_ = false;
-                    return 1;} 
-                //std::cerr<<"queue full"<<std::endl;
-                return 0;   
+                elem* e = &queue_[new_tail];
+                int s = e->stato.load(std::memory_order_relaxed);
+                if (s != Stato::empty || !e->stato.compare_exchange_strong(s, Stato::busy, std::memory_order_acquire))
+                    return false;
+                tail_.store(new_tail, std::memory_order_relaxed);
+                e->v=std::move(t);
+                e->stato.store(Stato::ready, std::memory_order_release);
+                return true;  
             }
 
             //pop_back() thrade-safe
             value_type pop_back(){
-                std::lock_guard<std::mutex> loc(m_);
-
-                if(empty_queue_ == true){
+                /*da implementare Empty()
+                if(Empty()){
                     std::cerr << "Queue is empty" << std::endl;
                     return value_type();
                 }
+                */
+                std::lock_guard<std::mutex> loc(m_);
+                int tail = tail_.load(std::memory_order_relaxed);
                 int new_tail = (tail_ == size_-1)? (0):(tail_+1);
-                value_type ret = std::move(queue_[tail_]);
-                queue_[tail_] = value_type();
-                tail_ = new_tail;
+                elem* e = &queue_[tail];
+                int s = e->stato.load(std::memory_order_relaxed);
+                if (s != ready || !e->stato.compare_exchange_strong(s, Stato::busy, std::memory_order_acquire))
+                    return value_type();
+                value_type ret = std::move(e->v);
+                e->stato.store(Stato::empty, std::memory_order_release);
+                tail_.store(new_tail, std::memory_order_relaxed);
                 if(head_==tail_) {empty_queue_ = true;}
                 return ret;
             }
@@ -134,9 +149,11 @@ namespace fdapde {
                 std::lock_guard<std::mutex> loc(m_);
                 return queue_.size();
             }
-            bool empty(){
+            bool Empty(){
+                /* da implementare in modo che non renda tutto sequenziale, ancora non chiaro
                 std::lock_guard<std::mutex> loc(m_);
                 return empty_queue_;
+                */
             }
             
             // svuota queue_
@@ -154,8 +171,8 @@ namespace fdapde {
             int get_tail()const {return tail_;}
             int get_head()const {return head_;} 
             void print(){
-                for (value_type i : queue_)
-                    std::cout<<i<<"  ";
+                for (int i=0; i<size_; i++)
+                    std::cout<<queue_[i].v<<"  ";
                 std::cout<<std::endl;
             }
 

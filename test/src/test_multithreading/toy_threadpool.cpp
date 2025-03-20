@@ -152,15 +152,19 @@ class Workerpool_toy{
 
 int main(){
     int size_worker_queue=100;
-    int n_thread= 4;
-    int size_coda= size_worker_queue*n_thread;
+    int n_thread= 8;
+    int size_coda= size_worker_queue; //*n_thread;
     // unica deque threapool
-    threadpool_toy<int> pool(n_thread);
+    
     Workerpool_toy<int> wpool(n_thread,size_worker_queue);
+    
 
     auto start = std::chrono::high_resolution_clock::now();
-    for(int i =0; i<size_coda; i++){
-        pool.post(i);
+    {
+        threadpool_toy<int> pool(n_thread);
+        for(int i =0; i<size_coda; i++){
+            pool.post(i);
+        }
     }
     auto end = std::chrono::high_resolution_clock::now();
     auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start);  
@@ -169,8 +173,11 @@ int main(){
 
 
     auto start1 = std::chrono::high_resolution_clock::now();
-    for(int i=0; i<size_worker_queue; i++){
-        pool.post(i);
+    {
+        Workerpool_toy<int> wpool(n_thread,size_worker_queue);
+        for(int i=0; i<size_worker_queue; i++){
+            wpool.post(i);
+        }
     }
     auto end1 = std::chrono::high_resolution_clock::now();
     auto duration1 = std::chrono::duration_cast<std::chrono::microseconds>(end1 - start1);  
