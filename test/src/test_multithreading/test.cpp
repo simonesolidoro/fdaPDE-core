@@ -15,7 +15,7 @@
  // along with this program.  If not, see <http://www.gnu.org/licenses/>.
  
  #include<fdaPDE/multithreading.h>
- 
+ /*test per semplice compilazione*/
  int main(){
     fdapde::Worker_queue<int> q(10);
      return 0;

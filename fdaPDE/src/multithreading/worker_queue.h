@@ -54,17 +54,16 @@ namespace fdapde {
                 empty_queue_ = true;
             };
             // construct whit size of queue_=n;
-            Worker_queue(int n){
-                queue_.resize(n);
-                head_ = 0;
-                tail_ = 0;
+            Worker_queue(int n):queue_(n){
+                head_.store(0);
+                tail_.store(0);
                 size_ = n;
                 empty_queue_ = true;
                 for (int i = 0; i < size_; i++)
                     queue_[i].stato.store(Stato::empty, std::memory_order_relaxed);
             }
 
-
+            /* non possibile fare queue_.resize() perche atomic variable, tolto per il momento
             // resize() di queue_ super easy for the moment
             bool resize(int n){
                 std::lock_guard<std::mutex> loc(m_);
@@ -78,7 +77,7 @@ namespace fdapde {
                 return 1;
                 
             }
-
+            */
 
             bool push_front(value_type t){
                 int h= head_.load(std::memory_order_relaxed);
