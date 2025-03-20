@@ -16,11 +16,21 @@
 
 #include<fdaPDE/multithreading.h>
 
+using namespace std::chrono_literals;
+
 void pushbackconc(std::vector<int> V, fdapde::Worker_queue<int> & q){
     for (auto x: V){
         q.push_back(x);
     }
-    if (q.empty()){std::cout<<"vuoto";}
+    std::this_thread::sleep_for(10ms);
+    //if (q.empty()){std::cout<<"vuoto";}
+}
+void pushfrontconc(std::vector<int> V, fdapde::Worker_queue<int> & q){
+    for (auto x: V){
+        q.push_front(x);
+    }
+    std::this_thread::sleep_for(10ms);
+    //if (q.empty()){std::cout<<"vuoto";}
 }
 
 int main(){
@@ -45,10 +55,11 @@ int main(){
     q1.print();
 */
     std::vector<int> v={1,2,3,4,5};
+    pushfrontconc(v,q1);
     std::thread t1(pushbackconc,v,std::ref(q1));
-    std::thread t2(pushbackconc,v,std::ref(q1));
+    //std::thread t2(pushbackconc,v,std::ref(q1));
     t1.join();
-    t2.join();
+    //t2.join();
     q1.print();
     return 0;
 }
