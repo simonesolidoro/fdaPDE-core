@@ -21,20 +21,28 @@ using namespace std::chrono_literals;
 void pushbackconc(std::vector<int> V, fdapde::Worker_queue<int> & q){
     for (auto x: V){
         q.push_back(x);
+        std::this_thread::sleep_for(10ms);
     }
-    std::this_thread::sleep_for(10ms);
     //if (q.empty()){std::cout<<"vuoto";}
 }
 void pushfrontconc(std::vector<int> V, fdapde::Worker_queue<int> & q){
     for (auto x: V){
         q.push_front(x);
+        //std::this_thread::sleep_for(10ms); 
     }
-    std::this_thread::sleep_for(10ms);
     //if (q.empty()){std::cout<<"vuoto";}
 }
 
+void pop_front_da(fdapde::Worker_queue<int> & q){
+    
+    std::cout<<"padrone"<<q.pop_front()<<std::endl;
+}
+void pop_back_da(fdapde::Worker_queue<int> & q){
+    std::cout<<"thread n:"<<std::this_thread::get_id()<<q.pop_back()<<std::endl;
+}
+
 int main(){
-    int size_coda=10;
+    int size_coda=12;
     fdapde::Worker_queue<int> q1(size_coda);
     
 /*
@@ -57,9 +65,12 @@ int main(){
     std::vector<int> v={1,2,3,4,5};
     pushfrontconc(v,q1);
     std::thread t1(pushbackconc,v,std::ref(q1));
-    //std::thread t2(pushbackconc,v,std::ref(q1));
+    std::thread t2(pushbackconc,v,std::ref(q1));
     t1.join();
-    //t2.join();
+    t2.join();
     q1.print();
+
+    std::thread j(pop_back_da,std::ref(q1));
+    pop_front_da(q1);
     return 0;
 }
