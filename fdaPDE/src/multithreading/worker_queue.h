@@ -79,7 +79,7 @@ namespace fdapde {
             }
             */
 
-            bool push_front(value_type t){
+            bool push_front(value_type t){ //prova a iserire dove puta head_
                 int h= head_.load(std::memory_order_relaxed);
                 int new_head = (h == size_-1)? (0) : (h + 1);
                 elem* e= &queue_[h]; //puntatore ad elem di arry in posizione head (dove si vuole inserire elemento)
@@ -92,7 +92,7 @@ namespace fdapde {
                 return true;   
             }
 
-            value_type pop_front(){
+            value_type pop_front(){ //prova toglire uno dietro head_
                 int h= head_.load(std::memory_order_relaxed);
                 int new_head = (h== 0)? (size_-1) : (h-1);
                 elem* e =& queue_[new_head]; //(puntatore ad elem che si vuole pop)
@@ -107,7 +107,7 @@ namespace fdapde {
             }
             
             //push_back() thread-safe 
-            bool push_back(value_type t){
+            bool push_back(value_type t){ //prova a inserire uno dietro tail_ 
                 std::lock_guard<std::mutex> loc(m_); 
                 int tail = tail_.load(std::memory_order_relaxed);
                 int new_tail = (tail_ == 0)? (size_-1) : (tail_ -1);
@@ -122,7 +122,7 @@ namespace fdapde {
             }
 
             //pop_back() thrade-safe
-            value_type pop_back(){
+            value_type pop_back(){ //prova togliere in tail_
                 /*da implementare Empty()
                 if(Empty()){
                     std::cerr << "Queue is empty" << std::endl;
@@ -139,7 +139,7 @@ namespace fdapde {
                 value_type ret = std::move(e->v);
                 e->stato.store(Stato::empty, std::memory_order_release);
                 tail_.store(new_tail, std::memory_order_relaxed);
-                if(head_==tail_) {empty_queue_ = true;}
+                if(head_==tail_) {empty_queue_ = true;} // da togliere
                 return ret;
             }
 
@@ -153,6 +153,20 @@ namespace fdapde {
                 std::lock_guard<std::mutex> loc(m_);
                 return empty_queue_;
                 */
+                   // Emptiness plays critical role in thread pool blocking. So we go to great
+                int head = head_.load(std::memory_order_acquire);
+                for (;;) {
+                int tail = tail_.load(std::memory_order_acquire);
+                int head1 = head_.load(std::memory_order_relaxed);
+                if (head != head1) {
+                    head = head1;
+                    std::atomic_thread_fence(std::memory_order_acquire);
+                    continue;
+                }
+                
+                return (head == tail) && (queue_[head].stato.load() == Stato::empty);
+                }
+
             }
             
             // svuota queue_

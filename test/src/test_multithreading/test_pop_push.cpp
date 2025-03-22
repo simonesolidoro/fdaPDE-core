@@ -25,6 +25,8 @@
     }
     std::cout<<"push_front():  "<<std::endl;
     q.print();
+
+    std::cout<<"empty? (false):"<<q.Empty()<<std::endl;
  
     //pop_front
     for(int j=1; j<11; j++)
@@ -32,18 +34,24 @@
     std::cout<<"pop_front():  "<<std::endl;
     q.print();
 
+    std::cout<<"empty? (true):"<<q.Empty()<<std::endl;
+
     //push_back()
     for (int i =1; i<11; i++){
         q.push_back(i);
     }
     std::cout<<"push_back():  "<<std::endl;
     q.print();
+
+    std::cout<<"empty? (false):"<<q.Empty()<<std::endl;
  
     //pop_back()
     for(int j=1; j<11; j++)
         q.pop_back();
     std::cout<<"pop_back():  "<<std::endl;
     q.print();
+
+    std::cout<<"empty? (true):"<<q.Empty()<<std::endl;
 
      return 0;
     }
