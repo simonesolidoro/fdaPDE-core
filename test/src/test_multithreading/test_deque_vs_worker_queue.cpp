@@ -174,14 +174,14 @@ int main(){
 
 /* RISULTATI */
 /*
-push_frot worker_queue di n_elementi: 100 impiegato:1 microsecondi
-push_frot deque di n_elementi: 100 impiegato:2 microsecondi
-pop_frot worker_queue di n_elementi: 100 impiegato:1 microsecondi
-pop_frot deque di n_elementi: 100 impiegato:2 microsecondi
-push_back() worker_queue di n_elementi: 100 impiegato:5 microsecondi
-push_back() deque di n_elementi: 100 impiegato:4 microsecondi
-pop_back() worker_queue di n_elementi: 100 impiegato:3 microsecondi
-pop_back() deque di n_elementi: 100 impiegato:31 microsecondi
+push_frot worker_queue di n_elementi: 100 impiegato:13 microsecondi
+push_frot deque di n_elementi: 100 impiegato:4 microsecondi
+pop_frot worker_queue di n_elementi: 100 impiegato:9 microsecondi
+pop_frot deque di n_elementi: 100 impiegato:6 microsecondi
+push_back() worker_queue di n_elementi: 100 impiegato:28 microsecondi
+push_back() deque di n_elementi: 100 impiegato:9 microsecondi
+pop_back() worker_queue di n_elementi: 100 impiegato:17 microsecondi
+pop_back() deque di n_elementi: 100 impiegato:50 microsecondi
 */
 
 

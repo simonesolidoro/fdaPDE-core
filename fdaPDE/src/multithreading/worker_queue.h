@@ -107,7 +107,7 @@ namespace fdapde {
             bool push_back(value_type t){  
                 std::lock_guard<std::mutex> loc(m_); 
                 int tail = tail_.load(std::memory_order_relaxed);
-                int new_tail = (tail_ == 0)? (size_-1) : (tail_ -1);
+                int new_tail = (tail == 0)? (size_-1) : (tail -1);
                 elem* e = &queue_[new_tail];
                 int s = e->stato.load(std::memory_order_relaxed);
                 if (s != Stato::empty || !e->stato.compare_exchange_strong(s, Stato::busy, std::memory_order_acquire))
@@ -153,7 +153,7 @@ namespace fdapde {
                 int head1 = head_.load(std::memory_order_relaxed);
                 if (head != head1) {
                     head = head1;
-                    std::atomic_thread_fence(std::memory_order_acquire);
+                    std::atomic_thread_fence(std::memory_order_acquire); //da capire meglio
                     continue;
                 }
                 
@@ -164,7 +164,7 @@ namespace fdapde {
             
             // svuota queue_
             void clear(){ 
-                std::lock_guard loc(m_);
+                std::lock_guard<std::mutex> loc(m_);
                 queue_.clear();
                 head_.store(0); // da aggiungere memory order forse 
                 tail_.store(0);

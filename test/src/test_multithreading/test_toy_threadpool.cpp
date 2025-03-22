@@ -129,34 +129,34 @@ class Workerpool_toy{
         void run (std::vector<std::shared_ptr<fdapde::Worker_queue<T>>> & q, int index){
                     //int j=0; //per debug
                     //std::cout << "Thread " << index <<"con id:"<<std::this_thread::get_id()<<" sta iniziando"<<std::endl;
-                    while(!q[index]->empty()){
+                    while(!q[index]->Empty()){
                         q[index]->pop_front();
                         //std::cout<<"da thread:"<<std::this_thread::get_id()<<"in index"<<index<<"j vale:"<<j<<std::endl;
                         std::this_thread::sleep_for(10ms);
                         //j++;
                     }
                     // finito con proprio thread passa a successivo
+                    /*
                     int i=0;
                     int new_index= index;
                     while(i<n_thread){
                         new_index = (new_index != n_thread-1)? (new_index + 1):(0);
-                        while(!q[new_index]->empty()){
+                        while(!q[new_index]->Empty()){
                             q[new_index]->pop_back(); // back perchè non è il suo
                             //std::cout<<"thread:"<<std::this_thread::get_id()<<"in index"<<new_index<<std::endl;
                             std::this_thread::sleep_for(10ms);
                         }
                         i++;
-                    }                    
+                    }
+                    */                    
         }
 };
 
 int main(){
     int size_worker_queue=100;
     int n_thread= 8;
-    int size_coda= size_worker_queue; //*n_thread;
-    // unica deque threapool
-    
-    Workerpool_toy<int> wpool(n_thread,size_worker_queue);
+    int size_coda= size_worker_queue*n_thread; 
+
     
 
     auto start = std::chrono::high_resolution_clock::now();

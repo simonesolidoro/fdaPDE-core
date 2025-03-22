@@ -25,7 +25,7 @@ int size_coda=1000;
 using namespace std::chrono_literals;
 
 void padronecoda(fdapde::Worker_queue<int> & coda){
-    while(! coda.empty()){
+    while(! coda.Empty()){
         coda.pop_front();
         //std::this_thread::sleep_for(1ms); //simula lavoro
     }
@@ -34,11 +34,11 @@ void padronecoda(fdapde::Worker_queue<int> & coda){
 
 
 void rubalavoro(fdapde::Worker_queue<int> & coda1,fdapde::Worker_queue<int> & coda2){
-    while(!coda1.empty()){
+    while(!coda1.Empty()){
         coda1.pop_back();
         //std::this_thread::sleep_for(1ms);
     }
-    while(!coda2.empty()){
+    while(!coda2.Empty()){
         coda2.pop_back();
         //std::this_thread::sleep_for(1ms);
     }
@@ -81,7 +81,7 @@ class Unica_coda_threadsafe{
             std::lock_guard<std::mutex> loc(m_);
             return queue_.size();
         }
-        bool empty(){
+        bool Empty(){
             std::lock_guard<std::mutex> loc(m_);
             return queue_.empty();
         }
@@ -136,19 +136,19 @@ int main(){
 
     // svuoto coda unica con tre thread
     auto start2 = std::chrono::high_resolution_clock::now();
-    std::thread tt([&D](){while (!D.empty()){
+    std::thread tt([&D](){while (!D.Empty()){
                                 D.pop_back();
                                 //std::this_thread::sleep_for(1ms);
                                  }
                         }
                     );
-    std::thread tt1([&D](){while (!D.empty()){
+    std::thread tt1([&D](){while (!D.Empty()){
                                 D.pop_back();
                                 //std::this_thread::sleep_for(1ms);
                                  }
                         }
                     );   
-    std::thread tt2([&D](){while (!D.empty()){
+    std::thread tt2([&D](){while (!D.Empty()){
                                 D.pop_back();
                                 //std::this_thread::sleep_for(1ms);
                                  }
