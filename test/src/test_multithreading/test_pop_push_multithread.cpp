@@ -73,5 +73,11 @@ int main(){
     std::thread j(pop_back_da,std::ref(q1));
     pop_front_da(q1);
     j.join();
+
+    
+    while(!q1.Empty()){
+        q1.pop_back();
+    }
+    q1.pop_back();
     return 0;
 }

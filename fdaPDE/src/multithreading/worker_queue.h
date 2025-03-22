@@ -42,23 +42,20 @@ namespace fdapde {
             std::atomic<int> head_; //indx of 1 over "first" element
             std::atomic<int> tail_; //indx of "last" element
             int size_;
-            std::atomic<bool> empty_queue_; // va eliminato eigen non lo usa (aggiornalo dopo pop_* vredo renderebbe ogni pop sequenziale e quindi tutto inutile le atomic variabili )
             std::mutex m_;
         public:
             Worker_queue(const Worker_queue&) = delete;
             void operator=(const Worker_queue&) = delete;
             // default constructor credo poi da associare a metodo resize()
             Worker_queue(){
-                head_ = 0;
-                tail_ = 0;
-                empty_queue_ = true;
+                head_.store(0);
+                tail_.store(0);
             };
             // construct whit size of queue_=n;
             Worker_queue(int n):queue_(n){
                 head_.store(0);
                 tail_.store(0);
                 size_ = n;
-                empty_queue_ = true;
                 for (int i = 0; i < size_; i++)
                     queue_[i].stato.store(Stato::empty, std::memory_order_relaxed);
             }
@@ -78,8 +75,8 @@ namespace fdapde {
                 
             }
             */
-
-            bool push_front(value_type t){ //prova a iserire dove puta head_
+            //prova a inserire t dove puta head_
+            bool push_front(value_type t){ 
                 int h= head_.load(std::memory_order_relaxed);
                 int new_head = (h == size_-1)? (0) : (h + 1);
                 elem* e= &queue_[h]; //puntatore ad elem di arry in posizione head (dove si vuole inserire elemento)
@@ -91,8 +88,8 @@ namespace fdapde {
                 e->stato.store(ready,std::memory_order_release);
                 return true;   
             }
-
-            value_type pop_front(){ //prova toglire uno dietro head_
+            //prova toglire uno dietro head_ (primo elemnto di queue_)
+            value_type pop_front(){ 
                 int h= head_.load(std::memory_order_relaxed);
                 int new_head = (h== 0)? (size_-1) : (h-1);
                 elem* e =& queue_[new_head]; //(puntatore ad elem che si vuole pop)
@@ -106,8 +103,8 @@ namespace fdapde {
                 
             }
             
-            //push_back() thread-safe 
-            bool push_back(value_type t){ //prova a inserire uno dietro tail_ 
+            //prova a inserire t uno dietro tail_ 
+            bool push_back(value_type t){  
                 std::lock_guard<std::mutex> loc(m_); 
                 int tail = tail_.load(std::memory_order_relaxed);
                 int new_tail = (tail_ == 0)? (size_-1) : (tail_ -1);
@@ -121,8 +118,8 @@ namespace fdapde {
                 return true;  
             }
 
-            //pop_back() thrade-safe
-            value_type pop_back(){ //prova togliere in tail_
+            //prova togliere elemnto in tail_
+            value_type pop_back(){ 
                 if(Empty()){
                     std::cerr << "Queue is empty" << std::endl;
                     return value_type();
@@ -137,7 +134,6 @@ namespace fdapde {
                 value_type ret = std::move(e->v);
                 e->stato.store(Stato::empty, std::memory_order_release);
                 tail_.store(new_tail, std::memory_order_relaxed);
-                if(head_==tail_) {empty_queue_ = true;} // da togliere
                 return ret;
             }
 
@@ -170,9 +166,8 @@ namespace fdapde {
             void clear(){ 
                 std::lock_guard loc(m_);
                 queue_.clear();
-                head_ = 0;
-                tail_ = 0;
-                empty_queue_ = true;
+                head_.store(0); // da aggiungere memory order forse 
+                tail_.store(0);
             } 
         
 
