@@ -123,12 +123,10 @@ namespace fdapde {
 
             //pop_back() thrade-safe
             value_type pop_back(){ //prova togliere in tail_
-                /*da implementare Empty()
                 if(Empty()){
                     std::cerr << "Queue is empty" << std::endl;
                     return value_type();
                 }
-                */
                 std::lock_guard<std::mutex> loc(m_);
                 int tail = tail_.load(std::memory_order_relaxed);
                 int new_tail = (tail_ == size_-1)? (0):(tail_+1);
@@ -153,7 +151,6 @@ namespace fdapde {
                 std::lock_guard<std::mutex> loc(m_);
                 return empty_queue_;
                 */
-                   // Emptiness plays critical role in thread pool blocking. So we go to great
                 int head = head_.load(std::memory_order_acquire);
                 for (;;) {
                 int tail = tail_.load(std::memory_order_acquire);
