@@ -129,6 +129,28 @@ namespace fdapde {
                 return ret;
             }
 
+            // pop prima metà di queue_ (inserendola in vettore condiviso tramite puntatore ret) e ridà numero elemnti pop
+            /*
+            int pop_half(std::vector<value_type>* ret){
+                std::lock_guard loc(m_);
+                if(empty_queue_) return 0;
+                if(head_ > tail_){
+                    int n_tot= head_ - tail_; //numero tot elem in queue_
+                    int half= n_tot / 2; // dato che int -> half = parte intera di divisione con resto
+                    for(int j= 0 ; j<half ; j++){ //no <= half
+                        ret->push_back(std::move(queue_[tail_+j]));
+                        tail_ ++;
+                    }
+                    return half;
+                }
+                if(tail_ > head_){
+                    //TODO
+                }
+                //se si arriva qui queue_ full
+                //TODO
+            } 
+            */
+
             // wrap of function size() empty() of vector thrade-safe
             int size(){
                 std::lock_guard<std::mutex> loc(m_);
