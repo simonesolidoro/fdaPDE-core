@@ -38,7 +38,7 @@ void pop_front_da(fdapde::Worker_queue<int> & q){
     std::cout<<"padrone"<<q.pop_front()<<std::endl;
 }
 void pop_back_da(fdapde::Worker_queue<int> & q){
-    std::cout<<"thread n:"<<std::this_thread::get_id()<<q.pop_back()<<std::endl;
+    std::cout<<"thread n:"<<std::this_thread::get_id()<<" :"<<q.pop_back()<<std::endl;
 }
 
 int main(){
@@ -72,5 +72,6 @@ int main(){
 
     std::thread j(pop_back_da,std::ref(q1));
     pop_front_da(q1);
+    j.join();
     return 0;
 }
