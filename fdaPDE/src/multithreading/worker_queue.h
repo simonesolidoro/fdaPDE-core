@@ -75,7 +75,7 @@ namespace fdapde {
                 
             }
             */
-            //prova a inserire t dove puta head_
+            //prova a inserire t dove punta head_
             bool push_front(value_type t){ 
                 int h= head_.load(std::memory_order_relaxed);
                 int new_head = (h == size_-1)? (0) : (h + 1);
@@ -137,16 +137,7 @@ namespace fdapde {
                 return ret;
             }
 
-            // wrap of function size() empty() of vector thrade-safe
-            int size(){
-                std::lock_guard<std::mutex> loc(m_);
-                return queue_.size();
-            }
             bool Empty(){
-                /* da implementare in modo che non renda tutto sequenziale, ancora non chiaro
-                std::lock_guard<std::mutex> loc(m_);
-                return empty_queue_;
-                */
                 int head = head_.load(std::memory_order_acquire);
                 for (;;) {
                 int tail = tail_.load(std::memory_order_acquire);
