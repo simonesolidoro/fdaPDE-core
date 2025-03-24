@@ -31,6 +31,7 @@ template <int N, typename... Args> class GridOptimizer {
     vector_t optimum_;
     double value_;   // objective value at optimum
     int size_;
+    std::vector<double> values_;   // explored objective values during optimization
    public:
     vector_t x_current;
     // constructor
@@ -51,7 +52,7 @@ template <int N, typename... Args> class GridOptimizer {
     }
     template <typename ObjectiveT, typename GridT>
         requires(internals::is_vector_like_v<GridT> || internals::is_matrix_like_v<GridT>)
-    vector_t optimize(ObjectiveT& objective, const GridT& grid) {
+    vector_t optimize(ObjectiveT&& objective, const GridT& grid) {
         fdapde_static_assert(
           std::is_same<decltype(std::declval<ObjectiveT>().operator()(vector_t())) FDAPDE_COMMA double>::value,
           INVALID_CALL_TO_OPTIMIZE__OBJECTIVE_FUNCTOR_NOT_ACCEPTING_VECTORTYPE);
@@ -67,11 +68,13 @@ template <int N, typename... Args> class GridOptimizer {
         // algorithm initialization
         grid_.row(0).assign_to(x_current);
         value_ = objective(x_current);
+        values_.push_back(value_);
         optimum_ = x_current;
         // optimize field over supplied grid
         for (int i = 1; i < grid_.rows() && !stop; ++i) {
             grid_.row(i).assign_to(x_current);
             double x = objective(x_current);
+            values_.push_back(x);
             stop |= execute_post_update_step(*this, objective, callbacks_);
             // update minimum if better optimum found
             if (x < value_) {
@@ -84,6 +87,7 @@ template <int N, typename... Args> class GridOptimizer {
     // getters
     vector_t optimum() const { return optimum_; }
     double value() const { return value_; }
+    const std::vector<double>& values() const { return values_; }
 };
 
 }   // namespace fdapde

@@ -1024,8 +1024,8 @@ class matrix_eigen_product_impl :
     // evaluation at point
     constexpr auto operator()(const InputType& p) const { return Base::call_(p); }
    protected:
-    std::conditional_t<internals::is_eigen_dense_xpr_v<Lhs>, const Lhs&, internals::ref_select_t<const Lhs>> lhs_;
-    std::conditional_t<internals::is_eigen_dense_xpr_v<Rhs>, const Rhs&, internals::ref_select_t<const Rhs>> rhs_;
+    std::conditional_t<internals::is_eigen_dense_xpr_v<Lhs>, const Lhs, internals::ref_select_t<const Lhs>> lhs_;
+    std::conditional_t<internals::is_eigen_dense_xpr_v<Rhs>, const Rhs, internals::ref_select_t<const Rhs>> rhs_;
 };
 
 template <
@@ -1098,8 +1098,8 @@ class matrix_eigen_binary_op_impl :
     // evaluation at point
     constexpr auto operator()(const InputType& p) const { return Base::call_(p); }
    protected:
-    std::conditional_t<internals::is_eigen_dense_xpr_v<Lhs>, const Lhs&, internals::ref_select_t<const Lhs>> lhs_;
-    std::conditional_t<internals::is_eigen_dense_xpr_v<Rhs>, const Rhs&, internals::ref_select_t<const Rhs>> rhs_;
+    std::conditional_t<internals::is_eigen_dense_xpr_v<Lhs>, const Lhs, internals::ref_select_t<const Lhs>> lhs_;
+    std::conditional_t<internals::is_eigen_dense_xpr_v<Rhs>, const Rhs, internals::ref_select_t<const Rhs>> rhs_;
     BinaryOperation op_;
 };
 

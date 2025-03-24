@@ -45,7 +45,7 @@ template <typename CharBuff>
     requires(is_char_buff<CharBuff>)
 size_t next_char_or_newline_(const CharBuff& buff, std::size_t begin, std::size_t end, char c) {
     int i = begin;
-    while (i < end && buff[i] != c && (buff[i] != EOF && buff[i] != '\n')) { i++; }
+    while (i < end && buff[i] != c && (buff[i] != EOF && buff[i] != '\n' && buff[i] != '\r')) { i++; }
     return i - begin;
 }
 
