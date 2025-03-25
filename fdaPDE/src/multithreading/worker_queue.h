@@ -26,8 +26,9 @@ namespace fdapde {
     class Worker_queue{
     using value_type= T;
     struct elem{
+        public:
         std::atomic<bool> empty_;
-        value_type v;
+        value_type v_;
     };
 
 
@@ -93,7 +94,7 @@ namespace fdapde {
                 empty_queue_ = false; //magari gia false quindi ridondante,ma evita if(empty_queue_) {empty_queue_ = false;} non so quale piu efficiente 
                 loc.unlock();
                 //push di elemento
-                queue_[h] = std::move(t);
+                queue_[h].v_ = std::move(t);
                 queue_[h].empty_.store(false, std::memory_order_release); //aggiorna stato di elem con release
                 return true; 
             }
@@ -115,8 +116,8 @@ namespace fdapde {
                 loc.unlock();
 
                 // sostituisce in posto che viene liberato il valore di defaul di value_type
-                value_type ret = std::move(queue_[new_head]);
-                queue_[new_head] = value_type(); 
+                value_type ret = std::move(queue_[new_head].v_);
+                queue_[new_head].v_ = std::move(value_type()); 
                 queue_[new_head].empty_.store(true, std::memory_order_release); 
                 return ret;
                 
@@ -148,7 +149,7 @@ namespace fdapde {
                     tail_ = new_tail;
                 }
                 loc.unlock();
-                queue_[new_tail] = std::move(t);
+                queue_[new_tail].v_ = std::move(t);
                 queue_[new_tail].empty_.store(false, std::memory_order_release);
                 return true;
             }
@@ -171,8 +172,8 @@ namespace fdapde {
                 loc.unlock();
 
                 // sostituisce in posto che viene liberato il valore di defaul di value_type
-                value_type ret = std::move(queue_[t]);
-                queue_[t] = value_type(); 
+                value_type ret = std::move(queue_[t].v_);
+                queue_[t].v_ = std::move(value_type()); 
                 queue_[t].empty_.store(true, std::memory_order_release); 
                 return ret;
             }
@@ -202,8 +203,8 @@ namespace fdapde {
             int get_tail()const {return tail_;}
             int get_head()const {return head_;} 
             void print(){
-                for (value_type i : queue_)
-                    std::cout<<i<<"  ";
+                for (int i=0; i<size_; i++)
+                    std::cout<<queue_[i].v_<<"  ";
                 std::cout<<std::endl;
             }
 
