@@ -45,11 +45,12 @@ namespace fdapde {
             Worker_queue() = default;
 
             // construct whit size of queue_=n;
-            Worker_queue(int n){
-                queue_.resize(n);
+            Worker_queue(int n):queue_(n){
                 size_ = n;
+                for(int i =0; i<n;i++)
+                    queue_[i].empty_.store(true);
             }
-
+/*
             // TODO: figure out the correct requires
             template<typename Iterator> Worker_queue(Iterator begin, Iterator end) {
                 queue_.insert(queue_.begin(),begin,end);
@@ -57,11 +58,11 @@ namespace fdapde {
                 size_ = head_;
                 empty_queue_ = false;
             }
-
+*/
             Worker_queue(const Worker_queue&) = delete;
             void operator=(const Worker_queue&) = delete;
 
-
+/*
             // TODO: resize to sizes smaller than the current one? Clear the queue when resizing?
             bool resize(int n){
 
@@ -76,7 +77,7 @@ namespace fdapde {
                 return 1;
                 
             }
-
+*/
 
             bool push_front(value_type t){
                 std::unique_lock<std::mutex> loc(m_);

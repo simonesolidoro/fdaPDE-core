@@ -18,13 +18,13 @@
  
  int main(){
 
-
+/* construct con cotaier
     std::deque<int> test;
 
     fdapde::Worker_queue<int> q1(test.begin(),test.end());
 
     q1.print();
-
+*/
     fdapde::Worker_queue<int> q(10);
 
     //push_front()
