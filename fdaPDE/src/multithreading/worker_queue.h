@@ -28,27 +28,28 @@ namespace fdapde {
     typedef std::vector<value_type> container;
         private:
             container queue_;
-            int head_; //indx of 1 over "first" element
-            int tail_; //indx of "last" element
-            int size_;
-            bool empty_queue_; 
+            int head_ = 0; //indx of 1 over "first" element
+            int tail_ = 0; //indx of "last" element
+            int size_ = 0;
+            bool empty_queue_ = true;
             std::mutex m_;
         public:
             // default constructor credo poi da associare a metodo resize()
-            Worker_queue(){
-                head_ = 0;
-                tail_ = 0;
-                empty_queue_ = true;
-            };
+            Worker_queue() = default;
+
             // construct whit size of queue_=n;
             Worker_queue(int n){
                 queue_.resize(n);
-                head_ = 0;
-                tail_ = 0;
                 size_ = n;
-                empty_queue_ = true;
             }
-            // TODO: implement a constructor that takes as input a vector of value_type?
+
+            // TODO: figure out the correct requires
+            template<typename Iterator> Worker_queue(Iterator begin, Iterator end) {
+                queue_.insert(queue_.begin(),begin,end);
+                head_ = queue_.size();
+                size_ = head_;
+                empty_queue_ = false;
+            }
 
             Worker_queue(const Worker_queue&) = delete;
             void operator=(const Worker_queue&) = delete;
