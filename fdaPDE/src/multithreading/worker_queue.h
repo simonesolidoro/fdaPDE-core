@@ -114,20 +114,22 @@ namespace fdapde {
                 if(head_==tail_) {empty_queue_ = true;}  //head_ ==tail_ after pop() means empty, in general means full
                 loc.unlock();
 
-                /* // sostituisce in posto che viene liberato il valore di defaul di value_type
-                value_type ret = queue_[new_head];
-                queue_[new_head] = value_type();  
+                // sostituisce in posto che viene liberato il valore di defaul di value_type
+                value_type ret = std::move(queue_[new_head]);
+                queue_[new_head] = value_type(); 
+                queue_[new_head].empty_.store(true, std::memory_order_release); 
                 return ret;
-                */
-               // una volta che indici aggiornati non importa cosa c'è in posto vuoto quindi piu efficente cosi
-                queue_[new_head].empty_.store(true, std::memory_order_release);
-                return queue_[new_head]; 
                 
+            /*   // una volta che indici aggiornati non importa cosa c'è in posto vuoto quindi piu efficente cosi
+                queue_[new_head].empty_.store(true, std::memory_order_release); 
+                return queue_[new_head]; 
+                OSS: cosi non credp vada bene perche da aggiornamento .empty() a return magari queue_[new_head] viene modificato
+            */    
             }
             
             //push_back() thread-safe 
             bool push_back(value_type t){
-                std::unique_guard<std::mutex> loc(m_);
+                std::unique_lock<std::mutex> loc(m_);
                 if (head_ == tail_ && !empty_queue_ )// coda piena
                     std::cerr<<"queue full"<<std::endl; // per debug poi da togliere
                     return false;
@@ -153,17 +155,25 @@ namespace fdapde {
 
             //pop_back() thrade-safe
             std::optional<value_type> pop_back(){
-                std::lock_guard<std::mutex> loc(m_);
-
+                std::unique_lock<std::mutex> loc(m_);
                 if(empty_queue_ == true){
                     std::cerr << "Queue is empty" << std::endl;
                     return std::nullopt;
                 }
+                bool stato = false;
+                while (!queue_[tail_].empty_.compare_exchange_strong(stato, true, std::memory_order_acquire)){ 
+                    //rifà while finche queue_[tail_].empty.store(false, ) da push_front(), se non gia false
+                }
+                int t = tail_; // tmp idice di elmeto da pop
                 int new_tail = (tail_ == size_-1)? (0):(tail_+1);
-                value_type ret = std::move(queue_[tail_]);
-                queue_[tail_] = value_type();
                 tail_ = new_tail;
                 if(head_==tail_) {empty_queue_ = true;}
+                loc.unlock();
+
+                // sostituisce in posto che viene liberato il valore di defaul di value_type
+                value_type ret = std::move(queue_[t]);
+                queue_[t] = value_type(); 
+                queue_[t].empty_.store(true, std::memory_order_release); 
                 return ret;
             }
 
