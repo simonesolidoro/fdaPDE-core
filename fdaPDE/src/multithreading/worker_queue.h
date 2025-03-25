@@ -86,11 +86,11 @@ namespace fdapde {
                 return 0;   
             }
 
-            value_type pop_front(){
+            std::optional<value_type> pop_front(){
                 std::lock_guard<std::mutex> loc(m_);
                 if (empty_queue_){
                     std::cerr<<"queue empty"<<std::endl;
-                    return value_type();
+                    return std::nullopt;
                 }
                 int new_head = (head_== 0)? (size_-1) : (head_-1);
                 value_type ret = queue_[new_head];
@@ -119,12 +119,12 @@ namespace fdapde {
             }
 
             //pop_back() thrade-safe
-            value_type pop_back(){
+            std::optional<value_type> pop_back(){
                 std::lock_guard<std::mutex> loc(m_);
 
                 if(empty_queue_ == true){
                     std::cerr << "Queue is empty" << std::endl;
-                    return value_type();
+                    return std::nullopt;
                 }
                 int new_tail = (tail_ == size_-1)? (0):(tail_+1);
                 value_type ret = std::move(queue_[tail_]);
@@ -133,28 +133,6 @@ namespace fdapde {
                 if(head_==tail_) {empty_queue_ = true;}
                 return ret;
             }
-
-            // pop prima metà di queue_ (inserendola in vettore condiviso tramite puntatore ret) e ridà numero elemnti pop
-            /*
-            int pop_half(std::vector<value_type>* ret){
-                std::lock_guard loc(m_);
-                if(empty_queue_) return 0;
-                if(head_ > tail_){
-                    int n_tot= head_ - tail_; //numero tot elem in queue_
-                    int half= n_tot / 2; // dato che int -> half = parte intera di divisione con resto
-                    for(int j= 0 ; j<half ; j++){ //no <= half
-                        ret->push_back(std::move(queue_[tail_+j]));
-                        tail_ ++;
-                    }
-                    return half;
-                }
-                if(tail_ > head_){
-                    //TODO
-                }
-                //se si arriva qui queue_ full
-                //TODO
-            } 
-            */
 
             // wrap of function size() empty() of vector thrade-safe
             int size() {
