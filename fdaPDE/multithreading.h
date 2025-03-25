@@ -23,6 +23,8 @@
 #include<thread>
 #include<condition_variable>
 #include<memory>
+#include<optional>
+#include<atomic>
 
 // per debug e test momentaneo
 #include<iostream>

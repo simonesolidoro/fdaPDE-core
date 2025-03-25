@@ -25,7 +25,13 @@ namespace fdapde {
     template <typename T> 
     class Worker_queue{
     using value_type= T;
-    typedef std::vector<value_type> container;
+    struct elem{
+        std::atomic<bool> empty_;
+        value_type v;
+    };
+
+
+    typedef std::vector<elem> container;
         private:
             container queue_;
             int head_ = 0; //indx of 1 over "first" element
@@ -72,19 +78,24 @@ namespace fdapde {
 
             //TODO: mutexes should be used for operations in the front too since we can go to the back when we reach the end
             bool push_front(value_type t){
-                std::lock_guard<std::mutex> loc(m_);
-                int new_head = (head_ == size_-1)? (0) : (head_ + 1);
-                if (head_ != tail_){
-                    queue_[head_] = std::move(t);
-                    head_ = new_head;
-                    return 1;}
-                else if(empty_queue_==true){
-                    queue_[head_] = std::move(t);
-                    head_= new_head;
-                    empty_queue_ = false;
-                    return 1;} 
-                std::cerr<<"queue full"<<std::endl;
-                return 0;   
+                std::unique_lock<std::mutex> loc(m_);
+                if (head_ == tail_ && !empty_queue_ )// coda piena
+                    std::cerr<<"queue full"<<std::endl; // per debug poi da togliere
+                    return false;
+                //se si arruva qui c'è posto, però bisogna aspettare che elemento sia stato liberato (se coda era piena ma viene fatto un pop_front che aggiorna tail_ in modo da head_!= tail_ ma ancora non ha liberato elemento)
+                bool stato = true //perche in exchange expected value deve essere reference non rvalue
+                while (!queue_[head].empty_.compare_exchange_strong(stato, false, std::memory_order_acquire)){ 
+                    //rifà while finche queue_[head].empty.store(true, ) da pop_back(), se non gia true
+                }
+                // ora posto libero 
+                int h = head_; //index dove inserira elemento
+                head_ = (head_ == size_-1)? (0) : (head_ + 1);
+                empty_queue_ = false; //magari gia false quindi ridondante,ma evita if(empty_queue_) {empty_queue_ = false;} non so quale piu efficiente 
+                loc.unlock();
+                //push di elemento
+                queue_[h] = std::move(t);
+                queue_[head].empty_.store(false, std::memory_order_release); //aggiorna stato di elem con release
+                return 1; 
             }
 
             std::optional<value_type> pop_front(){
