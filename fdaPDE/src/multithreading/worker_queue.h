@@ -76,15 +76,15 @@ namespace fdapde {
                 
             }
 
-            //TODO: mutexes should be used for operations in the front too since we can go to the back when we reach the end
+
             bool push_front(value_type t){
                 std::unique_lock<std::mutex> loc(m_);
                 if (head_ == tail_ && !empty_queue_ )// coda piena
                     std::cerr<<"queue full"<<std::endl; // per debug poi da togliere
                     return false;
                 //se si arruva qui c'è posto, però bisogna aspettare che elemento sia stato liberato (se coda era piena ma viene fatto un pop_front che aggiorna tail_ in modo da head_!= tail_ ma ancora non ha liberato elemento)
-                bool stato = true //perche in exchange expected value deve essere reference non rvalue
-                while (!queue_[head].empty_.compare_exchange_strong(stato, false, std::memory_order_acquire)){ 
+                bool stato = true; //perche in exchange expected value deve essere reference non rvalue
+                while (!queue_[head_].empty_.compare_exchange_strong(stato, false, std::memory_order_acquire)){ 
                     //rifà while finche queue_[head].empty.store(true, ) da pop_back(), se non gia true
                 }
                 // ora posto libero 
@@ -94,22 +94,33 @@ namespace fdapde {
                 loc.unlock();
                 //push di elemento
                 queue_[h] = std::move(t);
-                queue_[head].empty_.store(false, std::memory_order_release); //aggiorna stato di elem con release
+                queue_[h].empty_.store(false, std::memory_order_release); //aggiorna stato di elem con release
                 return 1; 
             }
 
             std::optional<value_type> pop_front(){
-                std::lock_guard<std::mutex> loc(m_);
+                std::unique_lock<std::mutex> loc(m_);
                 if (empty_queue_){
                     std::cerr<<"queue empty"<<std::endl;
                     return std::nullopt;
                 }
+                // coda non vuota ma magari un push_back ha modificato indici e non ancora inserito elemento (caso critico coda vuota poi push_back poi pop_front)
                 int new_head = (head_== 0)? (size_-1) : (head_-1);
-                value_type ret = queue_[new_head];
-                queue_[new_head] = value_type();
+                bool stato = false;
+                while (!queue_[new_head].empty_.compare_exchange_strong(stato, true, std::memory_order_acquire)){ 
+                    //rifà while finche queue_[new_head].empty.store(false, ) da push_back(), se non gia false
+                }
                 head_ = new_head;
-                if(head_==tail_) {empty_queue_ = true;}  //head_ ==tail_ after pop() means empty, in general means full  
+                if(head_==tail_) {empty_queue_ = true;}  //head_ ==tail_ after pop() means empty, in general means full
+                loc.unlock();
+
+                /* // sostituisce in posto che viene liberato il valore di defaul di value_type
+                value_type ret = queue_[new_head];
+                queue_[new_head] = value_type();  
                 return ret;
+                */
+               // una volta che indici aggiornati non importa cosa c'è in posto vuoto quindi piu efficente cosi
+                return queue_[new_head]; 
                 
             }
             
