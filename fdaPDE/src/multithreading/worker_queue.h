@@ -95,7 +95,7 @@ namespace fdapde {
                 //push di elemento
                 queue_[h] = std::move(t);
                 queue_[h].empty_.store(false, std::memory_order_release); //aggiorna stato di elem con release
-                return 1; 
+                return true; 
             }
 
             std::optional<value_type> pop_front(){
@@ -120,25 +120,35 @@ namespace fdapde {
                 return ret;
                 */
                // una volta che indici aggiornati non importa cosa c'è in posto vuoto quindi piu efficente cosi
+                queue_[new_head].empty_.store(true, std::memory_order_release);
                 return queue_[new_head]; 
                 
             }
             
             //push_back() thread-safe 
             bool push_back(value_type t){
-                std::lock_guard<std::mutex> loc(m_);
-                int new_tail = (tail_ == 0)? (size_-1) : (tail_ -1);
-                if (head_ != tail_){ //se non pieno
-                    queue_[new_tail] = t;
-                    tail_ = new_tail;
-                    return 1;}
-                else if(empty_queue_==true){
-                    queue_[tail_] = t;
+                std::unique_guard<std::mutex> loc(m_);
+                if (head_ == tail_ && !empty_queue_ )// coda piena
+                    std::cerr<<"queue full"<<std::endl; // per debug poi da togliere
+                    return false;
+                bool stato = true; //perche in exchange expected value deve essere reference non rvalue
+                while (!queue_[tail_].empty_.compare_exchange_strong(stato, false, std::memory_order_acquire)){ 
+                    //rifà while finche queue_[tail_].empty.store(true, ) da pop_front(), se non gia true
+                }
+                int new_tail;
+                if(empty_queue_){ // se coda vuota elemento inserito dove punta tail (new_tail=tail) ed head spostato +1
+                    new_tail = tail_;
                     head_++;
-                    empty_queue_ = false;
-                    return 1;} 
-                //std::cerr<<"queue full"<<std::endl;
-                return 0;   
+                    empty_queue_ = false; 
+                }
+                else{
+                    new_tail = (tail_ == 0)? (size_-1) : (tail_ -1);
+                    tail_ = new_tail;
+                }
+                loc.unlock();
+                queue_[new_tail] = std::move(t);
+                queue_[new_tail].empty_.store(false, std::memory_order_release);
+                return true;
             }
 
             //pop_back() thrade-safe
