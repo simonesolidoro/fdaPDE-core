@@ -28,7 +28,7 @@ namespace fdapde {
     struct elem{
         public:
         std::atomic<bool> empty_;
-        value_type v_;
+        std::optional<value_type> v_;
     };
 
 
@@ -45,55 +45,65 @@ namespace fdapde {
             Worker_queue() = default;
 
             // construct whit size of queue_=n;
-            Worker_queue(int n):queue_(n){
+            Worker_queue(int n): queue_(n){
                 size_ = n;
                 for(int i =0; i<n;i++)
                     queue_[i].empty_.store(true);
+
             }
-/*
+
             // TODO: figure out the correct requires
-            template<typename Iterator> Worker_queue(Iterator begin, Iterator end) {
-                queue_.insert(queue_.begin(),begin,end);
+            template<typename Iterator> Worker_queue(Iterator begin, Iterator end){
+                int n = end - begin;
+                std::vector<elem> temp_queue(n);
+                for(int i =0; i<n;i++){
+                    temp_queue[i].empty_.store(false);
+                    temp_queue[i].v_ =  *(begin + i);
+                }
+                std::swap(queue_, temp_queue);
                 head_ = queue_.size();
                 size_ = head_;
                 empty_queue_ = false;
             }
-*/
+
             Worker_queue(const Worker_queue&) = delete;
             void operator=(const Worker_queue&) = delete;
 
-/*
-            // TODO: resize to sizes smaller than the current one? Clear the queue when resizing?
-            bool resize(int n){
+            void resize(int n){
 
                 std::lock_guard<std::mutex> loc(m_);
-                if(n < size_){
-                    std::cerr << "Cannot resize to smaller size" << std::endl;
-                    return 0;
-                }
-                
-                queue_.resize(n);
 
-                return 1;
+                std::vector<elem> temp_queue(n);
+
+                std::swap(queue_, temp_queue);
+
+                for(int i =0; i<n;i++)
+                    queue_[i].empty_.store(true);
+
+                size_ = n;
+                head_ = 0;
+                tail_ = 0;
+                empty_queue_ = true;
                 
             }
-*/
+
 
             bool push_front(value_type t){
                 std::unique_lock<std::mutex> loc(m_);
-                if (head_ == tail_ && !empty_queue_ )// coda piena
+                if (head_ == tail_ && !empty_queue_ ){// coda piena
                     std::cerr<<"queue full"<<std::endl; // per debug poi da togliere
                     return false;
-                //se si arruva qui c'è posto, però bisogna aspettare che elemento sia stato liberato (se coda era piena ma viene fatto un pop_front che aggiorna tail_ in modo da head_!= tail_ ma ancora non ha liberato elemento)
-                bool stato = true; //perche in exchange expected value deve essere reference non rvalue
-                while (!queue_[head_].empty_.compare_exchange_strong(stato, false, std::memory_order_acquire)){ 
-                    //rifà while finche queue_[head].empty.store(true, ) da pop_back(), se non gia true
                 }
+                //se si arruva qui c'è posto, però bisogna aspettare che elemento sia stato liberato (se coda era piena ma viene fatto un pop_front che aggiorna tail_ in modo da head_!= tail_ ma ancora non ha liberato elemento)
+
                 // ora posto libero 
                 int h = head_; //index dove inserira elemento
                 head_ = (head_ == size_-1)? (0) : (head_ + 1);
                 empty_queue_ = false; //magari gia false quindi ridondante,ma evita if(empty_queue_) {empty_queue_ = false;} non so quale piu efficiente 
                 loc.unlock();
+
+                bool stato = true; //perche in exchange expected value deve essere reference non rvalue
+                queue_[head_].empty_.compare_exchange_strong(stato, false, std::memory_order_acquire);
                 //push di elemento
                 queue_[h].v_ = std::move(t);
                 queue_[h].empty_.store(false, std::memory_order_release); //aggiorna stato di elem con release
@@ -109,16 +119,16 @@ namespace fdapde {
                 // coda non vuota ma magari un push_back ha modificato indici e non ancora inserito elemento (caso critico coda vuota poi push_back poi pop_front)
                 int new_head = (head_== 0)? (size_-1) : (head_-1);
                 bool stato = false;
-                while (!queue_[new_head].empty_.compare_exchange_strong(stato, true, std::memory_order_acquire)){ 
-                    //rifà while finche queue_[new_head].empty.store(false, ) da push_back(), se non gia false
-                }
+
                 head_ = new_head;
                 if(head_==tail_) {empty_queue_ = true;}  //head_ ==tail_ after pop() means empty, in general means full
                 loc.unlock();
 
+                queue_[new_head].empty_.compare_exchange_strong(stato, true, std::memory_order_acquire);
+
                 // sostituisce in posto che viene liberato il valore di defaul di value_type
-                value_type ret = std::move(queue_[new_head].v_);
-                queue_[new_head].v_ = std::move(value_type()); 
+                value_type ret = std::move(queue_[new_head].v_.value());
+                queue_[new_head].v_ = std::nullopt;
                 queue_[new_head].empty_.store(true, std::memory_order_release); 
                 return ret;
                 
@@ -132,17 +142,16 @@ namespace fdapde {
             //push_back() thread-safe 
             bool push_back(value_type t){
                 std::unique_lock<std::mutex> loc(m_);
-                if (head_ == tail_ && !empty_queue_ )// coda piena
+                if (head_ == tail_ && !empty_queue_ ){// coda piena
                     std::cerr<<"queue full"<<std::endl; // per debug poi da togliere
                     return false;
-                bool stato = true; //perche in exchange expected value deve essere reference non rvalue
-                while (!queue_[tail_].empty_.compare_exchange_strong(stato, false, std::memory_order_acquire)){ 
-                    //rifà while finche queue_[tail_].empty.store(true, ) da pop_front(), se non gia true
                 }
+                bool stato = true; //perche in exchange expected value deve essere reference non rvalue
+
                 int new_tail;
                 if(empty_queue_){ // se coda vuota elemento inserito dove punta tail (new_tail=tail) ed head spostato +1
                     new_tail = tail_;
-                    head_++;
+                    head_ = (head_ == size_-1)? (0) : (head_ + 1);
                     empty_queue_ = false; 
                 }
                 else{
@@ -150,6 +159,9 @@ namespace fdapde {
                     tail_ = new_tail;
                 }
                 loc.unlock();
+
+                queue_[tail_].empty_.compare_exchange_strong(stato, false, std::memory_order_acquire);
+
                 queue_[new_tail].v_ = std::move(t);
                 queue_[new_tail].empty_.store(false, std::memory_order_release);
                 return true;
@@ -163,18 +175,18 @@ namespace fdapde {
                     return std::nullopt;
                 }
                 bool stato = false;
-                while (!queue_[tail_].empty_.compare_exchange_strong(stato, true, std::memory_order_acquire)){ 
-                    //rifà while finche queue_[tail_].empty.store(false, ) da push_front(), se non gia false
-                }
+
                 int t = tail_; // tmp idice di elmeto da pop
                 int new_tail = (tail_ == size_-1)? (0):(tail_+1);
                 tail_ = new_tail;
                 if(head_==tail_) {empty_queue_ = true;}
                 loc.unlock();
 
+                queue_[tail_].empty_.compare_exchange_strong(stato, true, std::memory_order_acquire);
+
                 // sostituisce in posto che viene liberato il valore di defaul di value_type
-                value_type ret = std::move(queue_[t].v_);
-                queue_[t].v_ = std::move(value_type()); 
+                value_type ret = std::move(queue_[t].v_.value());
+                queue_[t].v_ = std::nullopt;
                 queue_[t].empty_.store(true, std::memory_order_release); 
                 return ret;
             }
@@ -197,15 +209,19 @@ namespace fdapde {
                 tail_ = 0;
                 empty_queue_ = true;
             } 
-        
-
 
             //per debug momentanei
             int get_tail()const {return tail_;}
             int get_head()const {return head_;} 
             void print(){
-                for (int i=0; i<size_; i++)
-                    std::cout<<queue_[i].v_<<"  ";
+                for (int i=0; i<size_; i++){
+                    if(queue_[i].empty_.load() == true){
+                        std::cout<<0<<" ";
+                    }
+                    else{
+                        std::cout<<queue_[i].v_.value()<<"  ";
+                    }
+                }
                 std::cout<<std::endl;
             }
 
