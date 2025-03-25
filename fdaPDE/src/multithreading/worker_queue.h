@@ -118,12 +118,12 @@ namespace fdapde {
                 }
                 // coda non vuota ma magari un push_back ha modificato indici e non ancora inserito elemento (caso critico coda vuota poi push_back poi pop_front)
                 int new_head = (head_== 0)? (size_-1) : (head_-1);
-                bool stato = false;
 
                 head_ = new_head;
                 if(head_==tail_) {empty_queue_ = true;}  //head_ ==tail_ after pop() means empty, in general means full
                 loc.unlock();
 
+                bool stato = false;
                 queue_[new_head].empty_.compare_exchange_strong(stato, true, std::memory_order_acquire);
 
                 // sostituisce in posto che viene liberato il valore di defaul di value_type
@@ -146,7 +146,6 @@ namespace fdapde {
                     std::cerr<<"queue full"<<std::endl; // per debug poi da togliere
                     return false;
                 }
-                bool stato = true; //perche in exchange expected value deve essere reference non rvalue
 
                 int new_tail;
                 if(empty_queue_){ // se coda vuota elemento inserito dove punta tail (new_tail=tail) ed head spostato +1
@@ -160,6 +159,7 @@ namespace fdapde {
                 }
                 loc.unlock();
 
+                bool stato = true; //perche in exchange expected value deve essere reference non rvalue
                 queue_[tail_].empty_.compare_exchange_strong(stato, false, std::memory_order_acquire);
 
                 queue_[new_tail].v_ = std::move(t);
@@ -174,7 +174,6 @@ namespace fdapde {
                     std::cerr << "Queue is empty" << std::endl;
                     return std::nullopt;
                 }
-                bool stato = false;
 
                 int t = tail_; // tmp idice di elmeto da pop
                 int new_tail = (tail_ == size_-1)? (0):(tail_+1);
@@ -182,6 +181,7 @@ namespace fdapde {
                 if(head_==tail_) {empty_queue_ = true;}
                 loc.unlock();
 
+                bool stato = false;
                 queue_[tail_].empty_.compare_exchange_strong(stato, true, std::memory_order_acquire);
 
                 // sostituisce in posto che viene liberato il valore di defaul di value_type
