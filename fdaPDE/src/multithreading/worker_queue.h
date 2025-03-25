@@ -39,6 +39,7 @@ namespace fdapde {
             int tail_ = 0; //indx of "last" element
             int size_ = 0;
             bool empty_queue_ = true;
+            std::atomic<int> occupied_;
             std::mutex m_;
         public:
             // default constructor credo poi da associare a metodo resize()
@@ -49,6 +50,8 @@ namespace fdapde {
                 size_ = n;
                 for(int i =0; i<n;i++)
                     queue_[i].empty_.store(true);
+
+                occupied_.store(0);
 
             }
 
@@ -64,6 +67,8 @@ namespace fdapde {
                 head_ = queue_.size();
                 size_ = head_;
                 empty_queue_ = false;
+                occupied_.store(0);
+
             }
 
             Worker_queue(const Worker_queue&) = delete;
@@ -84,6 +89,8 @@ namespace fdapde {
                 head_ = 0;
                 tail_ = 0;
                 empty_queue_ = true;
+
+                occupied_.store(0);
                 
             }
 
@@ -107,6 +114,9 @@ namespace fdapde {
                 //push di elemento
                 queue_[h].v_ = std::move(t);
                 queue_[h].empty_.store(false, std::memory_order_release); //aggiorna stato di elem con release
+
+                occupied_++;
+
                 return true; 
             }
 
@@ -129,7 +139,10 @@ namespace fdapde {
                 // sostituisce in posto che viene liberato il valore di defaul di value_type
                 value_type ret = std::move(queue_[new_head].v_.value());
                 queue_[new_head].v_ = std::nullopt;
-                queue_[new_head].empty_.store(true, std::memory_order_release); 
+                queue_[new_head].empty_.store(true, std::memory_order_release);
+
+                occupied_--;
+
                 return ret;
                 
             /*   // una volta che indici aggiornati non importa cosa c'è in posto vuoto quindi piu efficente cosi
@@ -164,6 +177,9 @@ namespace fdapde {
 
                 queue_[new_tail].v_ = std::move(t);
                 queue_[new_tail].empty_.store(false, std::memory_order_release);
+
+                occupied_++;
+
                 return true;
             }
 
@@ -187,7 +203,11 @@ namespace fdapde {
                 // sostituisce in posto che viene liberato il valore di defaul di value_type
                 value_type ret = std::move(queue_[t].v_.value());
                 queue_[t].v_ = std::nullopt;
-                queue_[t].empty_.store(true, std::memory_order_release); 
+                queue_[t].empty_.store(true, std::memory_order_release);
+
+
+                occupied_--;
+
                 return ret;
             }
 
@@ -197,8 +217,7 @@ namespace fdapde {
                 return queue_.size();
             }
             bool empty() {
-                std::lock_guard<std::mutex> loc(m_);
-                return empty_queue_;
+                return occupied_.load() == 0;
             }
             
             // svuota queue_
