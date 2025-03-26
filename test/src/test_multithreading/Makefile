@@ -2,13 +2,13 @@
 CXX = g++ # Compilatore C++
 CXXFLAGS = -std=c++20 -pthread -Wall -I../../../ # Flag di compilazione con include
 SOURCES = $(wildcard test_*.cpp) # Trova tutti i file test_*.cpp
-EXECUTABLES = $(SOURCES:.cpp=.exe) # Rinomina i file .cpp in .exe
+EXECUTABLES = $(SOURCES:.cpp=) # Rinomina i file .cpp in .exe
 
 # Obiettivo di default
 all: $(EXECUTABLES)
 
 # Regola per compilare ciascun file test_*.cpp
-%.exe: %.cpp
+%: %.cpp
 	$(CXX) $(CXXFLAGS) $< -o $@
 
 # Pulizia dei file generati
