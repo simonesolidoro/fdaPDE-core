@@ -24,9 +24,8 @@
 namespace fdapde {
     template <typename T> 
     class Worker_queue{
-    using value_type= T;
+    using value_type = T;
     struct elem{
-        public:
         std::atomic<bool> empty_;
         std::optional<value_type> v_;
     };
@@ -109,8 +108,7 @@ namespace fdapde {
                 empty_queue_ = false; //magari gia false quindi ridondante,ma evita if(empty_queue_) {empty_queue_ = false;} non so quale piu efficiente 
                 loc.unlock();
 
-                bool stato = true; //perche in exchange expected value deve essere reference non rvalue
-                queue_[head_].empty_.compare_exchange_strong(stato, false, std::memory_order_acquire);
+                while(!queue_[head_].empty_.load( std::memory_order_acquire)) //finche non diventa vero (elemeto acora da svuotare da pop_frot) 
                 //push di elemento
                 queue_[h].v_ = std::move(t);
                 queue_[h].empty_.store(false, std::memory_order_release); //aggiorna stato di elem con release
@@ -133,8 +131,7 @@ namespace fdapde {
                 if(head_==tail_) {empty_queue_ = true;}  //head_ ==tail_ after pop() means empty, in general means full
                 loc.unlock();
 
-                bool stato = false;
-                queue_[new_head].empty_.compare_exchange_strong(stato, true, std::memory_order_acquire);
+                while(queue_[new_head].empty_.load( std::memory_order_acquire)) // aspetta finche diventa falso (elemnto inserito effettivamente da push_back)
 
                 // sostituisce in posto che viene liberato il valore di defaul di value_type
                 value_type ret = std::move(queue_[new_head].v_.value());
@@ -144,12 +141,7 @@ namespace fdapde {
                 occupied_--;
 
                 return ret;
-                
-            /*   // una volta che indici aggiornati non importa cosa c'è in posto vuoto quindi piu efficente cosi
-                queue_[new_head].empty_.store(true, std::memory_order_release); 
-                return queue_[new_head]; 
-                OSS: cosi non credp vada bene perche da aggiornamento .empty() a return magari queue_[new_head] viene modificato
-            */    
+                   
             }
             
             //push_back() thread-safe 
@@ -172,8 +164,7 @@ namespace fdapde {
                 }
                 loc.unlock();
 
-                bool stato = true; //perche in exchange expected value deve essere reference non rvalue
-                queue_[tail_].empty_.compare_exchange_strong(stato, false, std::memory_order_acquire);
+                while(!queue_[tail_].empty_.load( std::memory_order_acquire))
 
                 queue_[new_tail].v_ = std::move(t);
                 queue_[new_tail].empty_.store(false, std::memory_order_release);
@@ -197,8 +188,8 @@ namespace fdapde {
                 if(head_==tail_) {empty_queue_ = true;}
                 loc.unlock();
 
-                bool stato = false;
-                queue_[tail_].empty_.compare_exchange_strong(stato, true, std::memory_order_acquire);
+                while(queue_[tail_].empty_.load( std::memory_order_acquire)) // aspetta finche diventa falso (elemnto inserito effettivamente da push_front)
+
 
                 // sostituisce in posto che viene liberato il valore di defaul di value_type
                 value_type ret = std::move(queue_[t].v_.value());
