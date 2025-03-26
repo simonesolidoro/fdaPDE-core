@@ -25,6 +25,7 @@
 #include<memory>
 #include<optional>
 #include<atomic>
+#include<condition_variable>
 
 // per debug e test momentaneo
 #include<iostream>
