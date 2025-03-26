@@ -108,7 +108,7 @@ namespace fdapde {
                 empty_queue_ = false; //magari gia false quindi ridondante,ma evita if(empty_queue_) {empty_queue_ = false;} non so quale piu efficiente 
                 loc.unlock();
 
-                while(!queue_[head_].empty_.load( std::memory_order_acquire)) //finche non diventa vero (elemeto acora da svuotare da pop_frot) 
+                while(!queue_[h].empty_.load( std::memory_order_acquire)){} //finche non diventa vero (elemeto acora da svuotare da pop_frot)
                 //push di elemento
                 queue_[h].v_ = std::move(t);
                 queue_[h].empty_.store(false, std::memory_order_release); //aggiorna stato di elem con release
@@ -131,7 +131,7 @@ namespace fdapde {
                 if(head_==tail_) {empty_queue_ = true;}  //head_ ==tail_ after pop() means empty, in general means full
                 loc.unlock();
 
-                while(queue_[new_head].empty_.load( std::memory_order_acquire)) // aspetta finche diventa falso (elemnto inserito effettivamente da push_back)
+                while(queue_[new_head].empty_.load( std::memory_order_acquire)){} // aspetta finche diventa falso (elemnto inserito effettivamente da push_back)
 
                 // sostituisce in posto che viene liberato il valore di defaul di value_type
                 value_type ret = std::move(queue_[new_head].v_.value());
@@ -164,7 +164,7 @@ namespace fdapde {
                 }
                 loc.unlock();
 
-                while(!queue_[tail_].empty_.load( std::memory_order_acquire))
+                while(!queue_[new_tail].empty_.load( std::memory_order_acquire)){}
 
                 queue_[new_tail].v_ = std::move(t);
                 queue_[new_tail].empty_.store(false, std::memory_order_release);
@@ -188,7 +188,7 @@ namespace fdapde {
                 if(head_==tail_) {empty_queue_ = true;}
                 loc.unlock();
 
-                while(queue_[tail_].empty_.load( std::memory_order_acquire)) // aspetta finche diventa falso (elemnto inserito effettivamente da push_front)
+                while(queue_[t].empty_.load( std::memory_order_acquire)){} // aspetta finche diventa falso (elemnto inserito effettivamente da push_front)
 
 
                 // sostituisce in posto che viene liberato il valore di defaul di value_type
