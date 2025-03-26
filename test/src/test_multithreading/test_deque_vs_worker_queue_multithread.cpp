@@ -76,13 +76,26 @@ class Worker_queue_deque{
 using value = std::string;
 
 // push_back di n elementi per worker queue 
+void push_front_di_n_elem(fdapde::Worker_queue<value> & q,int n, value el){
+    for (int j=0; j<n; j++){
+        q.push_front(el);
+    }
+};
+// push_back di n elementi per deque 
+void push_front_di_n_elem_d(Worker_queue_deque<value> & q,int n, value el){
+    for (int j=0; j<n; j++){
+        q.push_front(el);
+    }
+};
+
+// push_back di n elementi per worker queue 
 void push_back_di_n_elem(fdapde::Worker_queue<value> & q,int n, value el){
     for (int j=0; j<n; j++){
         q.push_back(el);
     }
 };
 // push_back di n elementi per deque 
-void push_back_di_n_elem_d(Worker_queue_deque<value> & q,int n, std::string el){
+void push_back_di_n_elem_d(Worker_queue_deque<value> & q,int n, value el){
     for (int j=0; j<n; j++){
         q.push_back(el);
     }
@@ -108,7 +121,7 @@ int main(){
 
     int n_thread = 8;
     int n_singolo= size_coda / n_thread;
-    
+/*    
 //push_back()
     auto start = std::chrono::high_resolution_clock::now();  
     //worker_queue push_back parallelo
@@ -163,7 +176,7 @@ int main(){
     }    
     auto end2 = std::chrono::high_resolution_clock::now();
     auto duration2 = std::chrono::duration_cast<std::chrono::microseconds>(end2 - start2);  
-    std::cout<<"pop_back() in worker_queue di n_elementi: "<<size_coda<<" impiegato:"<<duration2.count()<< " microsecondi\n";
+    std::cout<<"pop_back() in worker_queue di n_elementi: "<<size_coda<<" con n_thread:"<<n_thread<<" impiegato:"<<duration2.count()<< " microsecondi\n";
 
 
     auto start3 = std::chrono::high_resolution_clock::now();
@@ -179,7 +192,42 @@ int main(){
 
     auto end3 = std::chrono::high_resolution_clock::now();
     auto duration3 = std::chrono::duration_cast<std::chrono::microseconds>(end3 - start3);  
-    std::cout<<"pop_back in deque di n_elementi: "<<size_coda<<" impiegato:"<<duration3.count()<< " microsecondi\n";
+    std::cout<<"pop_back in deque di n_elementi: "<<size_coda<<" con n_thread:"<<n_thread<<" impiegato:"<<duration3.count()<< " microsecondi\n";
+*/
+
+//push_back da piu thread e push_front da singolo
+    fdapde::Worker_queue<value> q3(size_coda);
+    Worker_queue_deque<value> d3;
+
+    auto start4 = std::chrono::high_resolution_clock::now();
+    std::vector<std::thread> thread_pool3;
+    for (int j=0; j<n_thread-1; j++){
+        thread_pool3.emplace_back(push_back_di_n_elem,std::ref(q3),n_singolo, "ciao");
+    }
+    thread_pool3.emplace_back(push_front_di_n_elem,std::ref(q3),n_singolo, "ciao");
+
+    for (int k= 0; k<n_thread; k++){
+        thread_pool3[k].join();
+    }   
+    auto end4 = std::chrono::high_resolution_clock::now();
+    auto duration4 = std::chrono::duration_cast<std::chrono::microseconds>(end4 - start4);  
+    std::cout<<"push in worker_queue di n_elementi: "<<size_coda<<" con n_thread_back: "<<n_thread-1<<" e un thread_front impiegato:"<<duration4.count()<< " microsecondi\n"; 
+
+    auto start5 = std::chrono::high_resolution_clock::now();
+    std::vector<std::thread> thread_pool4;
+    for (int j=0; j<n_thread-1; j++){
+        thread_pool4.emplace_back(push_back_di_n_elem_d,std::ref(d3),n_singolo, "ciao");
+    }
+    thread_pool4.emplace_back(push_front_di_n_elem_d,std::ref(d3),n_singolo, "ciao");
+
+    for (int k= 0; k<n_thread; k++){
+        thread_pool4[k].join();
+    }   
+    auto end5 = std::chrono::high_resolution_clock::now();
+    auto duration5 = std::chrono::duration_cast<std::chrono::microseconds>(end5 - start5);  
+    std::cout<<"push in deque di n_elementi: "<<size_coda<<" con n_thread_back: "<<n_thread-1<<" e un thread_front impiegato:"<<duration5.count()<< " microsecondi\n"; 
+
+
 
     return 0;
 }
@@ -207,8 +255,21 @@ pop_back in deque di n_elementi: 1600 impiegato:1527 microsecondi
 
 
 //OSS: inutile pop_front() e push_front() fatti da piu thread perche, per nostra implementazione threadpool, solo un thread fara push_front e pop_front()
-//TODO: invece da testare pop e push di n elelemnti con:  multithread che fanno back e singolo che fa front
+// invece da testare pop e push di n elelemnti con:  multithread che fanno back e singolo che fa front
+// risultati
+/*
 
+push in worker_queue di n_elementi: 1600 con n_thread_back: 7 e un thread_front impiegato:2028 microsecondi
+push in deque di n_elementi: 1600 con n_thread_back: 7 e un thread_front impiegato:1344 microsecondi
+
+push in worker_queue di n_elementi: 1600 con n_thread_back: 7 e un thread_front impiegato:1548 microsecondi
+push in deque di n_elementi: 1600 con n_thread_back: 7 e un thread_front impiegato:1816 microsecondi
+
+push in worker_queue di n_elementi: 1600 con n_thread_back: 7 e un thread_front impiegato:703 microsecondi
+push in deque di n_elementi: 1600 con n_thread_back: 7 e un thread_front impiegato:1715 microsecondi
+*/
+
+//OSS: a volte deque da errore corrupted size vs. prev_size
 
 //OSS: valutare cambiando 2 variabili singolarmente:
 //     -n_thread:   diminuendo risultati peggiorano (sensato peerche worker piu pesante per essere piu efficente in multithread)
