@@ -119,7 +119,7 @@ namespace fdapde {
                 queue_[h].v_ = std::move(t);
                 queue_[h].empty_.store(false, std::memory_order_release); //aggiorna stato di elem con release
 
-                occupied_++;
+                occupied_.fetch_add(1,std::memory_order_release);
 
                 cv_.notify_one();
                 return true; 
@@ -145,7 +145,7 @@ namespace fdapde {
                 queue_[new_head].v_ = std::nullopt;
                 queue_[new_head].empty_.store(true, std::memory_order_release);
 
-                occupied_--;
+                occupied_.fetch_sub(1,std::memory_order_release);
 
                 return ret;
                    
@@ -169,7 +169,7 @@ namespace fdapde {
                 queue_[new_head].v_ = std::nullopt;
                 queue_[new_head].empty_.store(true, std::memory_order_release);
 
-                occupied_--;
+                occupied_.fetch_sub(1,std::memory_order_release);
 
                 return ret;
             }
@@ -199,7 +199,7 @@ namespace fdapde {
                 queue_[new_tail].v_ = std::move(t);
                 queue_[new_tail].empty_.store(false, std::memory_order_release);
 
-                occupied_++;
+                occupied_.fetch_add(1,std::memory_order_release);
 
                 cv_.notify_one();
                 return true;
@@ -228,7 +228,7 @@ namespace fdapde {
                 queue_[t].empty_.store(true, std::memory_order_release);
 
 
-                occupied_--;
+                occupied_.fetch_sub(1,std::memory_order_release);
 
                 return ret;
             }
@@ -253,7 +253,7 @@ namespace fdapde {
                 queue_[t].empty_.store(true, std::memory_order_release);
 
 
-                occupied_--;
+                occupied_.fetch_sub(1,std::memory_order_release);
 
                 return ret;
             }
@@ -264,7 +264,7 @@ namespace fdapde {
                 return queue_.size();
             }
             bool empty() {
-                return occupied_.load() == 0;  
+                return occupied_.load(std::memory_order_acquire) == 0;  
             }
             
             // svuota queue_
