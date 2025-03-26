@@ -40,6 +40,8 @@ namespace fdapde {
             bool empty_queue_ = true;
             std::atomic<int> occupied_;
             std::mutex m_;
+            std::condition_variable cv_;
+            bool active_ = true;
         public:
             // default constructor credo poi da associare a metodo resize()
             Worker_queue() = default;
@@ -68,6 +70,10 @@ namespace fdapde {
                 empty_queue_ = false;
                 occupied_.store(0);
 
+            }
+            ~Worker_queue(){
+                active_ = false;
+                cv_.notify_all();
             }
 
             Worker_queue(const Worker_queue&) = delete;
@@ -115,6 +121,7 @@ namespace fdapde {
 
                 occupied_++;
 
+                cv_.notify_one();
                 return true; 
             }
 
@@ -142,6 +149,29 @@ namespace fdapde {
 
                 return ret;
                    
+            }
+
+            std::optional<value_type> pop_front_or_wait(){
+                std::unique_lock<std::mutex> loc(m_);
+                cv_.wait(loc,[this](){return !active_ || !this->empty_queue;});
+                if(!active_) return std::nullopt ;
+
+                int new_head = (head_== 0)? (size_-1) : (head_-1);
+
+                head_ = new_head;
+                if(head_==tail_) {empty_queue_ = true;}  //head_ ==tail_ after pop() means empty, in general means full
+                loc.unlock();
+
+                while(queue_[new_head].empty_.load( std::memory_order_acquire)){} // aspetta finche diventa falso (elemnto inserito effettivamente da push_back)
+
+                // sostituisce in posto che viene liberato il valore di defaul di value_type
+                value_type ret = std::move(queue_[new_head].v_.value());
+                queue_[new_head].v_ = std::nullopt;
+                queue_[new_head].empty_.store(true, std::memory_order_release);
+
+                occupied_--;
+
+                return ret;
             }
             
             //push_back() thread-safe 
@@ -171,6 +201,7 @@ namespace fdapde {
 
                 occupied_++;
 
+                cv_.notify_one();
                 return true;
             }
 
@@ -182,6 +213,31 @@ namespace fdapde {
                     return std::nullopt;
                 }
 
+                int t = tail_; // tmp idice di elmeto da pop
+                int new_tail = (tail_ == size_-1)? (0):(tail_+1);
+                tail_ = new_tail;
+                if(head_==tail_) {empty_queue_ = true;}
+                loc.unlock();
+
+                while(queue_[t].empty_.load( std::memory_order_acquire)){} // aspetta finche diventa falso (elemnto inserito effettivamente da push_front)
+
+
+                // sostituisce in posto che viene liberato il valore di defaul di value_type
+                value_type ret = std::move(queue_[t].v_.value());
+                queue_[t].v_ = std::nullopt;
+                queue_[t].empty_.store(true, std::memory_order_release);
+
+
+                occupied_--;
+
+                return ret;
+            }
+
+            std::optional<value_type> pop_back_or_wait(){
+                std::unique_lock<std::mutex> loc(m_);
+                cv_.wait(loc,[this](){return !active_ || !empty_queue_;}); // loc mutex, controllo condizione in lamda, se falsa unlock mutex e wait se vera va avanti
+                //copia codice di pop_back() tranne check se coda vuota, alternativa a chiamata diretta di pop_back che però porta a dover usare recursive mutex (definito dal libro come il male assoluto)
+                if(!active_) return std::nullopt; //se chiamato distruttore distruttore notifica a tutti di verificare condizione wait 
                 int t = tail_; // tmp idice di elmeto da pop
                 int new_tail = (tail_ == size_-1)? (0):(tail_+1);
                 tail_ = new_tail;
