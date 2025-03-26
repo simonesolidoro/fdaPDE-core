@@ -181,48 +181,13 @@ int main(){
     auto duration3 = std::chrono::duration_cast<std::chrono::microseconds>(end3 - start3);  
     std::cout<<"pop_back in deque di n_elementi: "<<size_coda<<" impiegato:"<<duration3.count()<< " microsecondi\n";
 
-/*
-//push_front()
-    auto start5 = std::chrono::high_resolution_clock::now();
-   
-    auto end5 = std::chrono::high_resolution_clock::now();
-    auto duration5 = std::chrono::duration_cast<std::chrono::microseconds>(end5 - start5);  
-    std::cout<<"push_back() worker_queue di n_elementi: "<<size_coda<<" impiegato:"<<duration5.count()<< " microsecondi\n";
-
-    auto start6 = std::chrono::high_resolution_clock::now();
-   
-
-    auto end6 = std::chrono::high_resolution_clock::now();
-    auto duration6 = std::chrono::duration_cast<std::chrono::microseconds>(end6 - start6);  
-    std::cout<<"push_back() deque di n_elementi: "<<size_coda<<" impiegato:"<<duration6.count()<< " microsecondi\n";
-
-//pop_front()
-    auto start7 = std::chrono::high_resolution_clock::now();
-   
-
-    auto end7 = std::chrono::high_resolution_clock::now();
-    auto duration7 = std::chrono::duration_cast<std::chrono::microseconds>(end7 - start7);  
-    std::cout<<"pop_back() worker_queue di n_elementi: "<<size_coda<<" impiegato:"<<duration7.count()<< " microsecondi\n";
-
-    auto start8 = std::chrono::high_resolution_clock::now();
-
-
-    auto end8 = std::chrono::high_resolution_clock::now();
-    auto duration8 = std::chrono::duration_cast<std::chrono::microseconds>(end8 - start8);  
-    std::cout<<"pop_back() deque di n_elementi: "<<size_coda<<" impiegato:"<<duration8.count()<< " microsecondi\n";
-
-*/
     return 0;
 }
 
-// risultati
-/*
-con int deque piu veloce in push, :(. risultati migliori con string
-*/
 
 
 //risultati
-/* push_back e pop_back con multithreading, :) 
+/* push_back e pop_back con multithreading, :| :) 
 
 push_back in worker_queue di n_elementi: 1600 con n_thread:8 impiegato:1542 microsecondi
 push_frot in deque di n_elementi: 1600 con n_thread:8 impiegato:1602 microsecondi
@@ -241,5 +206,10 @@ pop_back in deque di n_elementi: 1600 impiegato:1527 microsecondi
 */
 
 
-//TODO: inutile pop_front() e push_front() fatti da piu thread perche per nostra implementazione threadpool solo un thread fara push_front e pop_front()
-//      invece da testare pop e push di n elelemnti con multithread che fanno back e singolo che fa front
+//OSS: inutile pop_front() e push_front() fatti da piu thread perche, per nostra implementazione threadpool, solo un thread fara push_front e pop_front()
+//TODO: invece da testare pop e push di n elelemnti con:  multithread che fanno back e singolo che fa front
+
+
+//OSS: valutare cambiando 2 variabili singolarmente:
+//     -n_thread:   diminuendo risultati peggiorano (sensato peerche worker piu pesante per essere piu efficente in multithread)
+//     -size_coda: sia numero sia value (es con int deque molto meglio, con string risultati migliorano) (ideale test con value=function, come sara in threadpool)
