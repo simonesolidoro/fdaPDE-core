@@ -129,9 +129,21 @@ template <typename CharT> struct token_stream {
 template <typename CharBuff>
     requires(is_char_buff<CharBuff>)
 double stod(CharBuff&& str) {
+    auto is_na = [](CharBuff& chr, int& i) -> bool {
+        if (chr[i] == 'N') {
+            i++;
+            if (chr[i++] == 'A') { return true; }
+            if (chr[i]   == 'a' && chr[i++] == 'N') { return true; }
+            return false;
+        }
+        if (chr[i] == 'n' && chr[i++] == 'a' && chr[i++] == 'n') { return true; }
+        return false;
+    };
+
     double val = 0;
     int i = 0;
     while (str[i] == ' ') { i++; }   // skip leading whitespaces
+    if (is_na(str, i)) { return std::numeric_limits<double>::quiet_NaN(); }
     if (!(str[i] == '-' || (str[i] >= '0' && str[i] <= '9'))) { throw std::invalid_argument("stod parsing error."); }
     int sign = 1;
     if (str[i] == '-') {
