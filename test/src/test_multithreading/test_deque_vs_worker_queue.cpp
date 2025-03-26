@@ -74,7 +74,7 @@ class Worker_queue_deque{
     };
 
 int main(){
-    int size_coda= 100;
+    int size_coda= 10000;
     fdapde::Worker_queue<int> q1(size_coda);
     Worker_queue_deque<int> d1;
 
@@ -174,14 +174,14 @@ int main(){
 
 /* RISULTATI */
 /*
-push_frot worker_queue di n_elementi: 100 impiegato:1 microsecondi
-push_frot deque di n_elementi: 100 impiegato:2 microsecondi
-pop_frot worker_queue di n_elementi: 100 impiegato:1 microsecondi
-pop_frot deque di n_elementi: 100 impiegato:2 microsecondi
-push_back() worker_queue di n_elementi: 100 impiegato:5 microsecondi
-push_back() deque di n_elementi: 100 impiegato:4 microsecondi
-pop_back() worker_queue di n_elementi: 100 impiegato:3 microsecondi
-pop_back() deque di n_elementi: 100 impiegato:31 microsecondi
+push_frot worker_queue di n_elementi: 100 impiegato:22 microsecondi
+push_frot deque di n_elementi: 100 impiegato:4 microsecondi
+pop_frot worker_queue di n_elementi: 100 impiegato:21 microsecondi
+pop_frot deque di n_elementi: 100 impiegato:7 microsecondi
+push_back() worker_queue di n_elementi: 100 impiegato:16 microsecondi
+push_back() deque di n_elementi: 100 impiegato:10 microsecondi
+pop_back() worker_queue di n_elementi: 100 impiegato:20 microsecondi
+pop_back() deque di n_elementi: 100 impiegato:17 microsecondi
 */
 
 
