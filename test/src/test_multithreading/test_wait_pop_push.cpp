@@ -20,16 +20,20 @@
 int main(){
     fdapde::Worker_queue<int> q(5);
     //coda vuota
-    int a;
-    if( q.pop_back() == std::nullopt){
-        a= 0;
-    } 
-    std::cout<<a<<" ridato false (0) perche coda vuota"<<std::endl;
     std::thread t(&fdapde::Worker_queue<int>::pop_back_or_wait,std::ref(q)); //prova a fare pop ma coda vuota quindi aspetta finche non viene fatto push
     q.push_back(3);
     q.print(); 
     q.print();
     t.join();
+
+    std::thread t1(&fdapde::Worker_queue<int>::pop_front_or_wait,std::ref(q)); //prova a fare pop ma coda vuota quindi aspetta finche non viene fatto push
+    q.push_back(3);
+    q.print(); 
+    q.print();
+    t1.join();
+
+
+
 
     
 
