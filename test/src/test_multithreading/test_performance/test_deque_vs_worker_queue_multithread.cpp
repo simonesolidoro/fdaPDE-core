@@ -321,7 +321,7 @@ int main(){
     int n_singolo= size_coda / n_thread;
 
    
-//push_back()
+//push_back() multithreading
 
     fdapde::Worker_queue<value> q1(size_coda);
     Worker_queue_deque<value> d1;
@@ -356,7 +356,7 @@ int main(){
     std::cout<<"push_back() in deque di n_elementi: "<<size_coda<<" con n_thread:"<<n_thread<<" impiegato:"<<duration1.count()<< " microsecondi\n";
 
 
-//pop_back()
+//pop_back() multithreading
     fdapde::Worker_queue<value> q2(size_coda);
     Worker_queue_deque<value> d2;
 

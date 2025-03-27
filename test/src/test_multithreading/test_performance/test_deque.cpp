@@ -112,20 +112,123 @@ void pop_front_di_n_elem_d(Worker_queue_deque<value> & q,int n){
 
 int main(){
     int size_coda= 16000;
-    int n_thread = 4;
+    int n_thread = 2;
     int n_singolo= size_coda / n_thread;
+
+    value el = fun;
+
+    Worker_queue_deque<value> q1;
+
+//push_back() sinolo thread
+/*
+    auto start5 = std::chrono::high_resolution_clock::now();
+    for(int j=0; j<size_coda-1; j++){
+        q1.push_back(el);
+    }
+
+    auto end5 = std::chrono::high_resolution_clock::now();
+    auto duration5 = std::chrono::duration_cast<std::chrono::microseconds>(end5 - start5);  
+    //std::cout<<"push_back() deque di n_elementi: "<<size_coda<<" impiegato:"<<duration5.count()<< " microsecondi\n";
+    std::cout<<duration5.count()<<",";
+*/
+//pop_back() singolo thread
+/*            //popolo
+            for (int i=0; i<size_coda; i++){
+                q1.push_front(el);
+            }
+    auto start7 = std::chrono::high_resolution_clock::now();
+    for(int j=0; j<size_coda-1; j++){
+        q1.pop_back();
+    }
+
+    auto end7 = std::chrono::high_resolution_clock::now();
+    auto duration7 = std::chrono::duration_cast<std::chrono::microseconds>(end7 - start7);  
+    //std::cout<<"pop_back() deque di n_elementi: "<<size_coda<<" impiegato:"<<duration7.count()<< " microsecondi\n";
+    std::cout<<duration7.count()<<",";
+*/
+//push_front() singolo thread
+/*
+    auto start = std::chrono::high_resolution_clock::now();
+    for(int j=0; j<size_coda-1; j++){
+        q1.push_front(el);
+    }
+
+    auto end = std::chrono::high_resolution_clock::now();
+    auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start);  
+    //std::cout<<"push_frot deque di n_elementi: "<<size_coda<<" impiegato:"<<duration.count()<< " microsecondi\n";
+    std::cout<<duration.count()<<",";
+*/
+//pop_front() singolo thread
+/*    //popolo
+    for (int i=0; i<size_coda; i++){
+        q1.push_front(el);
+    }
+    auto start2 = std::chrono::high_resolution_clock::now();
+    for(int j=0; j<size_coda-1; j++){
+        q1.pop_front();
+    }
+
+    auto end2 = std::chrono::high_resolution_clock::now();
+    auto duration2 = std::chrono::duration_cast<std::chrono::microseconds>(end2 - start2);  
+    //std::cout<<"pop_frot deque di n_elementi: "<<size_coda<<" impiegato:"<<duration2.count()<< " microsecondi\n";
+    std::cout<<duration2.count()<<",";
+*/
+//push_back() multithreading
+/*
+    Worker_queue_deque<value> q;
+
+    auto start = std::chrono::high_resolution_clock::now();  
+    //worker_queue push_back parallelo
+    std::vector<std::thread> thread_pool;
+    for (int j=0; j<n_thread; j++){
+        thread_pool.emplace_back(push_back_di_n_elem_d,std::ref(q),n_singolo, el);
+    }
+
+    for (int k= 0; k<n_thread; k++){
+        thread_pool[k].join();
+    }
+    //q1.print(); //per debug
+    auto end = std::chrono::high_resolution_clock::now();
+    auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start);  
+    //std::cout<<"push_back in deque di n_elementi: "<<size_coda<<" con n_thread:"<<n_thread<<" impiegato:"<<duration.count()<< " microsecondi\n";
+    std::cout<<duration.count()<<",";
+*/  
+
+//pop_back() multithreading
+/*
+    Worker_queue_deque<value> q2;
+
+    //popolo
+    for (int i=0; i<size_coda; i++){
+        q2.push_front(el);
+    }
+
+    auto start2 = std::chrono::high_resolution_clock::now();
+    //worker_queue pop_back parallelo
+    std::vector<std::thread> thread_pool2;
+    for (int j=0; j<n_thread; j++){
+        thread_pool2.emplace_back(pop_back_di_n_elem_d,std::ref(q2),n_singolo);
+    }
+
+    for (int k= 0; k<n_thread; k++){
+        thread_pool2[k].join();
+    }    
+    auto end2 = std::chrono::high_resolution_clock::now();
+    auto duration2 = std::chrono::duration_cast<std::chrono::microseconds>(end2 - start2);  
+    //std::cout<<"pop_back() in deque di n_elementi: "<<size_coda<<" con n_thread:"<<n_thread<<" impiegato:"<<duration2.count()<< " microsecondi\n";
+    std::cout<<duration2.count()<<",";
+*/
 
 
 //push_back da piu thread e push_front da singolo
-    Worker_queue_deque<value> d3;
-    
 /*
+    Worker_queue_deque<value> d3;    
     auto start5 = std::chrono::high_resolution_clock::now();
     std::vector<std::thread> thread_pool4;
     for (int j=0; j<n_thread-1; j++){
-        thread_pool4.emplace_back(push_back_di_n_elem_d,std::ref(d3),n_singolo, "ciao");
+        thread_pool4.emplace_back(push_back_di_n_elem_d,std::ref(d3),n_singolo, el);
     }
-    thread_pool4.emplace_back(push_front_di_n_elem_d,std::ref(d3),n_singolo, "ciao");
+    thread_pool4.emplace_back(push_front_di_n_elem_d,std::ref(d3),n_singolo, el);
 
     for (int k= 0; k<n_thread; k++){
         thread_pool4[k].join();
@@ -142,7 +245,7 @@ int main(){
 
     //popolo
     for (int i=0; i<size_coda; i++){    
-        d4.push_front(fun);
+        d4.push_front(el);
     }
 
     auto start7 = std::chrono::high_resolution_clock::now();
