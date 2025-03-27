@@ -17,7 +17,7 @@
 #include<fdaPDE/multithreading.h>
 
 
-using value = std::function<int()>;
+using value = std::string;
 
 int fun(){
     std::string s="ciaoo";
@@ -59,7 +59,7 @@ int main(){
     int n_singolo= size_coda / n_thread;
 
     fdapde::Worker_queue<value> q1(size_coda);
-    value el = fun;
+    value el = "ciao";
 
 //push_back() sinolo thread
 /*    auto start5 = std::chrono::high_resolution_clock::now();
@@ -101,7 +101,7 @@ int main(){
     std::cout<<duration.count()<<",";
 */
 //pop_front() singolo thread
-/*    //popolo
+    //popolo
     for (int i=0; i<size_coda; i++){
         q1.push_front(el);
     }
@@ -115,7 +115,7 @@ int main(){
     auto duration2 = std::chrono::duration_cast<std::chrono::microseconds>(end2 - start2);  
     //std::cout<<"pop_frot worker_queue di n_elementi: "<<size_coda<<" impiegato:"<<duration2.count()<< " microsecondi\n";
     std::cout<<duration2.count()<<",";
-*/
+
 //push_back() multithreading
 /*
     fdapde::Worker_queue<value> q(size_coda);
@@ -184,7 +184,7 @@ int main(){
 */
 
 //pop_back da piu thread e pop_front da singolo
-    fdapde::Worker_queue<value> q4(size_coda);
+/*    fdapde::Worker_queue<value> q4(size_coda);
     
     //popolo
     for (int i=0; i<size_coda; i++){
@@ -205,6 +205,6 @@ int main(){
     auto duration6 = std::chrono::duration_cast<std::chrono::microseconds>(end6 - start6);  
     //std::cout<<"pop in worker_queue di n_elementi: "<<size_coda<<" con n_thread_back: "<<n_thread-1<<" e un thread_front impiegato:"<<duration6.count()<< " microsecondi\n"; 
     std::cout<<duration6.count()<<",";
-
+*/
     return 0;
 }

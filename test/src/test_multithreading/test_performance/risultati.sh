@@ -7,7 +7,7 @@ output_file="risultati.txt"
 echo "" >> $output_file
 
 #titolo
-echo "pop come in threadpool(2thread) multithreading da back: 1 thread, singolo da front. di 16000 elementi " >> $output_file
+echo "pop come in threadpool(4thread) multithreading da back: 3 thread, singolo da front. di 16000 elementi " >> $output_file
 
 # Aggiungi una riga vuota per separare i risultati
 echo "" >> $output_file
