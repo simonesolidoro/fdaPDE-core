@@ -22,10 +22,10 @@
     classe old_Worker_queue (full mutex)
     funzioni per pop/push in for da passare a thread
     main(){
-        test push_back multithread
-        test pop_back miltithread
-        test push multithtread da back e singolo da front
-        test pop multithtread da back e singolo da front
+        test push_back multithread (worke vs deque)
+        test pop_back miltithread (worke vs deque)
+        test push multithtread da back e singolo da front (worke vs deque vs old_worker)
+        test pop multithtread da back e singolo da front (worke vs deque vs old_worker)
          }
 */
 
@@ -402,7 +402,7 @@ int main(){
     fdapde::Worker_queue<value> q3(size_coda);
     Worker_queue_deque<value> d3;
     fdapde::old_Worker_queue<value> w(size_coda);
-
+/*
     auto start4 = std::chrono::high_resolution_clock::now();
     std::vector<std::thread> thread_pool3;
     for (int j=0; j<n_thread-1; j++){
@@ -415,8 +415,10 @@ int main(){
     }   
     auto end4 = std::chrono::high_resolution_clock::now();
     auto duration4 = std::chrono::duration_cast<std::chrono::microseconds>(end4 - start4);  
-    std::cout<<"push in worker_queue di n_elementi: "<<size_coda<<" con n_thread_back: "<<n_thread-1<<" e un thread_front impiegato:"<<duration4.count()<< " microsecondi\n"; 
-
+    //std::cout<<"push in worker_queue di n_elementi: "<<size_coda<<" con n_thread_back: "<<n_thread-1<<" e un thread_front impiegato:"<<duration4.count()<< " microsecondi\n"; 
+    std::cout<<duration4.count()<<",";
+*/
+/*
     auto start5 = std::chrono::high_resolution_clock::now();
     std::vector<std::thread> thread_pool4;
     for (int j=0; j<n_thread-1; j++){
@@ -429,8 +431,8 @@ int main(){
     }   
     auto end5 = std::chrono::high_resolution_clock::now();
     auto duration5 = std::chrono::duration_cast<std::chrono::microseconds>(end5 - start5);  
-    std::cout<<"push in deque di n_elementi: "<<size_coda<<" con n_thread_back: "<<n_thread-1<<" e un thread_front impiegato:"<<duration5.count()<< " microsecondi\n"; 
-    
+    //std::cout<<"push in deque di n_elementi: "<<size_coda<<" con n_thread_back: "<<n_thread-1<<" e un thread_front impiegato:"<<duration5.count()<< " microsecondi\n"; 
+    std::cout<<duration5.count()<<",";
     
     auto start8 = std::chrono::high_resolution_clock::now();
     std::vector<std::thread> thread_pool_o;
@@ -444,9 +446,9 @@ int main(){
     }   
     auto end8 = std::chrono::high_resolution_clock::now();
     auto duration8 = std::chrono::duration_cast<std::chrono::microseconds>(end8 - start8);  
-    std::cout<<"push in old_worker di n_elementi: "<<size_coda<<" con n_thread_back: "<<n_thread-1<<" e un thread_front impiegato:"<<duration8.count()<< " microsecondi\n"; 
-
-
+    //std::cout<<"push in old_worker di n_elementi: "<<size_coda<<" con n_thread_back: "<<n_thread-1<<" e un thread_front impiegato:"<<duration8.count()<< " microsecondi\n"; 
+    std::cout<<duration8.count()<<",";
+*/
 //pop_back da piu thread e pop_front da singolo
     fdapde::Worker_queue<value> q4(size_coda);
     Worker_queue_deque<value> d4;
@@ -458,7 +460,7 @@ int main(){
         d4.push_front("ciao");
         w2.push_front("ciao");
     }
-
+/*
     auto start6 = std::chrono::high_resolution_clock::now();
     std::vector<std::thread> thread_pool5;
     for (int j=0; j<n_thread-1; j++){
@@ -471,7 +473,8 @@ int main(){
     }   
     auto end6= std::chrono::high_resolution_clock::now();
     auto duration6 = std::chrono::duration_cast<std::chrono::microseconds>(end6 - start6);  
-    std::cout<<"pop in worker_queue di n_elementi: "<<size_coda<<" con n_thread_back: "<<n_thread-1<<" e un thread_front impiegato:"<<duration6.count()<< " microsecondi\n"; 
+    //std::cout<<"pop in worker_queue di n_elementi: "<<size_coda<<" con n_thread_back: "<<n_thread-1<<" e un thread_front impiegato:"<<duration6.count()<< " microsecondi\n"; 
+    std::cout<<duration6.count()<<",";
 
     auto start7 = std::chrono::high_resolution_clock::now();
     std::vector<std::thread> thread_pool6;
@@ -485,8 +488,9 @@ int main(){
     }   
     auto end7 = std::chrono::high_resolution_clock::now();
     auto duration7 = std::chrono::duration_cast<std::chrono::microseconds>(end7 - start7);  
-    std::cout<<"pop in deque di n_elementi: "<<size_coda<<" con n_thread_back: "<<n_thread-1<<" e un thread_front impiegato:"<<duration7.count()<< " microsecondi\n"; 
-
+    //std::cout<<"pop in deque di n_elementi: "<<size_coda<<" con n_thread_back: "<<n_thread-1<<" e un thread_front impiegato:"<<duration7.count()<< " microsecondi\n"; 
+    std::cout<<duration7.count()<<",";
+*/
     auto start9 = std::chrono::high_resolution_clock::now();
     std::vector<std::thread> thread_pool_o2;
     for (int j=0; j<n_thread-1; j++){
@@ -499,8 +503,8 @@ int main(){
     }   
     auto end9 = std::chrono::high_resolution_clock::now();
     auto duration9 = std::chrono::duration_cast<std::chrono::microseconds>(end9 - start9);  
-    std::cout<<"pop in old_worker di n_elementi: "<<size_coda<<" con n_thread_back: "<<n_thread-1<<" e un thread_front impiegato:"<<duration9.count()<< " microsecondi\n"; 
-
+    //std::cout<<"pop in old_worker di n_elementi: "<<size_coda<<" con n_thread_back: "<<n_thread-1<<" e un thread_front impiegato:"<<duration9.count()<< " microsecondi\n"; 
+    std::cout<<duration9.count()<<",";
 
     return 0;
 }
