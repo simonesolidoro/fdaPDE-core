@@ -106,14 +106,14 @@ void pop_front_di_n_elem_d(Worker_queue_deque<value> & q,int n){
 
 int main(){
     int size_coda= 1600;
-    int n_thread = 8;
+    int n_thread = 2;
     int n_singolo= size_coda / n_thread;
 
 
 //push_back da piu thread e push_front da singolo
     Worker_queue_deque<value> d3;
     
-
+/*
     auto start5 = std::chrono::high_resolution_clock::now();
     std::vector<std::thread> thread_pool4;
     for (int j=0; j<n_thread-1; j++){
@@ -128,7 +128,7 @@ int main(){
     auto duration5 = std::chrono::duration_cast<std::chrono::microseconds>(end5 - start5);  
     //std::cout<<"push in deque di n_elementi: "<<size_coda<<" con n_thread_back: "<<n_thread-1<<" e un thread_front impiegato:"<<duration5.count()<< " microsecondi\n"; 
     std::cout<<duration5.count()<<",";
-
+*/
 //pop_back da piu thread e pop_front da singolo
     
     Worker_queue_deque<value> d4;

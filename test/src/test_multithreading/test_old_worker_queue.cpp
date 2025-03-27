@@ -203,10 +203,10 @@ void pop_front_di_n_elem_o(fdapde::old_Worker_queue<value> & q,int n){
 
 int main(){
     int size_coda= 1600;
-    int n_thread = 8;
+    int n_thread = 2;
     int n_singolo= size_coda / n_thread;
 
-
+/*
 //push_back da piu thread e push_front da singolo
     fdapde::old_Worker_queue<value> w(size_coda);
     
@@ -224,7 +224,7 @@ int main(){
     auto duration8 = std::chrono::duration_cast<std::chrono::microseconds>(end8 - start8);  
     //std::cout<<"push in old_worker di n_elementi: "<<size_coda<<" con n_thread_back: "<<n_thread-1<<" e un thread_front impiegato:"<<duration8.count()<< " microsecondi\n"; 
     std::cout<<duration8.count()<<",";
-
+*/
 //pop_back da piu thread e pop_front da singolo
     fdapde::old_Worker_queue<value> w2(size_coda);
 
