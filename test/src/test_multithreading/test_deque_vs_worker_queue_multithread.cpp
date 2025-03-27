@@ -16,7 +16,17 @@
 
 #include<fdaPDE/multithreading.h>
 
-/*test per verifica vector usato come array piu efficente di deque */
+/*test per verifica vector usato come array(worker_queue) piu efficente di deque (Worker_queue_deque) */
+/*contenuto 
+    classe worker_queue con deque
+    funzioni per pop/push in for da passare a thread
+    main(){
+        test push_back multithread
+        test pop_back miltithread
+        test push multithtread da back e singolo da front
+        test pop multithtread da back e singolo da front
+         }
+*/
 
 // worker_queue con deque
 template <typename T>
