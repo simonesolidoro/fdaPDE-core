@@ -26,6 +26,7 @@
 #include<optional>
 #include<atomic>
 #include<condition_variable>
+#include<functional>
 
 // per debug e test momentaneo
 #include<iostream>
