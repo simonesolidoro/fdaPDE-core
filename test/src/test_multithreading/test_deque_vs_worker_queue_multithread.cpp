@@ -141,13 +141,13 @@ void pop_front_di_n_elem_d(Worker_queue_deque<value> & q,int n){
 
 int main(){
     int size_coda= 1600;
-    fdapde::Worker_queue<value> q1(size_coda);
-    Worker_queue_deque<value> d1;
-
     int n_thread = 8;
     int n_singolo= size_coda / n_thread;
-/*    
+    
 //push_back()
+
+    fdapde::Worker_queue<value> q1(size_coda);
+    Worker_queue_deque<value> d1;
     auto start = std::chrono::high_resolution_clock::now();  
     //worker_queue push_back parallelo
     std::vector<std::thread> thread_pool;
@@ -218,7 +218,7 @@ int main(){
     auto end3 = std::chrono::high_resolution_clock::now();
     auto duration3 = std::chrono::duration_cast<std::chrono::microseconds>(end3 - start3);  
     std::cout<<"pop_back in deque di n_elementi: "<<size_coda<<" con n_thread:"<<n_thread<<" impiegato:"<<duration3.count()<< " microsecondi\n";
-*/
+
 
 //push_back da piu thread e push_front da singolo
     fdapde::Worker_queue<value> q3(size_coda);
