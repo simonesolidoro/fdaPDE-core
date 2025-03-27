@@ -167,7 +167,13 @@
     
     };
 
-using value = std::string;
+using value = std::function<int()>;
+
+int fun(){
+    std::string s="ciaoo";
+    std::vector<std::string> v = {s,s,s,s};
+    return 0;
+};
 
 
 // push_front di n elementi per old_worker_queue
@@ -202,8 +208,8 @@ void pop_front_di_n_elem_o(fdapde::old_Worker_queue<value> & q,int n){
 };
 
 int main(){
-    int size_coda= 1600;
-    int n_thread = 2;
+    int size_coda= 16000;
+    int n_thread = 4;
     int n_singolo= size_coda / n_thread;
 
 /*
@@ -230,7 +236,7 @@ int main(){
 
     //popolo
     for (int i=0; i<size_coda; i++){
-        w2.push_front("ciao");
+        w2.push_front(fun);
     }
 
 

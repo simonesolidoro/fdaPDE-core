@@ -75,7 +75,13 @@ class Worker_queue_deque{
 
     };
 
-using value = std::string;
+using value = std::function<int()>;
+
+int fun(){
+    std::string s="ciaoo";
+    std::vector<std::string> v = {s,s,s,s};
+    return 0;
+};
 
 
 // push_front di n elementi per deque 
@@ -105,8 +111,8 @@ void pop_front_di_n_elem_d(Worker_queue_deque<value> & q,int n){
 };
 
 int main(){
-    int size_coda= 1600;
-    int n_thread = 2;
+    int size_coda= 16000;
+    int n_thread = 4;
     int n_singolo= size_coda / n_thread;
 
 
@@ -136,7 +142,7 @@ int main(){
 
     //popolo
     for (int i=0; i<size_coda; i++){    
-        d4.push_front("ciao");
+        d4.push_front(fun);
     }
 
     auto start7 = std::chrono::high_resolution_clock::now();
