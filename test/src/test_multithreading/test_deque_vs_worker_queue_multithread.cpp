@@ -30,10 +30,12 @@ class Worker_queue_deque{
 
             // void per pigrizia tanto solo per test
             void push_front(value_type t){
+                std::lock_guard<std::mutex> loc(m);
                 queue_.push_back(t); 
             }
 
             T pop_front(){
+                std::lock_guard<std::mutex> loc(m);
                 value_type ret=queue_.back();
                 queue_.pop_back();
                 return ret;   
