@@ -18,7 +18,8 @@
 
 /*test per verifica vector usato come array(worker_queue) piu efficente di deque (Worker_queue_deque) */
 /*contenuto 
-    classe worker_queue con deque
+    classe worker_queue con deque (full mutex)
+    classe old_Worker_queue (full mutex)
     funzioni per pop/push in for da passare a thread
     main(){
         test push_back multithread
@@ -27,6 +28,7 @@
         test pop multithtread da back e singolo da front
          }
 */
+
 
 // worker_queue con deque
 template <typename T>
@@ -83,6 +85,156 @@ class Worker_queue_deque{
 
 
 
+    };
+
+    //old worker_queue full mutex
+    namespace fdapde {
+        template <typename T> 
+        class  old_Worker_queue{
+        using value_type= T;
+        typedef std::vector<value_type> container;
+            private:
+                container queue_;
+                int head_; //indx of 1 over "first" element
+                int tail_; //indx of "last" element
+                int size_;
+                bool empty_queue_; 
+                std::mutex m_;
+            public:
+                // default constructor credo poi da associare a metodo resize()
+                old_Worker_queue(){
+                    head_ = 0;
+                    tail_ = 0;
+                    empty_queue_ = true;
+                };
+                // construct whit size of queue_=n;
+                old_Worker_queue(int n){
+                    queue_.resize(n);
+                    head_ = 0;
+                    tail_ = 0;
+                    size_ = n;
+                    empty_queue_ = true;
+                }
+                // TODO: implement a constructor that takes as input a vector of value_type?
+    
+                old_Worker_queue(const old_Worker_queue&) = delete;
+                void operator=(const old_Worker_queue&) = delete;
+    
+    
+                // TODO: resize to sizes smaller than the current one? Clear the queue when resizing?
+                bool resize(int n){
+    
+                    std::lock_guard<std::mutex> loc(m_);
+                    if(n < size_){
+                        std::cerr << "Cannot resize to smaller size" << std::endl;
+                        return 0;
+                    }
+                    
+                    queue_.resize(n);
+    
+                    return 1;
+                    
+                }
+    
+                //TODO: mutexes should be used for operations in the front too since we can go to the back when we reach the end
+                bool push_front(value_type t){
+                    std::lock_guard<std::mutex> loc(m_);
+                    int new_head = (head_ == size_-1)? (0) : (head_ + 1);
+                    if (head_ != tail_){
+                        queue_[head_] = std::move(t);
+                        head_ = new_head;
+                        return 1;}
+                    else if(empty_queue_==true){
+                        queue_[head_] = std::move(t);
+                        head_= new_head;
+                        empty_queue_ = false;
+                        return 1;} 
+                    std::cerr<<"queue full"<<std::endl;
+                    return 0;   
+                }
+    
+                value_type pop_front(){
+                    std::lock_guard<std::mutex> loc(m_);
+                    if (empty_queue_){
+                        std::cerr<<"queue empty"<<std::endl;
+                        return value_type();
+                    }
+                    int new_head = (head_== 0)? (size_-1) : (head_-1);
+                    value_type ret = queue_[new_head];
+                    queue_[new_head] = value_type();
+                    head_ = new_head;
+                    if(head_==tail_) {empty_queue_ = true;}  //head_ ==tail_ after pop() means empty, in general means full  
+                    return ret;
+                    
+                }
+                
+                //push_back() thread-safe 
+                bool push_back(value_type t){
+                    std::lock_guard<std::mutex> loc(m_);
+                    int new_tail = (tail_ == 0)? (size_-1) : (tail_ -1);
+                    if (head_ != tail_){ //se non pieno
+                        queue_[new_tail] = t;
+                        tail_ = new_tail;
+                        return 1;}
+                    else if(empty_queue_==true){
+                        queue_[tail_] = t;
+                        head_++;
+                        empty_queue_ = false;
+                        return 1;} 
+                    //std::cerr<<"queue full"<<std::endl;
+                    return 0;   
+                }
+    
+                //pop_back() thrade-safe
+                value_type pop_back(){
+                    std::lock_guard<std::mutex> loc(m_);
+    
+                    if(empty_queue_ == true){
+                        std::cerr << "Queue is empty" << std::endl;
+                        return value_type();
+                    }
+                    int new_tail = (tail_ == size_-1)? (0):(tail_+1);
+                    value_type ret = std::move(queue_[tail_]);
+                    queue_[tail_] = value_type();
+                    tail_ = new_tail;
+                    if(head_==tail_) {empty_queue_ = true;}
+                    return ret;
+                }
+    
+                // wrap of function size() empty() of vector thrade-safe
+                int size() {
+                    std::lock_guard<std::mutex> loc(m_);
+                    return queue_.size();
+                }
+                bool empty() {
+                    std::lock_guard<std::mutex> loc(m_);
+                    return empty_queue_;
+                }
+                
+                // svuota queue_
+                void clear(){ 
+                    std::lock_guard loc(m_);
+                    queue_.clear();
+                    head_ = 0;
+                    tail_ = 0;
+                    empty_queue_ = true;
+                } 
+            
+    
+    
+                //per debug momentanei
+                int get_tail()const {return tail_;}
+                int get_head()const {return head_;} 
+                void print(){
+                    for (value_type i : queue_)
+                        std::cout<<i<<"  ";
+                    std::cout<<std::endl;
+                }
+    
+    
+    
+        };
+    
     };
 
 using value = std::string;
@@ -143,6 +295,9 @@ int main(){
     int size_coda= 1600;
     int n_thread = 8;
     int n_singolo= size_coda / n_thread;
+    fdapde::old_Worker_queue<value> w(10);
+    w.push_back("ciao");
+    w.print();
     
 //push_back()
 
