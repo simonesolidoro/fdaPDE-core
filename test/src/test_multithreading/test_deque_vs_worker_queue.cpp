@@ -30,10 +30,12 @@ class Worker_queue_deque{
 
             // void per pigrizia tanto solo per test
             void push_front(value_type t){
+                std::lock_guard<std::mutex> loc(m);
                 queue_.push_back(t); 
             }
 
             T pop_front(){
+                std::lock_guard<std::mutex> loc(m);
                 value_type ret=queue_.back();
                 queue_.pop_back();
                 return ret;   
@@ -73,15 +75,170 @@ class Worker_queue_deque{
 
     };
 
+    //old worker_queue full mutex
+    namespace fdapde {
+        template <typename T> 
+        class  old_Worker_queue{
+        using value_type= T;
+        typedef std::vector<value_type> container;
+            private:
+                container queue_;
+                int head_; //indx of 1 over "first" element
+                int tail_; //indx of "last" element
+                int size_;
+                bool empty_queue_; 
+                std::mutex m_;
+            public:
+                // default constructor credo poi da associare a metodo resize()
+                old_Worker_queue(){
+                    head_ = 0;
+                    tail_ = 0;
+                    empty_queue_ = true;
+                };
+                // construct whit size of queue_=n;
+                old_Worker_queue(int n){
+                    queue_.resize(n);
+                    head_ = 0;
+                    tail_ = 0;
+                    size_ = n;
+                    empty_queue_ = true;
+                }
+                // TODO: implement a constructor that takes as input a vector of value_type?
+    
+                old_Worker_queue(const old_Worker_queue&) = delete;
+                void operator=(const old_Worker_queue&) = delete;
+    
+    
+                // TODO: resize to sizes smaller than the current one? Clear the queue when resizing?
+                bool resize(int n){
+    
+                    std::lock_guard<std::mutex> loc(m_);
+                    if(n < size_){
+                        std::cerr << "Cannot resize to smaller size" << std::endl;
+                        return 0;
+                    }
+                    
+                    queue_.resize(n);
+    
+                    return 1;
+                    
+                }
+    
+                //TODO: mutexes should be used for operations in the front too since we can go to the back when we reach the end
+                bool push_front(value_type t){
+                    std::lock_guard<std::mutex> loc(m_);
+                    int new_head = (head_ == size_-1)? (0) : (head_ + 1);
+                    if (head_ != tail_){
+                        queue_[head_] = std::move(t);
+                        head_ = new_head;
+                        return 1;}
+                    else if(empty_queue_==true){
+                        queue_[head_] = std::move(t);
+                        head_= new_head;
+                        empty_queue_ = false;
+                        return 1;} 
+                    std::cerr<<"queue full"<<std::endl;
+                    return 0;   
+                }
+    
+                value_type pop_front(){
+                    std::lock_guard<std::mutex> loc(m_);
+                    if (empty_queue_){
+                        std::cerr<<"queue empty"<<std::endl;
+                        return value_type();
+                    }
+                    int new_head = (head_== 0)? (size_-1) : (head_-1);
+                    value_type ret = queue_[new_head];
+                    queue_[new_head] = value_type();
+                    head_ = new_head;
+                    if(head_==tail_) {empty_queue_ = true;}  //head_ ==tail_ after pop() means empty, in general means full  
+                    return ret;
+                    
+                }
+                
+                //push_back() thread-safe 
+                bool push_back(value_type t){
+                    std::lock_guard<std::mutex> loc(m_);
+                    int new_tail = (tail_ == 0)? (size_-1) : (tail_ -1);
+                    if (head_ != tail_){ //se non pieno
+                        queue_[new_tail] = t;
+                        tail_ = new_tail;
+                        return 1;}
+                    else if(empty_queue_==true){
+                        queue_[tail_] = t;
+                        head_++;
+                        empty_queue_ = false;
+                        return 1;} 
+                    //std::cerr<<"queue full"<<std::endl;
+                    return 0;   
+                }
+    
+                //pop_back() thrade-safe
+                value_type pop_back(){
+                    std::lock_guard<std::mutex> loc(m_);
+    
+                    if(empty_queue_ == true){
+                        std::cerr << "Queue is empty" << std::endl;
+                        return value_type();
+                    }
+                    int new_tail = (tail_ == size_-1)? (0):(tail_+1);
+                    value_type ret = std::move(queue_[tail_]);
+                    queue_[tail_] = value_type();
+                    tail_ = new_tail;
+                    if(head_==tail_) {empty_queue_ = true;}
+                    return ret;
+                }
+    
+                // wrap of function size() empty() of vector thrade-safe
+                int size() {
+                    std::lock_guard<std::mutex> loc(m_);
+                    return queue_.size();
+                }
+                bool empty() {
+                    std::lock_guard<std::mutex> loc(m_);
+                    return empty_queue_;
+                }
+                
+                // svuota queue_
+                void clear(){ 
+                    std::lock_guard loc(m_);
+                    queue_.clear();
+                    head_ = 0;
+                    tail_ = 0;
+                    empty_queue_ = true;
+                } 
+            
+    
+    
+                //per debug momentanei
+                int get_tail()const {return tail_;}
+                int get_head()const {return head_;} 
+                void print(){
+                    for (value_type i : queue_)
+                        std::cout<<i<<"  ";
+                    std::cout<<std::endl;
+                }
+    
+    
+    
+        };
+    
+    };
+
+using value = std::string;
+
+
 int main(){
     int size_coda= 10000;
-    fdapde::Worker_queue<int> q1(size_coda);
-    Worker_queue_deque<int> d1;
+    fdapde::Worker_queue<value> q1(size_coda);
+    Worker_queue_deque<value> d1;
+    fdapde::old_Worker_queue<value> w1(size_coda);
+    value el= "ciao";
 
     //push_front()
     auto start = std::chrono::high_resolution_clock::now();
     for(int j=0; j<size_coda-1; j++){
-        q1.push_front(j);
+        q1.push_front(el);
     }
 
     auto end = std::chrono::high_resolution_clock::now();
@@ -90,12 +247,21 @@ int main(){
 
     auto start1 = std::chrono::high_resolution_clock::now();
     for(int j=0; j<size_coda-1; j++){
-        d1.push_front(j);
+        d1.push_front(el);
     }
 
     auto end1 = std::chrono::high_resolution_clock::now();
     auto duration1 = std::chrono::duration_cast<std::chrono::microseconds>(end1 - start1);  
     std::cout<<"push_frot deque di n_elementi: "<<size_coda<<" impiegato:"<<duration1.count()<< " microsecondi\n";
+
+    auto start9 = std::chrono::high_resolution_clock::now();
+    for(int j=0; j<size_coda-1; j++){
+        w1.push_front(el);
+    }
+
+    auto end9 = std::chrono::high_resolution_clock::now();
+    auto duration9 = std::chrono::duration_cast<std::chrono::microseconds>(end9 - start9);  
+    std::cout<<"push_frot old_worker_queue di n_elementi: "<<size_coda<<" impiegato:"<<duration9.count()<< " microsecondi\n";
 
     //q1.print();
     //d1.print();
@@ -119,13 +285,22 @@ int main(){
     auto duration3 = std::chrono::duration_cast<std::chrono::microseconds>(end3 - start3);  
     std::cout<<"pop_frot deque di n_elementi: "<<size_coda<<" impiegato:"<<duration3.count()<< " microsecondi\n";
 
+    auto start10 = std::chrono::high_resolution_clock::now();
+    for(int j=0; j<size_coda-1; j++){
+        w1.pop_front();
+    }
+
+    auto end10 = std::chrono::high_resolution_clock::now();
+    auto duration10 = std::chrono::duration_cast<std::chrono::microseconds>(end10 - start10);  
+    std::cout<<"pop_frot old_worker_queue di n_elementi: "<<size_coda<<" impiegato:"<<duration10.count()<< " microsecondi\n";
+
     //q1.print();
     //d1.print();
 
     //push_back()
     auto start5 = std::chrono::high_resolution_clock::now();
     for(int j=0; j<size_coda-1; j++){
-        q1.push_back(j);
+        q1.push_back(el);
     }
 
     auto end5 = std::chrono::high_resolution_clock::now();
@@ -134,12 +309,21 @@ int main(){
 
     auto start6 = std::chrono::high_resolution_clock::now();
     for(int j=0; j<size_coda-1; j++){
-        d1.push_back(j);
+        d1.push_back(el);
     }
 
     auto end6 = std::chrono::high_resolution_clock::now();
     auto duration6 = std::chrono::duration_cast<std::chrono::microseconds>(end6 - start6);  
     std::cout<<"push_back() deque di n_elementi: "<<size_coda<<" impiegato:"<<duration6.count()<< " microsecondi\n";
+
+    auto start11 = std::chrono::high_resolution_clock::now();
+    for(int j=0; j<size_coda-1; j++){
+        w1.push_back(el);
+    }
+
+    auto end11 = std::chrono::high_resolution_clock::now();
+    auto duration11 = std::chrono::duration_cast<std::chrono::microseconds>(end11 - start11);  
+    std::cout<<"push_back old_worker_queue di n_elementi: "<<size_coda<<" impiegato:"<<duration11.count()<< " microsecondi\n";
 
     //q1.print();
     //d1.print();
@@ -163,6 +347,14 @@ int main(){
     auto duration8 = std::chrono::duration_cast<std::chrono::microseconds>(end8 - start8);  
     std::cout<<"pop_back() deque di n_elementi: "<<size_coda<<" impiegato:"<<duration8.count()<< " microsecondi\n";
 
+    auto start12 = std::chrono::high_resolution_clock::now();
+    for(int j=0; j<size_coda-1; j++){
+        w1.pop_back();
+    }
+
+    auto end12 = std::chrono::high_resolution_clock::now();
+    auto duration12 = std::chrono::duration_cast<std::chrono::microseconds>(end12 - start12);  
+    std::cout<<"pop_back() old_worker_queue di n_elementi: "<<size_coda<<" impiegato:"<<duration12.count()<< " microsecondi\n";
     //q1.print();
     //d1.print();
 
