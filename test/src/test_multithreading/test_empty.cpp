@@ -16,10 +16,15 @@
  
  #include<fdaPDE/multithreading.h>
  
+ void vuoto(fdapde::Worker_queue<int> & q){
+   std::cout<<std::this_thread::get_id()<<"dice che è: "<<q.empty()<<std::endl;
+ }
+
  int main(){
 
     fdapde::Worker_queue<int> q(10);
 
+/*    //funzionamento empty() 
     std::cout<<q.empty()<<std::endl;
 
     q.push_back(2);
@@ -34,6 +39,23 @@
 
     q.pop_front();
     std::cout<<q.empty()<<std::endl;
+*/
+    //funzionamento di occupied_----------> !!!!! qualcosa non funziona, run piu volte a volte q.empty() ridà falso. 
+    std::vector<std::thread> pool;
+    int k=0;
+    for(int i=0; i<20; i++){
+      if((k % 2) == 0)
+         pool.emplace_back(&fdapde::Worker_queue<int>::push_front,std::ref(q),10);
+      else
+         pool.emplace_back(&fdapde::Worker_queue<int>::pop_front,std::ref(q));
+      k++;
+    }
+    
+    std::cout<<"vede: "<<q.empty()<<std::endl;
+    q.print();
 
+    for(int i =0; i<pool.size(); i++){
+      pool[i].join();
+    }
      return 0;
     }
