@@ -45,17 +45,46 @@
     int k=0;
     for(int i=0; i<20; i++){
       if((k % 2) == 0)
-         pool.emplace_back(&fdapde::Worker_queue<int>::push_front,std::ref(q),10);
+         pool.emplace_back(&fdapde::Worker_queue<int>::push_front,std::ref(q),k);
       else
          pool.emplace_back(&fdapde::Worker_queue<int>::pop_front,std::ref(q));
       k++;
     }
-    
+    //q.print();
     std::cout<<"vede: "<<q.empty()<<std::endl;
-    q.print();
+    
+   
 
     for(int i =0; i<pool.size(); i++){
       pool[i].join();
     }
      return 0;
     }
+
+   //   OSS: non ce garanzia su che thread esegua prima e quindi possibile vengano fatti due pop di fila e poi due push 
+            /*questo spiega
+            root@LAPTOP-P7UDNGNK test_multithreading # ./test_empty
+            queue empty
+            vede: 0
+            4  0 0 0 0 0 0 0 0 0
+            */
+
+
+   //    con empty() basato su occupied_ capita:
+            /*
+            root@LAPTOP-P7UDNGNK test_multithreading # ./test_empty
+            vede: 0
+            0 0 0 0 0 0 0 0 0 0
+            */
+         //
+
+
+
+   //    con empty() basato su empty_queue_ stesso problema
+            /*
+            root@LAPTOP-P7UDNGNK test_multithreading # ./test_empty
+            vede: 0
+            0 0 0 0 0 0 0 0 0 0
+            */
+         // dice che coda non vuota  (vede: 0) ma non ce stato nessun doppio pop ("queue empty")
+         

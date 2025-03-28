@@ -317,10 +317,16 @@ namespace fdapde {
                 std::lock_guard<std::mutex> loc(m_);
                 return queue_.size();
             }
+            
             bool empty() {
                 return occupied_.load(std::memory_order_acquire) == 0;  
             }
-            
+            /*
+            bool empty() {
+                std::lock_guard<std::mutex> loc(m_);
+                return empty_queue_;  
+            }
+            */            
             // svuota queue_
             void clear(){ 
                 std::lock_guard loc(m_);
@@ -335,7 +341,7 @@ namespace fdapde {
             int get_head()const {return head_;} 
             void print(){
                 for (int i=0; i<size_; i++){
-                    if(queue_[i].empty_.load() == true){
+                    if(queue_[i].empty_.load(std::memory_order_acquire) == true){
                         std::cout<<0<<" ";
                     }
                     else{
