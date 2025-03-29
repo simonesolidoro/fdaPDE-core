@@ -37,8 +37,7 @@ namespace fdapde {
             int head_ = 0; //indx of 1 over "first" element
             int tail_ = 0; //indx of "last" element
             int size_ = 0;
-            bool empty_queue_ = true;
-            std::atomic<int> occupied_;
+            std::atomic<bool> empty_queue_ = true;
             std::mutex m_;
             std::condition_variable cv_can_pop_; //notif when element add to queue_, can pop
             std::condition_variable cv_can_push_; //notif when element removed from queue_, can push 
@@ -52,9 +51,6 @@ namespace fdapde {
                 size_ = n;
                 for(int i =0; i<n;i++)
                     queue_[i].empty_.store(true);
-
-                occupied_.store(0);
-
             }
 
             // TODO: figure out the correct requires
@@ -68,9 +64,7 @@ namespace fdapde {
                 std::swap(queue_, temp_queue);
                 head_ = queue_.size();
                 size_ = head_;
-                empty_queue_ = false;
-                occupied_.store(0);
-
+                empty_queue_.store(false);
             }
             ~Worker_queue(){
                 active_ = false;
@@ -95,33 +89,27 @@ namespace fdapde {
                 size_ = n;
                 head_ = 0;
                 tail_ = 0;
-                empty_queue_ = true;
-
-                occupied_.store(0);
-                
+                empty_queue_.store(true);                
             }
 
 
             bool push_front(value_type t){
                 std::unique_lock<std::mutex> loc(m_);
-                if (head_ == tail_ && !empty_queue_ ){// coda piena
+                if (head_ == tail_ && !empty_queue_.load() ){// coda piena
                     std::cerr<<"queue full"<<std::endl; // per debug poi da togliere
                     return false;
                 }
                 //se si arruva qui c'è posto, però bisogna aspettare che elemento sia stato liberato (se coda era piena ma viene fatto un pop_front che aggiorna tail_ in modo da head_!= tail_ ma ancora non ha liberato elemento)
-
                 // ora posto libero 
                 int h = head_; //index dove inserira elemento
                 head_ = (head_ == size_-1)? (0) : (head_ + 1);
-                empty_queue_ = false; //magari gia false quindi ridondante,ma evita if(empty_queue_) {empty_queue_ = false;} non so quale piu efficiente 
+                empty_queue_.store(false); //magari gia false quindi ridondante,ma evita if(empty_queue_) {empty_queue_ = false;} non so quale piu efficiente 
                 loc.unlock();
 
                 while(!queue_[h].empty_.load( std::memory_order_acquire)){} //finche non diventa vero (elemeto acora da svuotare da pop_frot)
                 //push di elemento
                 queue_[h].v_ = std::move(t);
                 queue_[h].empty_.store(false, std::memory_order_release); //aggiorna stato di elem con release
-
-                occupied_.fetch_add(1,std::memory_order_release);
 
                 cv_can_pop_.notify_one();
                 return true; 
@@ -129,11 +117,11 @@ namespace fdapde {
 
             bool push_front_or_wait(value_type t){
                 std::unique_lock<std::mutex> loc(m_);
-                cv_can_push_.wait(loc,[this](){return !this->active_ ||  this->head_ != this->tail_ || this->empty_queue_;});
+                cv_can_push_.wait(loc,[this](){return !this->active_ ||  this->head_ != this->tail_ || this->empty_queue_.load();});
                 if(!active_){return false;}
                 int h = head_; //index dove inserira elemento
                 head_ = (head_ == size_-1)? (0) : (head_ + 1);
-                empty_queue_ = false; //magari gia false quindi ridondante,ma evita if(empty_queue_) {empty_queue_ = false;} non so quale piu efficiente 
+                empty_queue_ .store(false); //magari gia false quindi ridondante,ma evita if(empty_queue_) {empty_queue_ = false;} non so quale piu efficiente 
                 loc.unlock();
 
                 while(!queue_[h].empty_.load( std::memory_order_acquire)){} //finche non diventa vero (elemeto acora da svuotare da pop_frot)
@@ -141,15 +129,13 @@ namespace fdapde {
                 queue_[h].v_ = std::move(t);
                 queue_[h].empty_.store(false, std::memory_order_release); //aggiorna stato di elem con release
 
-                occupied_.fetch_add(1,std::memory_order_release);
-
                 cv_can_pop_.notify_one();
                 return true; 
             }
 
             std::optional<value_type> pop_front(){
                 std::unique_lock<std::mutex> loc(m_);
-                if (empty_queue_){
+                if (empty_queue_.load()){
                     std::cerr<<"queue empty"<<std::endl;
                     return std::nullopt;
                 }
@@ -157,7 +143,7 @@ namespace fdapde {
                 int new_head = (head_== 0)? (size_-1) : (head_-1);
 
                 head_ = new_head;
-                if(head_==tail_) {empty_queue_ = true;}  //head_ ==tail_ after pop() means empty, in general means full
+                if(head_==tail_) {empty_queue_.store(true);}  //head_ ==tail_ after pop() means empty, in general means full
                 loc.unlock();
 
                 while(queue_[new_head].empty_.load( std::memory_order_acquire)){} // aspetta finche diventa falso (elemnto inserito effettivamente da push_back)
@@ -166,8 +152,6 @@ namespace fdapde {
                 value_type ret = std::move(queue_[new_head].v_.value());
                 queue_[new_head].v_ = std::nullopt;
                 queue_[new_head].empty_.store(true, std::memory_order_release);
-
-                occupied_.fetch_sub(1,std::memory_order_release);
 
                 cv_can_push_.notify_one();
 
@@ -177,13 +161,13 @@ namespace fdapde {
 
             std::optional<value_type> pop_front_or_wait(){
                 std::unique_lock<std::mutex> loc(m_);
-                cv_can_pop_.wait(loc,[this](){return !this->active_ || !this->empty_queue_;});
+                cv_can_pop_.wait(loc,[this](){return !this->active_ || !this->empty_queue_.load();});
                 if(!active_) return std::nullopt;
 
                 int new_head = (head_== 0)? (size_-1) : (head_-1);
 
                 head_ = new_head;
-                if(head_==tail_) {empty_queue_ = true;}  //head_ ==tail_ after pop() means empty, in general means full
+                if(head_==tail_) {empty_queue_.store(true);}  //head_ ==tail_ after pop() means empty, in general means full
                 loc.unlock();
 
                 while(queue_[new_head].empty_.load( std::memory_order_acquire)){} // aspetta finche diventa falso (elemnto inserito effettivamente da push_back)
@@ -193,8 +177,6 @@ namespace fdapde {
                 queue_[new_head].v_ = std::nullopt;
                 queue_[new_head].empty_.store(true, std::memory_order_release);
 
-                occupied_.fetch_sub(1,std::memory_order_release);
-
                 cv_can_push_.notify_one();
 
                 return ret;
@@ -203,13 +185,13 @@ namespace fdapde {
             //push_back() thread-safe 
             bool push_back(value_type t){
                 std::unique_lock<std::mutex> loc(m_);
-                if (head_ == tail_ && !empty_queue_ ){// coda piena
+                if (head_ == tail_ && !empty_queue_.load() ){// coda piena
                     std::cerr<<"queue full"<<std::endl; // per debug poi da togliere
                     return false;
                 }
 
                 int new_tail;
-                if(empty_queue_){ // se coda vuota elemento inserito dove punta tail (new_tail=tail) ed head spostato +1
+                if(empty_queue_.load()){ // se coda vuota elemento inserito dove punta tail (new_tail=tail) ed head spostato +1
                     new_tail = tail_;
                     head_ = (head_ == size_-1)? (0) : (head_ + 1);
                     empty_queue_ = false; 
@@ -224,8 +206,6 @@ namespace fdapde {
 
                 queue_[new_tail].v_ = std::move(t);
                 queue_[new_tail].empty_.store(false, std::memory_order_release);
-
-                occupied_.fetch_add(1,std::memory_order_release);
 
                 cv_can_pop_.notify_one();
                 return true;
@@ -233,14 +213,14 @@ namespace fdapde {
 
             bool push_back_or_wait(value_type t){
                 std::unique_lock<std::mutex> loc(m_);
-                cv_can_push_.wait(loc,[this](){return !this->active_ || this->head_ != this->tail_ || this->empty_queue_;});
+                cv_can_push_.wait(loc,[this](){return !this->active_ || this->head_ != this->tail_ || this->empty_queue_.load();});
                 if(!active_){return false;}
 
                 int new_tail;
-                if(empty_queue_){ // se coda vuota elemento inserito dove punta tail (new_tail=tail) ed head spostato +1
+                if(empty_queue_.load()){ // se coda vuota elemento inserito dove punta tail (new_tail=tail) ed head spostato +1
                     new_tail = tail_;
                     head_ = (head_ == size_-1)? (0) : (head_ + 1);
-                    empty_queue_ = false; 
+                    empty_queue_.store(false); 
                 }
                 else{
                     new_tail = (tail_ == 0)? (size_-1) : (tail_ -1);
@@ -252,8 +232,6 @@ namespace fdapde {
 
                 queue_[new_tail].v_ = std::move(t);
                 queue_[new_tail].empty_.store(false, std::memory_order_release);
-
-                occupied_.fetch_add(1,std::memory_order_release);
 
                 cv_can_pop_.notify_one();
                 return true;
@@ -262,7 +240,7 @@ namespace fdapde {
             //pop_back() thrade-safe
             std::optional<value_type> pop_back(){
                 std::unique_lock<std::mutex> loc(m_);
-                if(empty_queue_ == true){
+                if(empty_queue_.load() == true){
                     std::cerr << "Queue is empty" << std::endl;
                     return std::nullopt;
                 }
@@ -270,7 +248,7 @@ namespace fdapde {
                 int t = tail_; // tmp idice di elmeto da pop
                 int new_tail = (tail_ == size_-1)? (0):(tail_+1);
                 tail_ = new_tail;
-                if(head_==tail_) {empty_queue_ = true;}
+                if(head_==tail_) {empty_queue_.store(true);}
                 loc.unlock();
 
                 while(queue_[t].empty_.load( std::memory_order_acquire)){} // aspetta finche diventa falso (elemnto inserito effettivamente da push_front)
@@ -280,9 +258,6 @@ namespace fdapde {
                 value_type ret = std::move(queue_[t].v_.value());
                 queue_[t].v_ = std::nullopt;
                 queue_[t].empty_.store(true, std::memory_order_release);
-
-
-                occupied_.fetch_sub(1,std::memory_order_release);
 
                 cv_can_push_.notify_one();
 
@@ -291,13 +266,13 @@ namespace fdapde {
 
             std::optional<value_type> pop_back_or_wait(){
                 std::unique_lock<std::mutex> loc(m_);
-                cv_can_pop_.wait(loc,[this](){return !this->active_ || !this->empty_queue_;}); // loc mutex, controllo condizione in lamda, se falsa unlock mutex e wait se vera va avanti
+                cv_can_pop_.wait(loc,[this](){return !this->active_ || !this->empty_queue_.load();}); // loc mutex, controllo condizione in lamda, se falsa unlock mutex e wait se vera va avanti
                 //copia codice di pop_back() tranne check se coda vuota, alternativa a chiamata diretta di pop_back che però porta a dover usare recursive mutex (definito dal libro come il male assoluto)
                 if(!active_) return std::nullopt; //se chiamato distruttore distruttore notifica a tutti di verificare condizione wait 
                 int t = tail_; // tmp idice di elmeto da pop
                 int new_tail = (tail_ == size_-1)? (0):(tail_+1);
                 tail_ = new_tail;
-                if(head_==tail_) {empty_queue_ = true;}
+                if(head_==tail_) {empty_queue_.store(true);}
                 loc.unlock();
 
                 while(queue_[t].empty_.load( std::memory_order_acquire)){} // aspetta finche diventa falso (elemnto inserito effettivamente da push_front)
@@ -307,9 +282,6 @@ namespace fdapde {
                 value_type ret = std::move(queue_[t].v_.value());
                 queue_[t].v_ = std::nullopt;
                 queue_[t].empty_.store(true, std::memory_order_release);
-
-
-                occupied_.fetch_sub(1,std::memory_order_release);
 
                 cv_can_push_.notify_one();
                 return ret;
@@ -329,7 +301,7 @@ namespace fdapde {
             // anche con accesso a empty_queue durante lock mutex a volte sbaglia, si vede che pop cambia empty queue durante lock e poi empty fa il lock ma vede ancora vecchio empty non aggiornato, non credevo potesse succedere, non capito bene 
             bool empty() {
                 std::lock_guard<std::mutex> loc(m_);
-                return empty_queue_;  
+                return empty_queue_.load();  
             }
                         
             // svuota queue_

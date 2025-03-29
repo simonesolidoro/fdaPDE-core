@@ -43,7 +43,7 @@
     //funzionamento di occupied_----------> !!!!! qualcosa non funziona, run piu volte a volte q.empty() ridà falso. 
     std::vector<std::thread> pool;
     int k=0;
-    for(int i=0; i<20; i++){
+    for(int i=0; i<10; i++){
       if((k % 2) == 0)
          pool.emplace_back(&fdapde::Worker_queue<int>::push_front,std::ref(q),k);
       else
@@ -87,4 +87,4 @@
             0 0 0 0 0 0 0 0 0 0
             */
          // dice che coda non vuota  (vede: 0) ma non ce stato nessun doppio pop ("queue empty")
-         
+      
