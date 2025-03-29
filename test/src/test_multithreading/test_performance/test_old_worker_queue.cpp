@@ -217,7 +217,7 @@ int main(){
     fdapde::old_Worker_queue<value> q1(size_coda);
 
 //push_back() sinolo thread
-/*
+
     auto start5 = std::chrono::high_resolution_clock::now();
     for(int j=0; j<size_coda-1; j++){
         q1.push_back(el);
@@ -227,7 +227,7 @@ int main(){
     auto duration5 = std::chrono::duration_cast<std::chrono::microseconds>(end5 - start5);  
     //std::cout<<"push_back() old_worker_queue di n_elementi: "<<size_coda<<" impiegato:"<<duration5.count()<< " microsecondi\n";
     std::cout<<duration5.count()<<",";
-*/
+
 //pop_back() singolo thread
 /*        //popolo
         for (int i=0; i<size_coda; i++){
@@ -337,7 +337,7 @@ int main(){
 
 */
 //pop_back da piu thread e pop_front da singolo
-
+/*
     fdapde::old_Worker_queue<value> w2(size_coda);
 
     //popolo
@@ -360,7 +360,7 @@ int main(){
     auto duration9 = std::chrono::duration_cast<std::chrono::microseconds>(end9 - start9);  
     //std::cout<<"pop in old_worker di n_elementi: "<<size_coda<<" con n_thread_back: "<<n_thread-1<<" e un thread_front impiegato:"<<duration9.count()<< " microsecondi\n"; 
     std::cout<<duration9.count()<<",";
-
+*/
     return 0;
 }
 

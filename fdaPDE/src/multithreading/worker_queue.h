@@ -129,7 +129,7 @@ namespace fdapde {
 
             bool push_front_or_wait(value_type t){
                 std::unique_lock<std::mutex> loc(m_);
-                cv_can_push_.wait(loc,[this](){return !this->active_ ||  this->head_ != this->tail_ || (this->head_ == this->tail_ && !this->empty_queue_);});
+                cv_can_push_.wait(loc,[this](){return !this->active_ ||  this->head_ != this->tail_ || this->empty_queue_;});
                 if(!active_){return false;}
                 int h = head_; //index dove inserira elemento
                 head_ = (head_ == size_-1)? (0) : (head_ + 1);
@@ -178,7 +178,7 @@ namespace fdapde {
             std::optional<value_type> pop_front_or_wait(){
                 std::unique_lock<std::mutex> loc(m_);
                 cv_can_pop_.wait(loc,[this](){return !this->active_ || !this->empty_queue_;});
-                if(!active_) return std::nullopt ;
+                if(!active_) return std::nullopt;
 
                 int new_head = (head_== 0)? (size_-1) : (head_-1);
 
@@ -194,6 +194,8 @@ namespace fdapde {
                 queue_[new_head].empty_.store(true, std::memory_order_release);
 
                 occupied_.fetch_sub(1,std::memory_order_release);
+
+                cv_can_push_.notify_one();
 
                 return ret;
             }
@@ -231,7 +233,7 @@ namespace fdapde {
 
             bool push_back_or_wait(value_type t){
                 std::unique_lock<std::mutex> loc(m_);
-                cv_can_push_.wait(loc,[this](){return !this->active_ || this->head_ != this->tail_ || (this->head_ == this->tail_ && !this->empty_queue_);});
+                cv_can_push_.wait(loc,[this](){return !this->active_ || this->head_ != this->tail_ || this->empty_queue_;});
                 if(!active_){return false;}
 
                 int new_tail;
@@ -309,24 +311,27 @@ namespace fdapde {
 
                 occupied_.fetch_sub(1,std::memory_order_release);
 
+                cv_can_push_.notify_one();
                 return ret;
             }
 
-            // wrap of function size() empty() of vector thrade-safe
+            // wrap of function size() of vector thrade-safe
             int size() {
                 std::lock_guard<std::mutex> loc(m_);
                 return queue_.size();
             }
-            
+            /*
+            // non funziona, da capire come forzare ad aspettare tutti gli occupied_.store() nei pop e push
             bool empty() {
                 return occupied_.load(std::memory_order_acquire) == 0;  
             }
-            /*
+                */
+            // anche con accesso a empty_queue durante lock mutex a volte sbaglia, si vede che pop cambia empty queue durante lock e poi empty fa il lock ma vede ancora vecchio empty non aggiornato, non credevo potesse succedere, non capito bene 
             bool empty() {
                 std::lock_guard<std::mutex> loc(m_);
                 return empty_queue_;  
             }
-            */            
+                        
             // svuota queue_
             void clear(){ 
                 std::lock_guard loc(m_);

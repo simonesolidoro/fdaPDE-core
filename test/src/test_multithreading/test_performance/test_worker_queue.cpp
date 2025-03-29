@@ -55,7 +55,7 @@ void pop_front_di_n_elem(fdapde::Worker_queue<value> & q,int n){
 
 int main(){
     int size_coda= 16000;
-    int n_thread = 2;
+    int n_thread = 8;
     int n_singolo= size_coda / n_thread;
 
     fdapde::Worker_queue<value> q1(size_coda);
@@ -101,7 +101,7 @@ int main(){
     std::cout<<duration.count()<<",";
 */
 //pop_front() singolo thread
-    //popolo
+/*    //popolo
     for (int i=0; i<size_coda; i++){
         q1.push_front(el);
     }
@@ -115,7 +115,7 @@ int main(){
     auto duration2 = std::chrono::duration_cast<std::chrono::microseconds>(end2 - start2);  
     //std::cout<<"pop_frot worker_queue di n_elementi: "<<size_coda<<" impiegato:"<<duration2.count()<< " microsecondi\n";
     std::cout<<duration2.count()<<",";
-
+*/
 //push_back() multithreading
 /*
     fdapde::Worker_queue<value> q(size_coda);

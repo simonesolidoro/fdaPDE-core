@@ -75,7 +75,7 @@ class Worker_queue_deque{
 
     };
 
-using value = std::string;
+using value = std::string; //std::function<>
 
 int fun(){
     std::string s="ciaoo";
@@ -112,7 +112,7 @@ void pop_front_di_n_elem_d(Worker_queue_deque<value> & q,int n){
 
 int main(){
     int size_coda= 16000;
-    int n_thread = 2;
+    int n_thread = 8;
     int n_singolo= size_coda / n_thread;
 
     value el = "ciao";
@@ -192,8 +192,8 @@ int main(){
     auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start);  
     //std::cout<<"push_back in deque di n_elementi: "<<size_coda<<" con n_thread:"<<n_thread<<" impiegato:"<<duration.count()<< " microsecondi\n";
     std::cout<<duration.count()<<",";
-*/  
-
+  
+*/
 //pop_back() multithreading
 /*
     Worker_queue_deque<value> q2;
