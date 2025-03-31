@@ -21,9 +21,10 @@
 // worker_queue con deque
 template <typename T>
 class Worker_queue_deque{
+
     using value_type= T;
         private:
-            std::deque<value_type> queue_;
+            std::deque<std::optional<value_type>> queue_;
             int size_; 
             std::mutex m;
         public:
@@ -34,9 +35,11 @@ class Worker_queue_deque{
                 queue_.push_back(t); 
             }
 
-            T pop_front(){
+            std::optional<value_type> pop_front(){
                 std::lock_guard<std::mutex> loc(m);
-                value_type ret=queue_.back();
+                if(queue_.empty())
+                    return std::nullopt;
+                value_type ret=std::move(queue_.back().value());
                 queue_.pop_back();
                 return ret;   
             }
@@ -48,9 +51,11 @@ class Worker_queue_deque{
             }
 
             //pop_back() thrade-safe
-            T pop_back(){
+            std::optional<value_type> pop_back(){
                 std::lock_guard<std::mutex> loc(m);
-                value_type ret=queue_.front();
+                if (queue_.empty())
+                    return std::nullopt;
+                value_type ret=std::move(queue_.front().value());
                 queue_.pop_front();
                 return ret;
             }
@@ -75,7 +80,7 @@ class Worker_queue_deque{
 
     };
 
-using value = std::string; //std::function<>
+using value = std::string; 
 
 int fun(){
     std::string s="ciaoo";
@@ -132,7 +137,7 @@ int main(){
     std::cout<<duration5.count()<<",";
 */
 //pop_back() singolo thread
- /*           //popolo
+            //popolo
             for (int i=0; i<size_coda; i++){
                 q1.push_front(el);
             }
@@ -145,7 +150,7 @@ int main(){
     auto duration7 = std::chrono::duration_cast<std::chrono::microseconds>(end7 - start7);  
     //std::cout<<"pop_back() deque di n_elementi: "<<size_coda<<" impiegato:"<<duration7.count()<< " microsecondi\n";
     std::cout<<duration7.count()<<",";
-*/
+
 //push_front() singolo thread
 /*
     auto start = std::chrono::high_resolution_clock::now();
@@ -159,7 +164,7 @@ int main(){
     std::cout<<duration.count()<<",";
 */
 //pop_front() singolo thread
-    //popolo
+/*    //popolo
     for (int i=0; i<size_coda; i++){
         q1.push_front(el);
     }
@@ -172,7 +177,7 @@ int main(){
     auto duration2 = std::chrono::duration_cast<std::chrono::microseconds>(end2 - start2);  
     //std::cout<<"pop_frot deque di n_elementi: "<<size_coda<<" impiegato:"<<duration2.count()<< " microsecondi\n";
     std::cout<<duration2.count()<<",";
-
+*/
 //push_back() multithreading
 /*
     Worker_queue_deque<value> q;

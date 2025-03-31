@@ -7,20 +7,11 @@ output_file="prova.txt"
 echo "" >> $output_file
 
 #titolo
-echo "push_front() di 16000 elementi" >> $output_file
+echo "pop_back() di 16000 elementi messo option in deque" >> $output_file
 
 # Aggiungi una riga vuota per separare i risultati
 echo "" >> $output_file
 
-echo "Worker_queue:  " >> $output_file
-# Ciclo for per eseguire il programma più volte
-for i in {1..200}; do
-    # Esegui il programma e salva l'output nel file
-    ./test_worker_queue $i >> $output_file
-done
-
-# Aggiungi una riga vuota per separare i risultati
-echo "" >> $output_file
 
 # Esegui il secondo file 50 volte
 echo "deque:  " >> $output_file

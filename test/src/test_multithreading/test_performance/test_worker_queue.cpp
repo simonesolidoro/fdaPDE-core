@@ -73,7 +73,7 @@ int main(){
     std::cout<<duration5.count()<<",";
 */
 //pop_back() singolo thread
-/*
+
         //popolo
         for (int i=0; i<size_coda; i++){
             q1.push_front(el);
@@ -87,7 +87,7 @@ int main(){
     auto duration7 = std::chrono::duration_cast<std::chrono::microseconds>(end7 - start7);  
     //std::cout<<"pop_back() worker_queue di n_elementi: "<<size_coda<<" impiegato:"<<duration7.count()<< " microsecondi\n";
     std::cout<<duration7.count()<<",";
-*/
+
 //push_front() singolo thread
 /*
     auto start = std::chrono::high_resolution_clock::now();
@@ -101,7 +101,7 @@ int main(){
     std::cout<<duration.count()<<",";
 */
 //pop_front() singolo thread
-/*    //popolo
+/*   //popolo
     for (int i=0; i<size_coda; i++){
         q1.push_front(el);
     }
