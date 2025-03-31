@@ -64,6 +64,7 @@ template <int LocalDim, int EmbedDim, typename Derived> class TriangulationBase 
         fdapde_assert(
           nodes.rows() > 0 && nodes.cols() == embed_dim && cells.rows() > 0 && cells.cols() == n_nodes_per_cell &&
           boundary.rows() == nodes.rows() && boundary.cols() == 1);
+        fdapde_assert(cells.minCoeff() == 0);
         // store number of nodes and number of cells
         n_nodes_ = nodes_.rows();
         n_cells_ = cells_.rows();

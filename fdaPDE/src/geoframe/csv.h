@@ -27,7 +27,7 @@ namespace fdapde {
 template <typename T>
 internals::table_reader<T> read_csv(const std::string& filename, bool header = true, bool index_col = false) {
     internals::table_reader<T> csv(
-      filename.c_str(), header, /* sep = */ ',', index_col, /* skip_quote = */ true, /* chunksize = */ 1000);
+      filename.c_str(), header, /* sep = */ ',', index_col, /* skip_quote = */ true, /* chunksize = */ 100000);
     return csv;
 }
 

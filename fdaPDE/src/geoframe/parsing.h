@@ -173,7 +173,7 @@ double stod(CharBuff&& str) {
                 exp = exp * 10 + (str[i] - '0');
                 i++;;
             }
-            val *= (exp_sign > 1) ? std::pow(10, exp) : std::pow(0.1, exp);
+            val *= (exp_sign > 0) ? std::pow(10, exp) : std::pow(0.1, exp);
         }
     }
     return sign * val;

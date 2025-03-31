@@ -461,10 +461,7 @@ struct GeoLayer {
 	return;
     }
     template <typename... Ts>
-        requires(
-          (std::contiguous_iterator<typename Ts::iterator> &&
-           storage_t::is_type_supported_v<typename Ts::value_type>) &&
-          ...)
+        requires(internals::is_vector_like_v<Ts> && ...)
     void load_vec(const std::vector<std::string>& colnames, const Ts&... data) {
         fdapde_assert(colnames.size() == sizeof...(data));
         internals::for_each_index_and_args<sizeof...(data)>(
@@ -475,6 +472,13 @@ struct GeoLayer {
           data...);
         return;
     }
+    template <typename T>
+        requires(internals::is_vector_like_v<T>)
+    void load_vec(const std::string& colname, const T& data) {
+        load_vec(std::vector<std::string> {colname}, data);
+        return;
+    }
+  
     template <typename T> void load_blk(const std::string& colname, const T& data) {
         fdapde_assert(data.rows() == n_rows_);
         data_.append_blk(colname, data);

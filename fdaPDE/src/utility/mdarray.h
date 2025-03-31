@@ -799,9 +799,7 @@ template <typename MdArray, int... Slicers> class MdArraySlice {
         return mdarray_->data() + offset_;
     }
     template <typename Src>
-        requires(
-          (std::is_pointer_v<Src> || internals::is_subscriptable<Src, int>) &&
-          !internals::is_indexable_v<Src, Order, index_t>)
+        requires(std::is_pointer_v<Src> || internals::is_vector_like_v<Src>)
     constexpr MdArraySlice& assign_inplace_from(Src&& src) {
         if constexpr (!std::is_pointer_v<Src>) fdapde_assert(src.size() == size());
         if constexpr (contiguous_access) {
@@ -809,7 +807,13 @@ template <typename MdArray, int... Slicers> class MdArraySlice {
             for (int i = 0, n = size(); i < n; ++i) { operator[](i) = src[i]; }
         } else {
             int i = 0;
-            for (auto& v : *this) v = src[i++];
+            if constexpr (std::is_same_v<Scalar, bool>) {
+                for (auto v : *this) {
+                    if (src[i++]) { v.set(); }
+                }
+            } else {
+                for (auto& v : *this) { v = src[i++]; }
+            }
         }
         return *this;
     }
