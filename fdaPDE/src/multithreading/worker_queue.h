@@ -298,10 +298,15 @@ namespace fdapde {
                 return occupied_.load(std::memory_order_acquire) == 0;  
             }
                 */
-            // anche con accesso a empty_queue durante lock mutex a volte sbaglia, si vede che pop cambia empty queue durante lock e poi empty fa il lock ma vede ancora vecchio empty non aggiornato, non credevo potesse succedere, non capito bene 
+            // problema: possibile vedere empty_queque == true ma ancora pop di ultimo elemento non fatto (empty() da coda vuota ma ultimo pop è solo uscito dal mutex e non ha ancora tolto elemento)
             bool empty() {
                 std::lock_guard<std::mutex> loc(m_);
-                return empty_queue_.load();  
+                if(empty_queue_.load()){
+                    while(queue_[head].empty_.load() != true){} //aspetta che ultimo pop tolga effettuvamente l'ultimo elemento
+                    return true;
+                }
+                else
+                    return false; 
             }
                         
             // svuota queue_
