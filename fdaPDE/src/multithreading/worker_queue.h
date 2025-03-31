@@ -38,7 +38,7 @@ namespace fdapde {
             int tail_ = 0; //indx of "last" element
             int size_ = 0;
             bool empty_queue_ = true; // per distinguere head==tail-> vuota / head==tail-> piena
-            std::mutex m_;
+            mutable std::mutex m_;
             std::condition_variable cv_can_pop_; //notif when element add to queue_, can pop
             std::condition_variable cv_can_push_; //notif when element removed from queue_, can push 
             bool active_ = true;
@@ -286,7 +286,7 @@ namespace fdapde {
             }
 
             // wrap of function size() of vector thrade-safe
-            int size() {
+            int size() const {
                 std::lock_guard<std::mutex> loc(m_);
                 return queue_.size();
             }
@@ -297,7 +297,7 @@ namespace fdapde {
             }
                 */
             // problema: possibile vedere empty_queque == true ma ancora pop di ultimo elemento non fatto (empty() da coda vuota ma ultimo pop è solo uscito dal mutex e non ha ancora tolto elemento)
-            bool empty() {
+            bool empty() const {
                 std::lock_guard<std::mutex> loc(m_);
                 if(empty_queue_){
                     while(queue_[head_].empty_.load() != true){} //aspetta che ultimo pop tolga effettuvamente l'ultimo elemento
