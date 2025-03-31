@@ -37,7 +37,7 @@ namespace fdapde {
             int head_ = 0; //indx of 1 over "first" element
             int tail_ = 0; //indx of "last" element
             int size_ = 0;
-            bool empty_queue_ = true;
+            bool empty_queue_ = true; // per distinguere head==tail-> vuota / head==tail-> piena
             std::mutex m_;
             std::condition_variable cv_can_pop_; //notif when element add to queue_, can pop
             std::condition_variable cv_can_push_; //notif when element removed from queue_, can push 
@@ -100,7 +100,6 @@ namespace fdapde {
                     return false;
                 }
                 //se si arruva qui c'è posto, però bisogna aspettare che elemento sia stato liberato (se coda era piena ma viene fatto un pop_front che aggiorna tail_ in modo da head_!= tail_ ma ancora non ha liberato elemento)
-                // ora posto libero 
                 int h = head_; //index dove inserira elemento
                 head_ = (head_ == size_-1)? (0) : (head_ + 1);
                 empty_queue_ = false; //magari gia false quindi ridondante,ma evita if(empty_queue_) {empty_queue_ = false;} non so quale piu efficiente 
@@ -246,8 +245,7 @@ namespace fdapde {
                 }
 
                 int t = tail_; // tmp idice di elmeto da pop
-                int new_tail = (tail_ == size_-1)? (0):(tail_+1);
-                tail_ = new_tail;
+                tail_ = (tail_ == size_-1)? (0):(tail_+1);
                 if(head_==tail_) {empty_queue_ = true;}
                 loc.unlock();
 
