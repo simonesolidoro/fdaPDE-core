@@ -114,7 +114,9 @@ namespace fdapde {
                 empty_queue_ = false; //magari gia false quindi ridondante,ma evita if(empty_queue_) {empty_queue_ = false;} non so quale piu efficiente 
                 loc.unlock();
                 bool adding = false;
-                while(!queue_[h].flag_push_.compare_exchange_strong(adding,true,std::memory_order_acquire)){}// se flag_push_ == false, lo modifica in true rida true ed esce da while, altrimenti lascia true e ridà false e riprova while
+                while(!queue_[h].flag_push_.compare_exchange_strong(adding,true,std::memory_order_acquire)){
+                    adding = false;
+                }// se flag_push_ == false, lo modifica in true rida true ed esce da while, altrimenti lascia true e ridà false e riprova while
                 while(!queue_[h].empty_.load( std::memory_order_acquire)){} //finche non diventa vero (elemeto acora da svuotare da pop_frot)
                 //push di elemento
                 queue_[h].v_ = std::move(t);
@@ -135,7 +137,9 @@ namespace fdapde {
                 loc.unlock();
 
                 bool adding = false;
-                while(!queue_[h].flag_push_.compare_exchange_strong(adding,true,std::memory_order_acquire)){}
+                while(!queue_[h].flag_push_.compare_exchange_strong(adding,true,std::memory_order_acquire)){
+                    adding = false;
+                }
                 while(!queue_[h].empty_.load( std::memory_order_acquire)){} //finche non diventa vero (elemeto acora da svuotare da pop_frot)
                 //push di elemento
                 queue_[h].v_ = std::move(t);
@@ -159,7 +163,9 @@ namespace fdapde {
                 loc.unlock();
 
                 bool removing = false;
-                while(!queue_[new_head].flag_pop_.compare_exchange_strong(removing,true,std::memory_order_acquire)){}
+                while(!queue_[new_head].flag_pop_.compare_exchange_strong(removing,true,std::memory_order_acquire)){
+                    removing = false;
+                }
                 while(queue_[new_head].empty_.load( std::memory_order_acquire)){} // aspetta finche diventa falso (elemnto inserito effettivamente da push_back)
 
                 // sostituisce in posto che viene liberato il valore di defaul di value_type
@@ -185,7 +191,9 @@ namespace fdapde {
                 loc.unlock();
 
                 bool removing = false;
-                while(!queue_[new_head].flag_pop_.compare_exchange_strong(removing,true,std::memory_order_acquire)){}
+                while(!queue_[new_head].flag_pop_.compare_exchange_strong(removing,true,std::memory_order_acquire)){
+                    removing = false;
+                }
                 while(queue_[new_head].empty_.load( std::memory_order_acquire)){} // aspetta finche diventa falso (elemnto inserito effettivamente da push_back)
 
                 // sostituisce in posto che viene liberato il valore di defaul di value_type
@@ -219,7 +227,9 @@ namespace fdapde {
                 loc.unlock();
 
                 bool adding = false;
-                while(!queue_[new_tail].flag_push_.compare_exchange_strong(adding,true,std::memory_order_acquire)){}
+                while(!queue_[new_tail].flag_push_.compare_exchange_strong(adding,true,std::memory_order_acquire)){
+                    adding = false;
+                }
                 while(!queue_[new_tail].empty_.load( std::memory_order_acquire)){}
 
                 queue_[new_tail].v_ = std::move(t);
@@ -247,7 +257,9 @@ namespace fdapde {
                 }
                 loc.unlock();
                 bool adding = false;
-                while(!queue_[new_tail].flag_push_.compare_exchange_strong(adding,true,std::memory_order_acquire)){}
+                while(!queue_[new_tail].flag_push_.compare_exchange_strong(adding,true,std::memory_order_acquire)){
+                    adding =false;
+                }
                 while(!queue_[new_tail].empty_.load( std::memory_order_acquire)){}
 
                 queue_[new_tail].v_ = std::move(t);
@@ -272,7 +284,9 @@ namespace fdapde {
                 loc.unlock();
 
                 bool removing = false;
-                while(!queue_[t].flag_pop_.compare_exchange_strong(removing,true,std::memory_order_acquire)){}
+                while(!queue_[t].flag_pop_.compare_exchange_strong(removing,true,std::memory_order_acquire)){
+                    removing = false;
+                }
                 while(queue_[t].empty_.load( std::memory_order_acquire)){} // aspetta finche diventa falso (elemnto inserito effettivamente da push_front)
 
 
@@ -298,7 +312,9 @@ namespace fdapde {
                 loc.unlock();
 
                 bool removing = false;
-                while(!queue_[t].flag_pop_.compare_exchange_strong(removing,true,std::memory_order_acquire)){}
+                while(!queue_[t].flag_pop_.compare_exchange_strong(removing,true,std::memory_order_acquire)){
+                    removing = false;
+                }
                 while(queue_[t].empty_.load( std::memory_order_acquire)){} // aspetta finche diventa falso (elemnto inserito effettivamente da push_front)
 
 
