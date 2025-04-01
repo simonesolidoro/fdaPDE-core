@@ -26,9 +26,10 @@ void pop_front_di_n_elem(fdapde::Worker_queue<value> & q,int n){
     }
 };
 
-int main(){
-    int size_coda= 16000;
-    int n_thread = 8;
+int main(int argc, char** argv){
+    int size_coda= std::stoi(argv[1]);
+
+    int n_thread = std::stoi(argv[2]);
     int n_singolo= size_coda / n_thread;
 
     fdapde::Worker_queue<value> q1(size_coda);

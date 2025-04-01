@@ -91,9 +91,10 @@ void push_front_di_n_elem_d(Worker_queue_deque<value> & q,int n, value el){
     }
 };
 
-int main(){
-    int size_coda= 16000;
-    int n_thread = 8;
+int main(int argc, char** argv){
+    int size_coda= std::stoi(argv[1]);
+
+    int n_thread = std::stoi(argv[2]);
     int n_singolo= size_coda / n_thread;
 
     value el = "ciao";
