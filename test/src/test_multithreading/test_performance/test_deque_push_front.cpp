@@ -83,8 +83,8 @@ class Worker_queue_deque{
 using value = std::string; 
 
 
-int main(){
-    int size_coda= 16000;
+int main(int argc, char** argv){
+    int size_coda= std::stoi(argv[1]);
 
     value el = "ciao";
 

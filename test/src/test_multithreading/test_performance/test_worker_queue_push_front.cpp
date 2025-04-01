@@ -18,27 +18,22 @@
 
 
 using value = std::string;
-
-int main(){
-    int size_coda= 16000;
+int main(int argc, char** argv){
+    int size_coda= std::stoi(argv[1]);
 
     fdapde::Worker_queue<value> q1(size_coda);
     value el = "ciao";
 
-//pop_front() singolo thread
-   //popolo
-    for (int i=0; i<size_coda; i++){
+//push_front() singolo thread
+
+    auto start = std::chrono::high_resolution_clock::now();
+    for(int j=0; j<size_coda-1; j++){
         q1.push_front(el);
     }
 
-    auto start2 = std::chrono::high_resolution_clock::now();
-    for(int j=0; j<size_coda-1; j++){
-        q1.pop_front();
-    }
-
-    auto end2 = std::chrono::high_resolution_clock::now();
-    auto duration2 = std::chrono::duration_cast<std::chrono::microseconds>(end2 - start2);  
-    //std::cout<<"pop_frot worker_queue di n_elementi: "<<size_coda<<" impiegato:"<<duration2.count()<< " microsecondi\n";
-    std::cout<<duration2.count()<<",";
+    auto end = std::chrono::high_resolution_clock::now();
+    auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start);  
+    //std::cout<<"push_frot worker_queue di n_elementi: "<<size_coda<<" impiegato:"<<duration.count()<< " microsecondi\n";
+    std::cout<<duration.count()<<",";
     return 0;
 }

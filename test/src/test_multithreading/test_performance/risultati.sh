@@ -1,33 +1,15 @@
 #!/bin/bash
 
-# Nome del file di output dove salvare tutti i risultati
-output_file="prova.txt"
+#$1 is the name of the file to be ran
+#$2 is the number of times the file is ran
+#$3 is the number of elements to be handled
 
-# Aggiungi una riga vuota per separare i risultati
-echo "" >> $output_file
+rm $1".txt"
 
-#titolo
-echo "pop_front() di 16000 elementi" >> $output_file
-
-# Aggiungi una riga vuota per separare i risultati
-echo "" >> $output_file
-
-
-# Esegui il secondo file 50 volte
-echo "Worker_queue:  " >> $output_file
-for i in {1..200}; do
-    ./test_worker_queue $i >> $output_file
+touch $1".txt"
+for i in `seq 1 $2`; do
+    # Esegui il programma e salva l'output nel file
+    ./$1 $3 >>$1".txt"
 done
 
-# Aggiungi una riga vuota per separare i risultati
-echo "" >> $output_file
-# Esegui il secondo file 50 volte
-echo "deque:  " >> $output_file
-for i in {1..200}; do
-    ./test_deque $i >> $output_file
-done
-
-# Aggiungi una riga vuota per separare i risultati
-echo "" >> $output_file
-echo "Esecuzione completata. I risultati sono stati salvati in $output_file"
 
