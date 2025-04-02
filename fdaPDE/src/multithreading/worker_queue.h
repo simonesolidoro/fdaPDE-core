@@ -116,7 +116,6 @@ namespace fdapde {
                     std::cerr<<"queue full"<<std::endl; // per debug poi da togliere
                     return false;
                 }
-                //se si arruva qui c'è posto, però bisogna aspettare che elemento sia stato liberato (se coda era piena ma viene fatto un pop_front che aggiorna tail_ in modo da head_!= tail_ ma ancora non ha liberato elemento)
                 int h = head_; //index dove inserira elemento
                 head_ = (head_ == size_-1)? (0) : (head_ + 1);
                 empty_queue_ = false; //magari gia false quindi ridondante,ma evita if(empty_queue_) {empty_queue_ = false;} non so quale piu efficiente 
@@ -340,17 +339,11 @@ namespace fdapde {
                 std::lock_guard<std::mutex> loc(m_);
                 return queue_.size();
             }
-            /*
-            // non funziona, da capire come forzare ad aspettare tutti gli occupied_.store() nei pop e push
-            bool empty() {
-                return occupied_.load(std::memory_order_acquire) == 0;  
-            }
-                */
-            // problema: possibile vedere empty_queque == true ma ancora pop di ultimo elemento non fatto (empty() da coda vuota ma ultimo pop è solo uscito dal mutex e non ha ancora tolto elemento)
+
             bool empty() const {
                 std::lock_guard<std::mutex> loc(m_);
                 if(empty_queue_){
-                    while(queue_[head_].empty_.load() != true){} //aspetta che ultimo pop tolga effettuvamente l'ultimo elemento
+                    while(queue_[head_].empty_.load(std::memory_order_acquire) != true){} //aspetta che ultimo pop tolga effettuvamente l'ultimo elemento
                     return true;
                 }
                 else
