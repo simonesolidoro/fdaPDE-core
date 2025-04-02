@@ -14,30 +14,26 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-#ifndef __FDAPDE_MULTITHREADING_MODULE_H__
-#define __FDAPDE_MULTITHREADING_MODULE_H__
-
-// clang-format off
-#include<vector>
-#include<mutex>
-#include<thread>
-#include<condition_variable>
-#include<memory>
-#include<optional>
-#include<atomic>
-#include<condition_variable>
-#include<functional>
-#include<concepts>
+#include<fdaPDE/multithreading.h>
 #include<list>
 
-// per debug e test momentaneo
-#include<iostream>
-#include<chrono>
-#include<deque>
+int main(){
+    using value = int;
+    value el = 1;
+    std::list<value> v ={el,el,el};
 
-// worker
-#include "src/multithreading/worker_queue.h"
+    fdapde::Worker_queue<int> q(v.begin(),v.end());
+    q.print();
+    std::vector<value> v1 ={el,el,el};
 
-// clang-format on
+    fdapde::Worker_queue<int> q1(v1.begin(),v1.end());
+    q1.print();
+    std::array<value,3> v2 ={el,el,el};
 
-#endif
+    fdapde::Worker_queue<int> q2(v2.begin(),v2.end());
+    q2.print();
+
+
+    return 1;
+
+}

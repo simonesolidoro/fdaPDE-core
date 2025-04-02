@@ -22,6 +22,11 @@
 #include "header_check.h"
 
 namespace fdapde {
+
+    //define concept (iterator of vector,array,list)
+    template <typename Iterator, typename T>
+    concept vector_array_list = std::contiguous_iterator<Iterator> || std::same_as<Iterator, typename std::list<T>::iterator> ;
+    
     template <typename T> 
     class Worker_queue{
     using value_type = T;
@@ -59,14 +64,18 @@ namespace fdapde {
             }
 
             // TODO: figure out the correct requires
-            template<typename Iterator> Worker_queue(Iterator begin, Iterator end){
-                int n = end - begin;
+            //template <std::contiguous_iterator Iterator> per vector e array no list
+            template <typename Iterator>
+            requires fdapde::vector_array_list<Iterator,T>
+            Worker_queue(Iterator begin, Iterator end){
+                int n = std::distance(begin, end); //itertor di list non supportano end-begin
                 std::vector<elem> temp_queue(n);
                 for(int i =0; i<n;i++){
                     temp_queue[i].empty_.store(false);
                     temp_queue[i].flag_push_.store(false);
                     temp_queue[i].flag_pop_.store(false);
-                    temp_queue[i].v_ =  *(begin + i);
+                    temp_queue[i].v_ = *(begin);
+                    std::advance(begin,i);         // list non supporta begin + i
                 }
                 std::swap(queue_, temp_queue);
                 head_ = queue_.size();
