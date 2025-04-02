@@ -78,8 +78,7 @@ namespace fdapde {
                     std::advance(begin,i);         // list non supporta begin + i
                 }
                 std::swap(queue_, temp_queue);
-                head_ = queue_.size();
-                size_ = head_;
+                size_ = queue_.size();
                 empty_queue_ = false;
             }
             ~Worker_queue(){
