@@ -57,13 +57,13 @@ class fe_linear_form_assembly_loop :
         iterator end  (Base::end_.index(),   dof_handler_, Base::end_.marker()  );
         // prepare assembly loop
         Eigen::Matrix<int, Dynamic, 1> active_dofs;
-        MdArray<double, MdExtents<n_basis, n_quadrature_nodes, local_dim, n_components>> test_grads;
+        MdArray<double, MdExtents<n_basis, n_quadrature_nodes, embed_dim, n_components>> test_grads;
 
         if constexpr (Form::XprBits & int(fe_assembler_flags::compute_physical_quad_nodes)) {
             Base::distribute_quadrature_nodes(begin, end);
         }
         // start assembly loop
-        internals::fe_assembler_packet<local_dim> fe_packet(Base::n_components);
+        internals::fe_assembler_packet<embed_dim> fe_packet(Base::n_components);
 	int local_cell_id = 0;
         for (iterator it = begin; it != end; ++it) {
             fe_packet.cell_measure = it->measure();

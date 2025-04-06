@@ -112,13 +112,13 @@ class fe_bilinear_form_assembly_loop :
         iterator end  (Base::end_.index(),   test_dof_handler(), Base::end_.marker()  );
         // prepare assembly loop
 	Eigen::Matrix<int, Dynamic, 1> test_active_dofs, trial_active_dofs;
-        MdArray<double, MdExtents<n_test_basis,  n_quadrature_nodes, local_dim, n_test_components >> test_grads;
-        MdArray<double, MdExtents<n_trial_basis, n_quadrature_nodes, local_dim, n_trial_components>> trial_grads;
+        MdArray<double, MdExtents<n_test_basis,  n_quadrature_nodes, embed_dim, n_test_components >> test_grads;
+        MdArray<double, MdExtents<n_trial_basis, n_quadrature_nodes, embed_dim, n_trial_components>> trial_grads;
         Matrix<double, n_test_basis , n_quadrature_nodes> test_divs;
         Matrix<double, n_trial_basis, n_quadrature_nodes> trial_divs;
-        MdArray<double, MdExtents<n_test_basis,  n_quadrature_nodes, n_test_components,  local_dim, local_dim>>
+        MdArray<double, MdExtents<n_test_basis,  n_quadrature_nodes, n_test_components,  embed_dim, embed_dim>>
 	  test_hess;
-        MdArray<double, MdExtents<n_trial_basis, n_quadrature_nodes, n_trial_components, local_dim, local_dim>>
+        MdArray<double, MdExtents<n_trial_basis, n_quadrature_nodes, n_trial_components, embed_dim, embed_dim>>
           trial_hess;
 
         if constexpr (Form::XprBits & int(fe_assembler_flags::compute_physical_quad_nodes)) {
@@ -132,7 +132,7 @@ class fe_bilinear_form_assembly_loop :
               return x == 0;
           });
         // start assembly loop
-        internals::fe_assembler_packet<local_dim> fe_packet(n_trial_components, n_test_components);
+        internals::fe_assembler_packet<embed_dim> fe_packet(n_trial_components, n_test_components);
 	// if hessians are zero, assemble physical hessian once and never update
         if constexpr (test_hess_is_zero ) { std::fill_n(fe_packet.test_hess.data(), fe_packet.test_hess.size(), 0.0); }
         if constexpr (trial_hess_is_zero) {
@@ -248,7 +248,7 @@ template <typename DofHandler, typename FeType> class scalar_fe_grad_grad_assemb
         // prepare assembly loop
         std::vector<Eigen::Triplet<double>> triplet_list;
         Eigen::Matrix<int, Dynamic, 1> active_dofs;
-        std::array<Matrix<double, local_dim, n_quadrature_nodes>, n_basis> shape_grad;
+        std::array<Matrix<double, embed_dim, n_quadrature_nodes>, n_basis> shape_grad;
         for (typename DofHandler::cell_iterator it = dof_handler_->cells_begin(); it != dof_handler_->cells_end();
              ++it) {
             active_dofs = it->dofs();
