@@ -43,6 +43,16 @@ namespace fdapde {
         std::optional<T> v_;
     };
 
+    template<typename T>
+    struct elem_hold{
+        std::atomic<char> state_ = Empty;
+        std::optional<T> v_;
+        std::mutex m_el_;
+        // OSS: due cv necessarie perché garantisce pop e push si alternino (se chiamo su stessa cella push pop push primo push quando finisce notifica se solo una cv puo essere arrivi notifica a push,  e non a pop,che si sveglia vede non piu busy e sovrascrive, se in cv.wait oltre a check se !=busy aggiungo check !=full  cosi si sveglia vede full e torna a dormire -> deadlock di pop che aspetta per sempre)
+        std::condition_variable cv_ready_to_pop_; // per avvisare che possibile fare pop (notufy da un push)
+        std::condition_variable cv_ready_to_push_; // per avvisare che possibile fare push (notify da un pop)
+    };
+
 
     template <typename T,Memory_order U, typename E> 
     class Worker_queue{
@@ -346,7 +356,7 @@ namespace fdapde {
                 bool empty() const {
                     std::lock_guard<std::mutex> loc(m_);
                     if(empty_queue_){
-                        while(queue_[head_].state_.load(std::memory_order_acquire) != Empty){} //aspetta che ultimo pop tolga effettuvamente l'ultimo elemento
+                        //TODO //aspetta che ultimo pop tolga effettuvamente l'ultimo elemento
                         return true;
                     }
                     else
@@ -354,6 +364,227 @@ namespace fdapde {
                 }
 
     };
+
+    //memory_order hold: se piu thread intervengono su stesssa cella push/pop durate stato= busy aspettao
+    template <typename T>
+    class Worker_queue_hold : public Worker_queue<T,Memory_order::hold,elem_hold<T>>{
+        using value_type = T;
+        using Worker_queue<T, Memory_order::hold, elem_hold<T>>::queue_;
+        using Worker_queue<T, Memory_order::hold, elem_hold<T>>::head_;
+        using Worker_queue<T, Memory_order::hold, elem_hold<T>>::tail_;
+        using Worker_queue<T, Memory_order::hold, elem_hold<T>>::size_;
+        using Worker_queue<T, Memory_order::hold, elem_hold<T>>::empty_queue_;
+        using Worker_queue<T, Memory_order::hold, elem_hold<T>>::m_;
+        using Worker_queue<T, Memory_order::hold, elem_hold<T>>::cv_can_pop_;
+        using Worker_queue<T, Memory_order::hold, elem_hold<T>>::cv_can_push_;
+        using Worker_queue<T, Memory_order::hold, elem_hold<T>>::active_;
+            public:
+            Worker_queue_hold(int n): Worker_queue<T,Memory_order::hold,elem_hold<T>>(n){};
+            bool push_front(value_type t){
+                std::unique_lock<std::mutex> loc(m_);
+                //TODO: se coda piena forse non serve questo primo check perche tranto fatto poi in singolo elemento ( check stato == full)
+                if (head_ == tail_ && !empty_queue_ ){// coda piena
+                    std::cerr<<"queue full"<<std::endl; // per debug poi da togliere
+                    return false;
+                }
+                int h = head_; //index dove inserira elemento
+                head_ = (head_ == size_-1)? (0) : (head_ + 1);
+                empty_queue_ = false; //magari gia false quindi ridondante,ma evita if(empty_queue_) {empty_queue_ = false;} non so quale piu efficiente 
+                loc.unlock();
+                std::unique_lock<std::mutex> loc_el(queue_[h].m_el_);
+                queue_[h].cv_ready_to_push_.wait(loc_el,[this,h](){return queue_[h].state_.load(std::memory_order_acquire)==Empty;});
+                //push di elemento
+                queue_[h].v_ = std::move(t);
+                queue_[h].state_.store(Full, std::memory_order_release); //aggiorna stato di elem con release
+                queue_[h].cv_ready_to_pop_.notify_one();
+                loc_el.unlock();
+            
+                cv_can_pop_.notify_one(); // for pop_or_wait
+                return true; 
+            }
+
+            bool push_front_or_wait(value_type t){
+                std::unique_lock<std::mutex> loc(m_);
+                cv_can_push_.wait(loc,[this](){return !this->active_ ||  this->head_ != this->tail_ || this->empty_queue_;});
+                if(!active_){return false;}
+                int h = head_; //index dove inserira elemento
+                head_ = (head_ == size_-1)? (0) : (head_ + 1);
+                empty_queue_ = false; //magari gia false quindi ridondante,ma evita if(empty_queue_) {empty_queue_ = false;} non so quale piu efficiente 
+                loc.unlock();
+                std::unique_lock<std::mutex> loc_el(queue_[h].m_el_);
+                queue_[h].cv_ready_to_push_.wait(loc_el,[this,h](){return queue_[h].state_.load(std::memory_order_acquire)==Empty;});
+                //push di elemento
+                queue_[h].v_ = std::move(t);
+                queue_[h].state_.store(Full, std::memory_order_release); //aggiorna stato di elem con release
+                queue_[h].cv_ready_to_pop_.notify_one();
+                loc_el.unlock();
+            
+                cv_can_pop_.notify_one(); // for pop_or_wait
+                return true; 
+
+            }
+
+            std::optional<value_type> pop_front(){
+                std::unique_lock<std::mutex> loc(m_);
+                if (empty_queue_){
+                    std::cerr<<"queue empty"<<std::endl;
+                    return std::nullopt;
+                }
+                // coda non vuota ma magari un push_back ha modificato indici e non ancora inserito elemento (caso critico coda vuota poi push_back poi pop_front)
+                // new_head = index di elemento da rimuovere
+                int new_head = (head_== 0)? (size_-1) : (head_-1);
+                head_ = new_head;
+                if(head_==tail_) {empty_queue_ = true;}  //head_ ==tail_ after pop() means empty, in general means full
+                loc.unlock();
+
+                std::unique_lock<std::mutex> loc_el(queue_[new_head].m_el_);
+                queue_[new_head].cv_ready_to_pop_.wait(loc_el,[this,new_head](){return queue_[new_head].state_.load(std::memory_order_acquire)==Full;});
+                
+                // pop 
+                value_type ret = std::move(queue_[new_head].v_.value());
+                queue_[new_head].v_ = std::nullopt;
+                queue_[new_head].state_.store(Empty, std::memory_order_release);
+
+                queue_[new_head].cv_ready_to_push_.notify_one();
+                loc_el.unlock();                
+                cv_can_push_.notify_one();
+
+                return ret;
+                   
+            }
+
+            std::optional<value_type> pop_front_or_wait(){
+                std::unique_lock<std::mutex> loc(m_);
+                cv_can_pop_.wait(loc,[this](){return !this->active_ || !this->empty_queue_;});
+                if(!active_) return std::nullopt;
+                // new_head = index di elemento da rimuovere
+                int new_head = (head_== 0)? (size_-1) : (head_-1);
+                if(head_==tail_) {empty_queue_ = true;}  //head_ ==tail_ after pop() means empty, in general means full
+                loc.unlock();
+
+                std::unique_lock<std::mutex> loc_el(queue_[new_head].m_el_);
+                queue_[new_head].cv_ready_to_pop_.wait(loc_el,[this,new_head](){return queue_[new_head].state_.load(std::memory_order_acquire)==Full;});
+                
+                // pop 
+                value_type ret = std::move(queue_[new_head].v_.value());
+                queue_[new_head].v_ = std::nullopt;
+                queue_[new_head].state_.store(Empty, std::memory_order_release);
+
+                queue_[new_head].cv_ready_to_push_.notify_one();
+                loc_el.unlock();                
+                cv_can_push_.notify_one();
+
+                return ret;
+                        
+            }
+            
+            //push_back() thread-safe 
+            bool push_back(value_type t){
+                std::unique_lock<std::mutex> loc(m_);
+                if (head_ == tail_ && !empty_queue_ ){// coda piena
+                    std::cerr<<"queue full"<<std::endl; // per debug poi da togliere
+                    return false;
+                }
+                int new_tail = (tail_ == 0)? (size_-1) : (tail_ -1);
+                empty_queue_ = false; //magari gia false quindi ridondante,ma evita if(empty_queue_) {empty_queue_ = false;} non so quale piu efficiente 
+                tail_ = new_tail;
+                loc.unlock();
+
+                std::unique_lock<std::mutex> loc_el(queue_[new_tail].m_el_);
+                queue_[new_tail].cv_ready_to_push_.wait(loc_el,[this,new_tail](){return queue_[new_tail].state_.load(std::memory_order_acquire)==Empty;});
+                queue_[new_tail].v_ = std::move(t);
+                queue_[new_tail].state_.store(Full, std::memory_order_release);
+                queue_[new_tail].cv_ready_to_pop_.notify_one();
+                loc_el.unlock();
+
+                cv_can_pop_.notify_one();
+                return true;
+            }
+
+            bool push_back_or_wait(value_type t){
+                std::unique_lock<std::mutex> loc(m_);
+                cv_can_push_.wait(loc,[this](){return !this->active_ || this->head_ != this->tail_ || this->empty_queue_;});
+                if(!active_){return false;}
+
+                int new_tail = (tail_ == 0)? (size_-1) : (tail_ -1);
+                empty_queue_ = false; //magari gia false quindi ridondante,ma evita if(empty_queue_) {empty_queue_ = false;} non so quale piu efficiente 
+                tail_ = new_tail;
+                loc.unlock();
+
+                std::unique_lock<std::mutex> loc_el(queue_[new_tail].m_el_);
+                queue_[new_tail].cv_ready_to_push_.wait(loc_el,[this,new_tail](){return queue_[new_tail].state_.load(std::memory_order_acquire)==Empty;});
+                queue_[new_tail].v_ = std::move(t);
+                queue_[new_tail].state_.store(Full, std::memory_order_release);
+                queue_[new_tail].cv_ready_to_pop_.notify_one();
+                loc_el.unlock();
+
+                cv_can_pop_.notify_one();
+                return true;
+            }
+
+            //pop_back() thrade-safe
+            std::optional<value_type> pop_back(){
+                std::unique_lock<std::mutex> loc(m_);
+                if(empty_queue_ ){
+                    std::cerr << "Queue is empty" << std::endl;
+                    return std::nullopt;
+                }
+
+                int t = tail_; // tmp idice di elmeto da pop
+                tail_ = (tail_ == size_-1)? (0):(tail_+1);
+                if(head_==tail_) {empty_queue_ = true;}
+                loc.unlock();
+
+                std::unique_lock<std::mutex> loc_el(queue_[t].m_el_);
+                queue_[t].cv_ready_to_pop_.wait(loc_el,[this,t](){return queue_[t].state_.load(std::memory_order_acquire)==Full;});
+                // sostituisce in posto che viene liberato il valore di defaul di value_type
+                value_type ret = std::move(queue_[t].v_.value());
+                queue_[t].v_ = std::nullopt;
+                queue_[t].state_.store(Empty, std::memory_order_release);
+                queue_[t].cv_ready_to_push_.notify_one();
+                loc_el.unlock();
+                cv_can_push_.notify_one();
+
+                return ret;
+            }
+
+            std::optional<value_type> pop_back_or_wait(){
+                std::unique_lock<std::mutex> loc(m_);
+                cv_can_pop_.wait(loc,[this](){return !this->active_ || !this->empty_queue_;}); // loc mutex, controllo condizione in lamda, se falsa unlock mutex e wait se vera va avanti
+                //copia codice di pop_back() tranne check se coda vuota, alternativa a chiamata diretta di pop_back che però porta a dover usare recursive mutex (definito dal libro come il male assoluto)
+                if(!active_) return std::nullopt; //se chiamato distruttore distruttore notifica a tutti di verificare condizione wait 
+
+                int t = tail_; // tmp idice di elmeto da pop
+                tail_ = (tail_ == size_-1)? (0):(tail_+1);
+                if(head_==tail_) {empty_queue_ = true;}
+                loc.unlock();
+
+                std::unique_lock<std::mutex> loc_el(queue_[t].m_el_);
+                queue_[t].cv_ready_to_pop_.wait(loc_el,[this,t](){return queue_[t].state_.load(std::memory_order_acquire)==Full;});
+                // sostituisce in posto che viene liberato il valore di defaul di value_type
+                value_type ret = std::move(queue_[t].v_.value());
+                queue_[t].v_ = std::nullopt;
+                queue_[t].state_.store(Empty, std::memory_order_release);
+                queue_[t].cv_ready_to_push_.notify_one();
+                loc_el.unlock();
+                cv_can_push_.notify_one();
+
+                return ret;
+            }
+
+            
+            // TODO: togliere while, per il momento lasciato cosi ci pensiamo dopo
+            bool empty() const {
+                std::lock_guard<std::mutex> loc(m_);
+                if(empty_queue_){
+                    // TODO //aspetta che ultimo pop tolga effettuvamente l'ultimo elemento
+                    return true;
+                }
+                else
+                    return false; 
+            }
+    };
+
 };
 
 #endif

@@ -19,7 +19,7 @@
  int main(){
 
 
-    fdapde::Worker_queue_relax<int> q(10);
+    fdapde::Worker_queue_hold<int> q(10);
 
     //push_front()
     for (int i =1; i<11; i++){
@@ -53,9 +53,9 @@
     int k=0;
     for(int i=0; i<10; i++){
       if((k % 2) == 0)
-         pool.emplace_back(&fdapde::Worker_queue_relax<int>::push_front,std::ref(q),k);
+         pool.emplace_back(&fdapde::Worker_queue_hold<int>::push_front,std::ref(q),k);
       else
-         pool.emplace_back(&fdapde::Worker_queue_relax<int>::pop_front,std::ref(q));
+         pool.emplace_back(&fdapde::Worker_queue_hold<int>::pop_front,std::ref(q));
       k++;
       q.print();
     }
