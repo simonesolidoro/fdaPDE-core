@@ -20,11 +20,11 @@
 
     std::vector<int> test = {1,2,3,4,5,6};
 
-    fdapde::Worker_queue<int> q1(test.begin(),test.end());
+    fdapde::Worker_queue<int, fdapde::Memory_order::relax> q1(test.begin(),test.end());
 
     q1.print();
 
-    fdapde::Worker_queue<int> q(10);
+    fdapde::Worker_queue<int, fdapde::Memory_order::relax> q(10);
 
     //push_front()
     for (int i =1; i<11; i++){
