@@ -203,7 +203,7 @@ namespace fdapde {
                     else{
                         //arrivato qui lo stato è busy
                         head_ = new_head;
-                        queue_[new_head].cv_busy_to_push_.wait(loc, [this,new_head](){return queue_[new_head].state_.load(std::memory_order_acquire) != Busy;});//TODO: capire se possiile catturare meno di this
+                        queue_[new_head].cv_busy_to_pop_.wait(loc, [this,new_head](){return queue_[new_head].state_.load(std::memory_order_acquire) != Busy;});//TODO: capire se possiile catturare meno di this
                         queue_[new_head].state_.store(Busy, std::memory_order_release);
                     }
                 }
@@ -330,11 +330,22 @@ namespace fdapde {
                     if(queue_[t].state_.load(std::memory_order_acquire) != Full)
                         return std::nullopt;
                     queue_[t].state_.store(Busy, std::memory_order_release);
+                    tail_ = (tail_ == size_-1)? (0):(tail_+1);
                 }
                 if constexpr (M == hold){
-                    //TODO
+                    if(queue_[t].state_.load(std::memory_order_acquire) == Empty)
+                        return false; //questo capita se coda piena, TODO: capire se questo basta per togliere primo check su coda piena, oenso di si 
+                    if(queue_[t].state_.load(std::memory_order_acquire) == Full){
+                        queue_[t].state_.store(Busy, std::memory_order_release);
+                        tail_ = (tail_ == size_-1)? (0):(tail_+1);
+                    }
+                    else{
+                        //arrivato qui lo stato è busy
+                        tail_ = (tail_ == size_-1)? (0):(tail_+1);
+                        queue_[t].cv_busy_to_pop_.wait(loc, [this,t](){return queue_[t].state_.load(std::memory_order_acquire) != Busy;});//TODO: capire se possiile catturare meno di this
+                        queue_[t].state_.store(Busy, std::memory_order_release);
+                    }  
                 }
-                tail_ = (tail_ == size_-1)? (0):(tail_+1);
                 if(head_==tail_) {empty_queue_ = true;}
                 loc.unlock();
 
