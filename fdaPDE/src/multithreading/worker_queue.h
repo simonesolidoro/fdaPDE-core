@@ -195,7 +195,7 @@ namespace fdapde {
                 }
                 if constexpr(M == hold){
                     if(queue_[new_head].state_.load(std::memory_order_acquire) == Empty)
-                        return false; //questo capita se coda piena, TODO: capire se questo basta per togliere primo check su coda piena, oenso di si 
+                        return std::nullopt; //questo capita se coda piena, TODO: capire se questo basta per togliere primo check su coda piena, oenso di si 
                     if(queue_[new_head].state_.load(std::memory_order_acquire) == Full){
                         queue_[new_head].state_.store(Busy, std::memory_order_release);
                         head_ = new_head;
@@ -334,7 +334,7 @@ namespace fdapde {
                 }
                 if constexpr (M == hold){
                     if(queue_[t].state_.load(std::memory_order_acquire) == Empty)
-                        return false; //questo capita se coda piena, TODO: capire se questo basta per togliere primo check su coda piena, oenso di si 
+                        return std::nullopt; //questo capita se coda piena, TODO: capire se questo basta per togliere primo check su coda piena, oenso di si 
                     if(queue_[t].state_.load(std::memory_order_acquire) == Full){
                         queue_[t].state_.store(Busy, std::memory_order_release);
                         tail_ = (tail_ == size_-1)? (0):(tail_+1);

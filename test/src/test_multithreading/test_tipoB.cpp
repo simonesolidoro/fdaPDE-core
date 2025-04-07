@@ -46,5 +46,23 @@
         q.pop_back();
     std::cout<<"pop_back():  "<<std::endl;
     q.print();
+
+    std::cout<<"test push-pop-push-pop...."<<std::endl;
+
+    std::vector<std::thread> pool;
+    int k=0;
+    for(int i=0; i<10; i++){
+      if((k % 2) == 0)
+         pool.emplace_back(&fdapde::Worker_queue<int,fdapde::Memory_order::hold>::push_front,std::ref(q),k);
+      else
+         pool.emplace_back(&fdapde::Worker_queue<int,fdapde::Memory_order::hold>::pop_front,std::ref(q));
+      k++;
+      q.print();
+    }
+    
+
+    for(int i =0; i<pool.size(); i++){
+      pool[i].join();
+    }
      return 0;
     }
