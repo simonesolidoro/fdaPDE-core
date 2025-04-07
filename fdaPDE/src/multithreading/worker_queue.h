@@ -171,7 +171,7 @@ namespace fdapde {
                 //push di elemento
                 queue_[h].v_ = std::move(t);
                 queue_[h].state_.store(Full, std::memory_order_release); //aggiorna stato di elem con release
-                if(M == hold){
+                if constexpr(M == hold){
                     queue_[h].cv_busy_to_pop_.notify_one();
                 }
                 cv_can_pop_.notify_one();
@@ -191,11 +191,22 @@ namespace fdapde {
                     if(queue_[new_head].state_.load(std::memory_order_acquire) != Full)
                         return std::nullopt;
                     queue_[new_head].state_.store(Busy, std::memory_order_release);
+                    head_ = new_head;
                 }
                 if constexpr(M == hold){
-                    //TODO
+                    if(queue_[new_head].state_.load(std::memory_order_acquire) == Empty)
+                        return false; //questo capita se coda piena, TODO: capire se questo basta per togliere primo check su coda piena, oenso di si 
+                    if(queue_[new_head].state_.load(std::memory_order_acquire) == Full){
+                        queue_[new_head].state_.store(Busy, std::memory_order_release);
+                        head_ = new_head;
+                    }
+                    else{
+                        //arrivato qui lo stato è busy
+                        head_ = new_head;
+                        queue_[new_head].cv_busy_to_push_.wait(loc, [this,new_head](){return queue_[new_head].state_.load(std::memory_order_acquire) != Busy;});//TODO: capire se possiile catturare meno di this
+                        queue_[new_head].state_.store(Busy, std::memory_order_release);
+                    }
                 }
-                head_ = new_head;
                 if(head_==tail_) {empty_queue_ = true;}  //head_ ==tail_ after pop() means empty, in general means full
                 loc.unlock();
 
@@ -204,7 +215,7 @@ namespace fdapde {
                 queue_[new_head].v_ = std::nullopt;
                 queue_[new_head].state_.store(Empty, std::memory_order_release);
 
-                if(M == hold){
+                if constexpr (M == hold){
                     queue_[new_head].cv_busy_to_push_.notify_one();
                 }
                 cv_can_push_.notify_one();

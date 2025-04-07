@@ -28,6 +28,12 @@
     std::cout<<"push_front():  "<<std::endl;
     q.print();
 
+    //pop_front
+    for(int j=1; j<11; j++)
+        q.pop_front();
+    std::cout<<"pop_front():  "<<std::endl;
+    q.print();
+
 
      return 0;
     }
