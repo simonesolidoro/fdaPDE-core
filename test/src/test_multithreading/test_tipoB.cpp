@@ -64,5 +64,16 @@
     for(int i =0; i<pool.size(); i++){
       pool[i].join();
     }
+    q.resize(3);
+    q.print();
+    q.clear();
+    q.print();
+    q.size();
+
+    std::vector<int> v={1,2,3};
+    fdapde::Worker_queue_hold<int> p(v.begin(),v.end());
+    p.print();
+    fdapde::Worker_queue_relax<int> p1(v.begin(),v.end());
+    p1.print();
      return 0;
     }

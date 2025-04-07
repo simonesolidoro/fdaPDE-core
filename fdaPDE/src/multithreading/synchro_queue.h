@@ -157,6 +157,11 @@ namespace fdapde {
         using Worker_queue<T, Memory_order::relax, elem_relax<T>>::active_;
             public:
             Worker_queue_relax(int n): Worker_queue<T,Memory_order::relax,elem_relax<T>>(n){};
+
+            template <typename Iterator>
+            requires fdapde::vector_array_list<Iterator,T>
+            Worker_queue_relax(Iterator begin, Iterator end):Worker_queue<T,Memory_order::relax,elem_relax<T>>(begin, end){};
+
                 bool push_front(value_type t){
                     std::unique_lock<std::mutex> loc(m_);
                     //TODO: se coda piena forse non serve questo primo check perche tranto fatto poi in singolo elemento ( check stato == full)
@@ -380,6 +385,11 @@ namespace fdapde {
         using Worker_queue<T, Memory_order::hold, elem_hold<T>>::active_;
             public:
             Worker_queue_hold(int n): Worker_queue<T,Memory_order::hold,elem_hold<T>>(n){};
+
+            template <typename Iterator>
+            requires fdapde::vector_array_list<Iterator,T>
+            Worker_queue_hold(Iterator begin, Iterator end):Worker_queue<T,Memory_order::hold,elem_hold<T>>(begin, end){};
+
             bool push_front(value_type t){
                 std::unique_lock<std::mutex> loc(m_);
                 //TODO: se coda piena forse non serve questo primo check perche tranto fatto poi in singolo elemento ( check stato == full)
