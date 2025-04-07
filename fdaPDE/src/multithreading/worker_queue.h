@@ -266,12 +266,23 @@ namespace fdapde {
                 if constexpr (M == relax){
                     if(queue_[new_tail].state_.load(std::memory_order_acquire) != Empty)
                         return false;
-                    queue_[new_tail].state_.store(Busy, std::memory_order_release);                    
+                    queue_[new_tail].state_.store(Busy, std::memory_order_release);
+                    tail_ = new_tail;                    
                 }
                 if constexpr (M == hold){
-                    //todo
+                    if(queue_[new_tail].state_.load(std::memory_order_acquire) == Full)
+                        return false; //questo capita se coda piena, TODO: capire se questo basta per togliere primo check su coda piena, oenso di si 
+                    if(queue_[new_tail].state_.load(std::memory_order_acquire) == Empty){
+                        queue_[new_tail].state_.store(Busy, std::memory_order_release);
+                        tail_ = new_tail;
+                    }
+                    else{
+                        //arrivato qui lo stato è busy
+                        tail_ = new_tail;
+                        queue_[new_tail].cv_busy_to_push_.wait(loc, [this,new_tail](){return queue_[new_tail].state_.load(std::memory_order_acquire) != Busy;});//TODO: capire se possiile catturare meno di this
+                        queue_[new_tail].state_.store(Busy, std::memory_order_release);
+                    }    
                 }
-                tail_ = new_tail;
                 empty_queue_ = false; //magari gia false quindi ridondante,ma evita if(empty_queue_) {empty_queue_ = false;} non so quale piu efficiente 
                 loc.unlock();
 

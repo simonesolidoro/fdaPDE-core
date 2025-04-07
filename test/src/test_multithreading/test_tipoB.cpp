@@ -34,6 +34,13 @@
     std::cout<<"pop_front():  "<<std::endl;
     q.print();
 
+    //push_back()
+    for (int i =1; i<11; i++){
+        q.push_back(i);
+    }
+    std::cout<<"push_back():  "<<std::endl;
+    q.print();
+
 
      return 0;
     }
