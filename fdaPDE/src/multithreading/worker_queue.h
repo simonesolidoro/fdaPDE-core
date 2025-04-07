@@ -44,7 +44,7 @@ namespace fdapde {
         std::atomic<char> state_ = Empty;
         std::optional<value_type> v_;
 
-        //utilizzata solo per Memory_order == hold
+        //utilizzata solo per Memory_order == hold. OSS: due cv necessarie perché garantisce pop e push si alternino (se chiamo su stessa cella push pop push primo push quando finisce notifica se solo una cv puo essere arrivi notifica a push,  e non a pop,che si sveglia vede non piu busy e sovrascrive, se in cv.wait oltre a check se !=busy aggiungo check !=full  cosi si sveglia vede full e torna a dormire -> deadlock di pop che aspetta per sempre)
         std::condition_variable cv_busy_to_pop_; // per avvisare che possibile fare pop (notufy da un push)
         std::condition_variable cv_busy_to_push_; // per avvisare che possibile fare push (notify da un pop)
     };
@@ -79,7 +79,7 @@ namespace fdapde {
                 for(int i =0; i<n;i++){
                     temp_queue[i].state_.store(Full);
                     temp_queue[i].v_ = *(begin);
-                    std::advance(begin,1);         // list non supporta begin + i
+                    std::advance(begin,1);         // list non supporta begin + 1
                 }
                 std::swap(queue_, temp_queue);
                 size_ = queue_.size();
@@ -111,6 +111,7 @@ namespace fdapde {
 
             bool push_front(value_type t){
                 std::unique_lock<std::mutex> loc(m_);
+                //TODO: se coda piena forse non serve questo primo check perche tranto fatto poi in singolo elemento ( check stato == full)
                 if (head_ == tail_ && !empty_queue_ ){// coda piena
                     std::cerr<<"queue full"<<std::endl; // per debug poi da togliere
                     return false;
@@ -120,13 +121,22 @@ namespace fdapde {
                     if(queue_[h].state_.load(std::memory_order_acquire) != Empty)
                         return false;
                     queue_[h].state_.store(Busy, std::memory_order_release); //TODO: capire se forse dato che dentro mutex memory order superfluo
+                    head_ = (head_ == size_-1)? (0) : (head_ + 1);
                 }
                 if constexpr (M == hold){
-                    if(queue_[h].state_.load(std::memory_order_acquire) == Empty)
+                    if(queue_[h].state_.load(std::memory_order_acquire) == Full)
+                        return false; //questo capita se coda piena, TODO: capire se questo basta per togliere primo check su coda piena, oenso di si 
+                    if(queue_[h].state_.load(std::memory_order_acquire) == Empty){
                         queue_[h].state_.store(Busy, std::memory_order_release);
-                    /*TODO: */
+                        head_ = (head_ == size_-1)? (0) : (head_ + 1);
+                    }
+                    else{
+                        //arrivato qui lo stato è busy
+                        head_ = (head_ == size_-1)? (0) : (head_ + 1);// OSS: importante aggiornare indici prima di dormire, per evitare buco in queue (vedi appunti quaderno)
+                        queue_[h].cv_busy_to_push_.wait(loc, [this,h](){return queue_[h].state_.load(std::memory_order_acquire) != Busy;});//TODO: capire se possiile catturare meno di this
+                        queue_[h].state_.store(Busy, std::memory_order_release);
+                    }
                 }
-                head_ = (head_ == size_-1)? (0) : (head_ + 1);
                 empty_queue_ = false; //magari gia false quindi ridondante,ma evita if(empty_queue_) {empty_queue_ = false;} non so quale piu efficiente 
                 loc.unlock();
 
