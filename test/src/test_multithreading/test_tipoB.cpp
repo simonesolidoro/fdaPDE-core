@@ -15,6 +15,12 @@
  // along with this program.  If not, see <http://www.gnu.org/licenses/>.
  
  #include<fdaPDE/multithreading.h>
+
+ //per test cocept per costrain E to have member v_ e state_
+ struct eee{
+  int v_;
+  int state_;
+};
  
  int main(){
 
@@ -75,5 +81,8 @@
     p.print();
     fdapde::Worker_queue_relax<int> p1(v.begin(),v.end());
     p1.print();
+
+    //test concept on E 
+    fdapde::Worker_queue<int,fdapde::Memory_order::relax,eee> w;
      return 0;
     }

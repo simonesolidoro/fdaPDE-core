@@ -27,12 +27,20 @@ namespace fdapde {
     template <typename Iterator, typename T>
     concept vector_array_list = std::contiguous_iterator<Iterator> || std::same_as<Iterator, typename std::list<T>::iterator> ;
 
+    // concept per verificare E aia membri v_ ed state_.  TODO: un po inutile, bisognerebbe verificare che membri v_ e state_ possano fare cio che fanno in costruttore da conteiner
+    template <typename E>
+    concept value = requires{E::v_;};
+
+    template <typename E>
+    concept status = requires{E::state_;};
+
+
     enum Memory_order {
         relax, // non aspetta se elem busy
         hold, // aspetta se elem busy (no while ma Condition_Variable)
     };
 
-    //enumerator
+    //enumerator  state of elem
     static constexpr char Empty = 'e';
     static constexpr char Busy = 'b';
     static constexpr char Full = 'f';
@@ -54,7 +62,8 @@ namespace fdapde {
     };
 
 
-    template <typename T,Memory_order U, typename E> 
+    template <typename T,Memory_order U, typename E>  //TODO: costrain concept per garantire che E abbia membro state_ e v_, usati per costruttore da iteratori di conteiner
+    requires fdapde::value<E> && fdapde::status<E>
     class Worker_queue{
         using value_type = T;
 
@@ -92,7 +101,7 @@ namespace fdapde {
                 size_ = queue_.size();
                 empty_queue_ = false;
             }
-            ~Worker_queue(){
+            virtual ~Worker_queue(){ //virtual cosi che distruttore di figli chiamati quado si distruggono tramite puntatore di tipo base
                 active_ = false;
                 cv_can_pop_.notify_all();
                 cv_can_push_.notify_all();
@@ -172,7 +181,7 @@ namespace fdapde {
                 int h = head_; //index dove inserira elemento
                 if(queue_[h].state_.load(std::memory_order_acquire) != Empty)
                     return false;
-                queue_[h].state_.store(Busy, std::memory_order_release); //TODO: capire se forse dato che dentro mutex memory order superfluo
+                queue_[h].state_.store(Busy, std::memory_order_release); //TODO: capire se forse dato che dentro mutex memory order superfluo. forse ottimale  memory_order_relax
                 head_ = (head_ == size_-1)? (0) : (head_ + 1);
 
                 empty_queue_ = false; //magari gia false quindi ridondante,ma evita if(empty_queue_) {empty_queue_ = false;} non so quale piu efficiente 
@@ -180,12 +189,13 @@ namespace fdapde {
 
                 //push di elemento
                 queue_[h].v_ = std::move(t);
-                queue_[h].state_.store(Full, std::memory_order_release); //aggiorna stato di elem con release
+                queue_[h].state_.store(Full, std::memory_order_release); //aggiorna stato di elem con release.  SE un pop vede lo stato = FUll grazie a release allora sicuro vede anche l'elemeto pushato
 
                 cv_can_pop_.notify_one(); // for pop_or_wait
                 return true; 
             }
-
+            
+            //TODO: tutti metodi or wait da capire semantica
             bool push_front_or_wait(value_type t){
                 std::unique_lock<std::mutex> loc(m_);
                 cv_can_push_.wait(loc,[this](){return !this->active_ ||  this->head_ != this->tail_ || this->empty_queue_;});
