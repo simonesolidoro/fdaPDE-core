@@ -50,9 +50,11 @@ template <int N, typename... Args> class GridOptimizer {
 	size_ = other.size_;
         return *this;
     }
-    template <typename ObjectiveT, typename GridT>
-        requires(internals::is_vector_like_v<GridT> || internals::is_matrix_like_v<GridT>)
-    vector_t optimize(ObjectiveT&& objective, const GridT& grid) {
+    template <typename ObjectiveT, typename GridT, typename... Functor>
+        requires((internals::is_vector_like_v<GridT> || internals::is_matrix_like_v<GridT>) &&
+                 sizeof...(Functor) < 2) &&
+                ((requires(Functor f, double value) { f(value); }) && ...)
+    vector_t optimize(ObjectiveT&& objective, const GridT& grid, Functor&&... func) {
         fdapde_static_assert(
           std::is_same<decltype(std::declval<ObjectiveT>().operator()(vector_t())) FDAPDE_COMMA double>::value,
           INVALID_CALL_TO_OPTIMIZE__OBJECTIVE_FUNCTOR_NOT_ACCEPTING_VECTORTYPE);
@@ -68,6 +70,7 @@ template <int N, typename... Args> class GridOptimizer {
         // algorithm initialization
         grid_.row(0).assign_to(x_current);
         value_ = objective(x_current);
+        if constexpr (sizeof...(Functor) == 1) { (func(value_), ...); }
         values_.push_back(value_);
         optimum_ = x_current;
         // optimize field over supplied grid
@@ -81,6 +84,7 @@ template <int N, typename... Args> class GridOptimizer {
                 value_ = x;
                 optimum_ = x_current;
             }
+            if constexpr (sizeof...(Functor) == 1) { (func(value_), ...); }
         }
         return optimum_;
     }

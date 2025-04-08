@@ -72,7 +72,7 @@ void write_csv(
         file << std::setprecision(16);
         for (int i = 0; i < rows; ++i) {
             for (int j = 0; j < cols - 1; ++j) { file << data[i * inner + j * outer] << ", "; }
-            file << (by_rows ? data[(i + 1) * cols - 1] : data[i + (cols - 1) * cols + 1]) << "\n";
+            file << data[by_rows ? ((i + 1) * cols - 1) : (i + (cols - 1) * cols + 1)] << "\n";
         }
     }
     return;
