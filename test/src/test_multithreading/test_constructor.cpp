@@ -22,15 +22,15 @@ int main(){
     value el = 1;
     std::list<value> v ={el,el,el};
 
-    fdapde::Worker_queue<int> q(v.begin(),v.end());
+    fdapde::Worker_queue_hold<int> q(v.begin(),v.end());
     q.print();
     std::vector<value> v1 ={el,el,el};
 
-    fdapde::Worker_queue<int> q1(v1.begin(),v1.end());
+    fdapde::Worker_queue_hold<int> q1(v1.begin(),v1.end());
     q1.print();
     std::array<value,3> v2 ={el,el,el};
 
-    fdapde::Worker_queue<int> q2(v2.begin(),v2.end());
+    fdapde::Worker_queue_hold<int> q2(v2.begin(),v2.end());
     q2.print();
 
 

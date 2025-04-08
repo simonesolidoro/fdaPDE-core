@@ -20,7 +20,7 @@ int main(){
 
     int n = 5;
 
-    fdapde::Worker_queue<int> q(n);
+    fdapde::Worker_queue_hold<int> q(n);
 
     q.print();
 

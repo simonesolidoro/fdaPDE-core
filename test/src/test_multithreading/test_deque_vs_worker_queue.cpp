@@ -230,7 +230,7 @@ using value = std::string;
 
 int main(){
     int size_coda= 10000;
-    fdapde::Worker_queue<value> q1(size_coda);
+    fdapde::Worker_queue_hold<value> q1(size_coda);
     Worker_queue_deque<value> d1;
     fdapde::old_Worker_queue<value> w1(size_coda);
     value el= "ciao";

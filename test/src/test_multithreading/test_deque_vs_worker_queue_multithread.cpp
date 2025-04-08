@@ -240,7 +240,7 @@ class Worker_queue_deque{
 using value = std::string;
 
 // push_front di n elementi per worker queue 
-void push_front_di_n_elem(fdapde::Worker_queue<value> & q,int n, value el){
+void push_front_di_n_elem(fdapde::Worker_queue_hold<value> & q,int n, value el){
     for (int j=0; j<n; j++){
         q.push_front(el);
     }
@@ -259,7 +259,7 @@ void push_front_di_n_elem_o(fdapde::old_Worker_queue<value> & q,int n, value el)
 };
 
 // push_back di n elementi per worker queue 
-void push_back_di_n_elem(fdapde::Worker_queue<value> & q,int n, value el){
+void push_back_di_n_elem(fdapde::Worker_queue_hold<value> & q,int n, value el){
     for (int j=0; j<n; j++){
         q.push_back(el);
     }
@@ -278,7 +278,7 @@ void push_back_di_n_elem_o(fdapde::old_Worker_queue<value> & q,int n, value el){
 };
 
 // pop_back di n elementi per worker queue 
-void pop_back_di_n_elem(fdapde::Worker_queue<value> & q,int n){
+void pop_back_di_n_elem(fdapde::Worker_queue_hold<value> & q,int n){
     for (int j=0; j<n; j++){
         q.pop_back();
     }
@@ -297,7 +297,7 @@ void pop_back_di_n_elem_o(fdapde::old_Worker_queue<value> & q,int n){
 };
 
 // pop_front di n elementi per worker queue 
-void pop_front_di_n_elem(fdapde::Worker_queue<value> & q,int n){
+void pop_front_di_n_elem(fdapde::Worker_queue_hold<value> & q,int n){
     for (int j=0; j<n; j++){
         q.pop_front();
     }
@@ -323,7 +323,7 @@ int main(){
    
 //push_back() multithreading
 
-    fdapde::Worker_queue<value> q1(size_coda);
+    fdapde::Worker_queue_hold<value> q1(size_coda);
     Worker_queue_deque<value> d1;
     auto start = std::chrono::high_resolution_clock::now();  
     //worker_queue push_back parallelo
@@ -357,7 +357,7 @@ int main(){
 
 
 //pop_back() multithreading
-    fdapde::Worker_queue<value> q2(size_coda);
+    fdapde::Worker_queue_hold<value> q2(size_coda);
     Worker_queue_deque<value> d2;
 
     //popolo
@@ -399,7 +399,7 @@ int main(){
 
 
 //push_back da piu thread e push_front da singolo
-    fdapde::Worker_queue<value> q3(size_coda);
+    fdapde::Worker_queue_hold<value> q3(size_coda);
     Worker_queue_deque<value> d3;
     fdapde::old_Worker_queue<value> w(size_coda);
 
@@ -450,7 +450,7 @@ int main(){
     //std::cout<<duration8.count()<<",";
 
 //pop_back da piu thread e pop_front da singolo
-    fdapde::Worker_queue<value> q4(size_coda);
+    fdapde::Worker_queue_hold<value> q4(size_coda);
     Worker_queue_deque<value> d4;
     fdapde::old_Worker_queue<value> w2(size_coda);
 
