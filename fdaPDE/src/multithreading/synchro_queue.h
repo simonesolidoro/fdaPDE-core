@@ -39,13 +39,13 @@ namespace fdapde {
 
     template<typename T>
     struct elem_relax{
-        std::atomic<char> state_ = Empty;
+        std::atomic<char> state_ = Empty; //
         std::optional<T> v_;
     };
 
     template<typename T>
     struct elem_hold{
-        std::atomic<char> state_ = Empty;
+        std::atomic<char> state_ = Empty; //stato binario Empty / Full  TODO: valutare se meglio atomic flag
         std::optional<T> v_;
         mutable std::mutex m_el_;
         // OSS: due cv necessarie perché garantisce pop e push si alternino (se chiamo su stessa cella push pop push primo push quando finisce notifica se solo una cv puo essere arrivi notifica a push,  e non a pop,che si sveglia vede non piu busy e sovrascrive, se in cv.wait oltre a check se !=busy aggiungo check !=full  cosi si sveglia vede full e torna a dormire -> deadlock di pop che aspetta per sempre)
@@ -400,7 +400,9 @@ namespace fdapde {
                 int h = head_; //index dove inserira elemento
                 head_ = (head_ == size_-1)? (0) : (head_ + 1);
                 empty_queue_ = false; //magari gia false quindi ridondante,ma evita if(empty_queue_) {empty_queue_ = false;} non so quale piu efficiente 
+                cv_can_pop_.notify_one(); // for pop_or_wait
                 loc.unlock();
+
                 std::unique_lock<std::mutex> loc_el(queue_[h].m_el_);
                 queue_[h].cv_ready_to_push_.wait(loc_el,[this,h](){return queue_[h].state_.load(std::memory_order_acquire)==Empty;});
                 //push di elemento
@@ -409,7 +411,6 @@ namespace fdapde {
                 queue_[h].cv_ready_to_pop_.notify_one();
                 loc_el.unlock();
             
-                cv_can_pop_.notify_one(); // for pop_or_wait
                 return true; 
             }
 
@@ -420,7 +421,9 @@ namespace fdapde {
                 int h = head_; //index dove inserira elemento
                 head_ = (head_ == size_-1)? (0) : (head_ + 1);
                 empty_queue_ = false; //magari gia false quindi ridondante,ma evita if(empty_queue_) {empty_queue_ = false;} non so quale piu efficiente 
+                cv_can_pop_.notify_one(); // for pop_or_wait
                 loc.unlock();
+
                 std::unique_lock<std::mutex> loc_el(queue_[h].m_el_);
                 queue_[h].cv_ready_to_push_.wait(loc_el,[this,h](){return queue_[h].state_.load(std::memory_order_acquire)==Empty;});
                 //push di elemento
@@ -429,7 +432,6 @@ namespace fdapde {
                 queue_[h].cv_ready_to_pop_.notify_one();
                 loc_el.unlock();
             
-                cv_can_pop_.notify_one(); // for pop_or_wait
                 return true; 
 
             }
@@ -445,6 +447,7 @@ namespace fdapde {
                 int new_head = (head_== 0)? (size_-1) : (head_-1);
                 head_ = new_head;
                 if(head_==tail_) {empty_queue_ = true;}  //head_ ==tail_ after pop() means empty, in general means full
+                cv_can_push_.notify_one();
                 loc.unlock();
 
                 std::unique_lock<std::mutex> loc_el(queue_[new_head].m_el_);
@@ -457,7 +460,6 @@ namespace fdapde {
 
                 queue_[new_head].cv_ready_to_push_.notify_one();
                 loc_el.unlock();                
-                cv_can_push_.notify_one();
 
                 return ret;
                    
@@ -470,6 +472,7 @@ namespace fdapde {
                 // new_head = index di elemento da rimuovere
                 int new_head = (head_== 0)? (size_-1) : (head_-1);
                 if(head_==tail_) {empty_queue_ = true;}  //head_ ==tail_ after pop() means empty, in general means full
+                cv_can_push_.notify_one();
                 loc.unlock();
 
                 std::unique_lock<std::mutex> loc_el(queue_[new_head].m_el_);
@@ -482,7 +485,6 @@ namespace fdapde {
 
                 queue_[new_head].cv_ready_to_push_.notify_one();
                 loc_el.unlock();                
-                cv_can_push_.notify_one();
 
                 return ret;
                         
@@ -498,6 +500,7 @@ namespace fdapde {
                 int new_tail = (tail_ == 0)? (size_-1) : (tail_ -1);
                 empty_queue_ = false; //magari gia false quindi ridondante,ma evita if(empty_queue_) {empty_queue_ = false;} non so quale piu efficiente 
                 tail_ = new_tail;
+                cv_can_pop_.notify_one();
                 loc.unlock();
 
                 std::unique_lock<std::mutex> loc_el(queue_[new_tail].m_el_);
@@ -507,7 +510,6 @@ namespace fdapde {
                 queue_[new_tail].cv_ready_to_pop_.notify_one();
                 loc_el.unlock();
 
-                cv_can_pop_.notify_one();
                 return true;
             }
 
@@ -519,6 +521,7 @@ namespace fdapde {
                 int new_tail = (tail_ == 0)? (size_-1) : (tail_ -1);
                 empty_queue_ = false; //magari gia false quindi ridondante,ma evita if(empty_queue_) {empty_queue_ = false;} non so quale piu efficiente 
                 tail_ = new_tail;
+                cv_can_pop_.notify_one();
                 loc.unlock();
 
                 std::unique_lock<std::mutex> loc_el(queue_[new_tail].m_el_);
@@ -527,8 +530,7 @@ namespace fdapde {
                 queue_[new_tail].state_.store(Full, std::memory_order_release);
                 queue_[new_tail].cv_ready_to_pop_.notify_one();
                 loc_el.unlock();
-
-                cv_can_pop_.notify_one();
+                
                 return true;
             }
 
@@ -543,6 +545,7 @@ namespace fdapde {
                 int t = tail_; // tmp idice di elmeto da pop
                 tail_ = (tail_ == size_-1)? (0):(tail_+1);
                 if(head_==tail_) {empty_queue_ = true;}
+                cv_can_push_.notify_one();
                 loc.unlock();
 
                 std::unique_lock<std::mutex> loc_el(queue_[t].m_el_);
@@ -553,7 +556,7 @@ namespace fdapde {
                 queue_[t].state_.store(Empty, std::memory_order_release);
                 queue_[t].cv_ready_to_push_.notify_one();
                 loc_el.unlock();
-                cv_can_push_.notify_one();
+                
 
                 return ret;
             }
@@ -567,6 +570,7 @@ namespace fdapde {
                 int t = tail_; // tmp idice di elmeto da pop
                 tail_ = (tail_ == size_-1)? (0):(tail_+1);
                 if(head_==tail_) {empty_queue_ = true;}
+                cv_can_push_.notify_one();
                 loc.unlock();
 
                 std::unique_lock<std::mutex> loc_el(queue_[t].m_el_);
@@ -577,7 +581,6 @@ namespace fdapde {
                 queue_[t].state_.store(Empty, std::memory_order_release);
                 queue_[t].cv_ready_to_push_.notify_one();
                 loc_el.unlock();
-                cv_can_push_.notify_one();
 
                 return ret;
             }
