@@ -59,6 +59,10 @@ namespace fdapde {
         // OSS: due cv necessarie perché garantisce pop e push si alternino (se chiamo su stessa cella push pop push primo push quando finisce notifica se solo una cv puo essere arrivi notifica a push,  e non a pop,che si sveglia vede non piu busy e sovrascrive, se in cv.wait oltre a check se !=busy aggiungo check !=full  cosi si sveglia vede full e torna a dormire -> deadlock di pop che aspetta per sempre)
         std::condition_variable cv_ready_to_pop_; // per avvisare che possibile fare pop (notufy da un push)
         std::condition_variable cv_ready_to_push_; // per avvisare che possibile fare push (notify da un pop)
+
+        std::condition_variable cv_empty_;
+        int count_push_ = 0;
+        int count_pop_ = 0;
     };
 
     // classe base TODO: metterla in namespace internal
@@ -411,6 +415,7 @@ namespace fdapde {
                 head_ = (head_ == size_-1)? (0) : (head_ + 1);
                 empty_queue_ = false; //magari gia false quindi ridondante,ma evita if(empty_queue_) {empty_queue_ = false;} non so quale piu efficiente 
                 cv_can_pop_.notify_one(); // for pop_or_wait
+                queue_[h].count_push_ ++;
                 loc.unlock();
 
                 std::unique_lock<std::mutex> loc_el(queue_[h].m_el_);
@@ -419,6 +424,7 @@ namespace fdapde {
                 queue_[h].v_ = std::move(t);
                 queue_[h].state_.store(Full, std::memory_order_release); //aggiorna stato di elem con release
                 queue_[h].cv_ready_to_pop_.notify_one();
+                queue_[h].count_push_ --;
                 loc_el.unlock();
             
                 return true; 
@@ -432,6 +438,7 @@ namespace fdapde {
                 head_ = (head_ == size_-1)? (0) : (head_ + 1);
                 empty_queue_ = false; //magari gia false quindi ridondante,ma evita if(empty_queue_) {empty_queue_ = false;} non so quale piu efficiente 
                 cv_can_pop_.notify_one(); // for pop_or_wait
+                queue_[h].count_push_ ++;
                 loc.unlock();
 
                 std::unique_lock<std::mutex> loc_el(queue_[h].m_el_);
@@ -440,6 +447,7 @@ namespace fdapde {
                 queue_[h].v_ = std::move(t);
                 queue_[h].state_.store(Full, std::memory_order_release); //aggiorna stato di elem con release
                 queue_[h].cv_ready_to_pop_.notify_one();
+                queue_[h].count_push_ --;
                 loc_el.unlock();
             
                 return true; 
@@ -458,6 +466,7 @@ namespace fdapde {
                 head_ = new_head;
                 if(head_==tail_) {empty_queue_ = true;}  //head_ ==tail_ after pop() means empty, in general means full
                 cv_can_push_.notify_one();
+                queue_[new_head].count_pop_ ++;
                 loc.unlock();
 
                 std::unique_lock<std::mutex> loc_el(queue_[new_head].m_el_);
@@ -469,6 +478,9 @@ namespace fdapde {
                 queue_[new_head].state_.store(Empty, std::memory_order_release);
 
                 queue_[new_head].cv_ready_to_push_.notify_one();
+                queue_[new_head].count_pop_ --;
+                if(queue_[new_head].count_push_ == 0 )
+                    queue_[new_head].cv_empty_.notify_one();
                 loc_el.unlock();                
 
                 return ret;
@@ -483,6 +495,7 @@ namespace fdapde {
                 int new_head = (head_== 0)? (size_-1) : (head_-1);
                 if(head_==tail_) {empty_queue_ = true;}  //head_ ==tail_ after pop() means empty, in general means full
                 cv_can_push_.notify_one();
+                queue_[new_head].count_pop_ ++;
                 loc.unlock();
 
                 std::unique_lock<std::mutex> loc_el(queue_[new_head].m_el_);
@@ -494,6 +507,9 @@ namespace fdapde {
                 queue_[new_head].state_.store(Empty, std::memory_order_release);
 
                 queue_[new_head].cv_ready_to_push_.notify_one();
+                queue_[new_head].count_pop_ --;
+                if(queue_[new_head].count_push_ == 0 )
+                    queue_[new_head].cv_empty_.notify_one();
                 loc_el.unlock();                
 
                 return ret;
@@ -511,6 +527,7 @@ namespace fdapde {
                 empty_queue_ = false; //magari gia false quindi ridondante,ma evita if(empty_queue_) {empty_queue_ = false;} non so quale piu efficiente 
                 tail_ = new_tail;
                 cv_can_pop_.notify_one();
+                queue_[new_tail].count_push_ ++;
                 loc.unlock();
 
                 std::unique_lock<std::mutex> loc_el(queue_[new_tail].m_el_);
@@ -518,6 +535,7 @@ namespace fdapde {
                 queue_[new_tail].v_ = std::move(t);
                 queue_[new_tail].state_.store(Full, std::memory_order_release);
                 queue_[new_tail].cv_ready_to_pop_.notify_one();
+                queue_[new_tail].count_push_ --;
                 loc_el.unlock();
 
                 return true;
@@ -532,6 +550,7 @@ namespace fdapde {
                 empty_queue_ = false; //magari gia false quindi ridondante,ma evita if(empty_queue_) {empty_queue_ = false;} non so quale piu efficiente 
                 tail_ = new_tail;
                 cv_can_pop_.notify_one();
+                queue_[new_tail].count_push_ ++;
                 loc.unlock();
 
                 std::unique_lock<std::mutex> loc_el(queue_[new_tail].m_el_);
@@ -539,6 +558,7 @@ namespace fdapde {
                 queue_[new_tail].v_ = std::move(t);
                 queue_[new_tail].state_.store(Full, std::memory_order_release);
                 queue_[new_tail].cv_ready_to_pop_.notify_one();
+                queue_[new_tail].count_push_ --;
                 loc_el.unlock();
                 
                 return true;
@@ -556,6 +576,7 @@ namespace fdapde {
                 tail_ = (tail_ == size_-1)? (0):(tail_+1);
                 if(head_==tail_) {empty_queue_ = true;}
                 cv_can_push_.notify_one();
+                queue_[t].count_pop_ ++;
                 loc.unlock();
 
                 std::unique_lock<std::mutex> loc_el(queue_[t].m_el_);
@@ -565,6 +586,9 @@ namespace fdapde {
                 queue_[t].v_ = std::nullopt;
                 queue_[t].state_.store(Empty, std::memory_order_release);
                 queue_[t].cv_ready_to_push_.notify_one();
+                queue_[t].count_pop_ --;
+                if(queue_[t].count_push_ == 0 )
+                    queue_[t].cv_empty_.notify_one();
                 loc_el.unlock();
                 
 
@@ -581,6 +605,7 @@ namespace fdapde {
                 tail_ = (tail_ == size_-1)? (0):(tail_+1);
                 if(head_==tail_) {empty_queue_ = true;}
                 cv_can_push_.notify_one();
+                queue_[t].count_pop ++;
                 loc.unlock();
 
                 std::unique_lock<std::mutex> loc_el(queue_[t].m_el_);
@@ -590,16 +615,20 @@ namespace fdapde {
                 queue_[t].v_ = std::nullopt;
                 queue_[t].state_.store(Empty, std::memory_order_release);
                 queue_[t].cv_ready_to_push_.notify_one();
+                queue_[t].count_pop --;
+                if(queue_[t].count_push == 0 )
+                    queue_[t].cv_empty_.notify_one();
                 loc_el.unlock();
 
                 return ret;
             }
 
             
-            bool empty() const {
+            bool empty()  {
                 std::lock_guard<std::mutex> loc(m_);
                 if(empty_queue_){
-                    // TODO //aspetta che ultimo pop tolga effettuvamente l'ultimo elemento
+                    std::unique_lock<std::mutex> loc_el(queue_[tail_].m_el_);
+                    queue_[tail_].cv_empty_.wait(loc_el,[this](){return queue_[tail_].count_pop_ == 0;});
                     return true;
                 }
                 else
