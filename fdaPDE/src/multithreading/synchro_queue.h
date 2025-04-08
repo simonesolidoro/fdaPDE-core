@@ -23,157 +23,153 @@
 
 namespace fdapde {
 
-    //define concept (iterator of vector,array,list)
-    template <typename Iterator, typename T>
-    concept vector_array_list = std::contiguous_iterator<Iterator> || std::same_as<Iterator, typename std::list<T>::iterator> ;
-
-    // concept per verificare E abbia membri v_ ed state_.  TODO: un po inutile, bisognerebbe verificare che membri v_ e state_ possano fare cio che fanno in costruttore da conteiner
-    template <typename E>
-    concept value = requires{E::v_;};
-
-    template <typename E>
-    concept status = requires{E::state_;};
+//enumerator  state of elem
+static constexpr char Empty = 'e';
+static constexpr char Busy = 'b';
+static constexpr char Full = 'f';
 
 
-    enum Memory_order {
-        relax, // non aspetta se elem busy
-        hold, // aspetta se elem busy (no while ma Condition_Variable)
-    };
+namespace internals {
 
-    //enumerator  state of elem
-    static constexpr char Empty = 'e';
-    static constexpr char Busy = 'b';
-    static constexpr char Full = 'f';
+//define concept (iterator of vector,array,list)
+template <typename Iterator, typename T>
+concept vector_array_list = std::contiguous_iterator<Iterator> || std::same_as<Iterator, typename std::list<T>::iterator> ;
 
-    template<typename T>
-    struct elem_relax{
-        std::atomic<char> state_ = Empty; //
-        std::optional<T> v_;
-    };
+enum Memory_order {
+    relax, // non aspetta se elem busy
+    hold, // aspetta se elem busy (no while ma Condition_Variable)
+};
 
-    template<typename T>
-    struct elem_hold{
-        std::atomic<char> state_ = Empty; //stato binario Empty / Full  TODO: valutare se meglio atomic flag
-        std::optional<T> v_;
-        mutable std::mutex m_el_;
-        // OSS: due cv necessarie perché garantisce pop e push si alternino (se chiamo su stessa cella push pop push primo push quando finisce notifica se solo una cv puo essere arrivi notifica a push,  e non a pop,che si sveglia vede non piu busy e sovrascrive, se in cv.wait oltre a check se !=busy aggiungo check !=full  cosi si sveglia vede full e torna a dormire -> deadlock di pop che aspetta per sempre)
-        std::condition_variable cv_ready_to_pop_; // per avvisare che possibile fare pop (notufy da un push)
-        std::condition_variable cv_ready_to_push_; // per avvisare che possibile fare push (notify da un pop)
+template<typename T>
+struct elem_relax{
+    std::atomic<char> state_ = Empty; //
+    std::optional<T> v_;
+};
 
-        std::condition_variable cv_empty_;
-        int count_push_ = 0;
-        int count_pop_ = 0;
-    };
+template<typename T>
+struct elem_hold{
+    std::atomic<char> state_ = Empty; //stato binario Empty / Full  TODO: valutare se meglio atomic flag
+    std::optional<T> v_;
+    mutable std::mutex m_el_;
+    // OSS: due cv necessarie perché garantisce pop e push si alternino (se chiamo su stessa cella push pop push primo push quando finisce notifica se solo una cv puo essere arrivi notifica a push,  e non a pop,che si sveglia vede non piu busy e sovrascrive, se in cv.wait oltre a check se !=busy aggiungo check !=full  cosi si sveglia vede full e torna a dormire -> deadlock di pop che aspetta per sempre)
+    std::condition_variable cv_ready_to_pop_; // per avvisare che possibile fare pop (notufy da un push)
+    std::condition_variable cv_ready_to_push_; // per avvisare che possibile fare push (notify da un pop)
 
-    // classe base TODO: metterla in namespace internal
-    template <typename T,Memory_order U, typename E>  //TODO: costrain concept per garantire che E abbia membro state_ e v_, usati per costruttore da iteratori di conteiner
-    requires fdapde::value<E> && fdapde::status<E>
-    class Worker_queue{
-        using value_type = T;
+    std::condition_variable cv_empty_;
+    int count_push_ = 0;
+    int count_pop_ = 0;
+};
 
-        typedef std::vector<E> container;
-        protected:
-            container queue_;
-            int head_ = 0; //indx of 1 over "first" element
-            int tail_ = 0; //indx of "last" element
-            int size_ = 0;
-            bool empty_queue_ = true; // per distinguere head==tail-> vuota / head==tail-> piena
-            mutable std::mutex m_;
-            std::condition_variable cv_can_pop_; //notif when element add to queue_, can pop
-            std::condition_variable cv_can_push_; //notif when element removed from queue_, can push 
-            bool active_ = true;
-        public:
-            // default constructor credo poi da associare a metodo resize()
-            Worker_queue() = default;
-            // construct whit size of queue_=n;
-            Worker_queue(int n): queue_(n){
-                size_ = n;
+// classe base TODO: metterla in namespace internal
+template <typename T,Memory_order U, typename E>  //TODO: costrain concept per garantire che E abbia membro state_ e v_, usati per costruttore da iteratori di conteiner
+class Worker_queue{
+    using value_type = T;
+
+    typedef std::vector<E> container;
+protected:
+    container queue_;
+    int head_ = 0; //indx of 1 over "first" element
+    int tail_ = 0; //indx of "last" element
+    int size_ = 0;
+    bool empty_queue_ = true; // per distinguere head==tail-> vuota / head==tail-> piena
+    mutable std::mutex m_;
+    std::condition_variable cv_can_pop_; //notif when element add to queue_, can pop
+    std::condition_variable cv_can_push_; //notif when element removed from queue_, can push
+    bool active_ = true;
+public:
+    // default constructor credo poi da associare a metodo resize()
+    Worker_queue() = default;
+    // construct whit size of queue_=n;
+    Worker_queue(int n): queue_(n){
+        size_ = n;
+    }
+
+    //template <std::contiguous_iterator Iterator> per vector e array no list
+    template <typename Iterator>
+    requires internals::vector_array_list<Iterator,T>
+    Worker_queue(Iterator begin, Iterator end){
+        int n = std::distance(begin, end); //itertor di list non supportano end-begin
+        std::vector<E> temp_queue(n);
+        for(int i =0; i<n;i++){
+            temp_queue[i].state_.store(Full);
+            temp_queue[i].v_ = *(begin);
+            std::advance(begin,1);         // list non supporta begin + 1
+        }
+        std::swap(queue_, temp_queue);
+        size_ = queue_.size();
+        empty_queue_ = false;
+    }
+    virtual ~Worker_queue(){ //virtual cosi che distruttore di figli chiamati quado si distruggono tramite puntatore di tipo base
+        active_ = false;
+        cv_can_pop_.notify_all();
+        cv_can_push_.notify_all();
+    }
+
+    Worker_queue(const Worker_queue&) = delete;
+    void operator=(const Worker_queue&) = delete;
+
+    void resize(int n){
+        std::lock_guard<std::mutex> loc(m_);
+        std::vector<E> temp_queue(n);
+        std::swap(queue_, temp_queue);
+        size_ = n;
+        head_ = 0;
+        tail_ = 0;
+        empty_queue_ = true;
+    }
+
+    // wrap of function size() of vector thrade-safe
+    int size() const {
+        std::lock_guard<std::mutex> loc(m_);
+        return queue_.size();
+    }
+
+    // svuota queue_
+    void clear(){
+        std::lock_guard loc(m_);
+        queue_.clear();
+        head_ = 0;
+        tail_ = 0;
+        empty_queue_ = true;
+    }
+
+    //per debug momentanei
+    int get_tail()const {return tail_;}
+    int get_head()const {return head_;}
+    void print(){
+        for (int i=0; i<size_; i++){
+            if(queue_[i].state_.load(std::memory_order_acquire) == Empty){
+                std::cout<<0<<" ";
             }
-
-            //template <std::contiguous_iterator Iterator> per vector e array no list  
-            template <typename Iterator>
-            requires fdapde::vector_array_list<Iterator,T>
-            Worker_queue(Iterator begin, Iterator end){
-                int n = std::distance(begin, end); //itertor di list non supportano end-begin
-                std::vector<E> temp_queue(n);
-                for(int i =0; i<n;i++){
-                    temp_queue[i].state_.store(Full);
-                    temp_queue[i].v_ = *(begin);
-                    std::advance(begin,1);         // list non supporta begin + 1
-                }
-                std::swap(queue_, temp_queue);
-                size_ = queue_.size();
-                empty_queue_ = false;
+            else{
+                std::cout<<queue_[i].v_.value()<<"  ";
             }
-            virtual ~Worker_queue(){ //virtual cosi che distruttore di figli chiamati quado si distruggono tramite puntatore di tipo base
-                active_ = false;
-                cv_can_pop_.notify_all();
-                cv_can_push_.notify_all();
-            }
+        }
+        std::cout<<std::endl;
+    }
+};
 
-            Worker_queue(const Worker_queue&) = delete;
-            void operator=(const Worker_queue&) = delete;
-
-            void resize(int n){
-                std::lock_guard<std::mutex> loc(m_);
-                std::vector<E> temp_queue(n);
-                std::swap(queue_, temp_queue);
-                size_ = n;
-                head_ = 0;
-                tail_ = 0;
-                empty_queue_ = true;                
-            }
-
-            // wrap of function size() of vector thrade-safe
-            int size() const {
-                std::lock_guard<std::mutex> loc(m_);
-                return queue_.size();
-            }
-                        
-            // svuota queue_
-            void clear(){ 
-                std::lock_guard loc(m_);
-                queue_.clear();
-                head_ = 0;
-                tail_ = 0;
-                empty_queue_ = true;
-            } 
-
-            //per debug momentanei
-            int get_tail()const {return tail_;}
-            int get_head()const {return head_;} 
-            void print(){
-                for (int i=0; i<size_; i++){
-                    if(queue_[i].state_.load(std::memory_order_acquire) == Empty){
-                        std::cout<<0<<" ";
-                    }
-                    else{
-                        std::cout<<queue_[i].v_.value()<<"  ";
-                    }
-                }
-                std::cout<<std::endl;
-            }
-    };
+}
 
     //memory_order relax: se piu thread intervengono su stesssa cella push/pop durate stato= busy ritorna false/nullopt senza aspettare
     template <typename T>
-    class Worker_queue_relax : public Worker_queue<T,Memory_order::relax,elem_relax<T>>{
+    class Worker_queue_relax : public internals::Worker_queue<T, internals::Memory_order::relax, internals::elem_relax<T>>{
         using value_type = T;
-        using Worker_queue<T, Memory_order::relax, elem_relax<T>>::queue_;
-        using Worker_queue<T, Memory_order::relax, elem_relax<T>>::head_;
-        using Worker_queue<T, Memory_order::relax, elem_relax<T>>::tail_;
-        using Worker_queue<T, Memory_order::relax, elem_relax<T>>::size_;
-        using Worker_queue<T, Memory_order::relax, elem_relax<T>>::empty_queue_;
-        using Worker_queue<T, Memory_order::relax, elem_relax<T>>::m_;
-        using Worker_queue<T, Memory_order::relax, elem_relax<T>>::cv_can_pop_;
-        using Worker_queue<T, Memory_order::relax, elem_relax<T>>::cv_can_push_;
-        using Worker_queue<T, Memory_order::relax, elem_relax<T>>::active_;
+        using internals::Worker_queue<T, internals::Memory_order::relax, internals::elem_relax<T>>::queue_;
+        using internals::Worker_queue<T, internals::Memory_order::relax, internals::elem_relax<T>>::head_;
+        using internals::Worker_queue<T, internals::Memory_order::relax, internals::elem_relax<T>>::tail_;
+        using internals::Worker_queue<T, internals::Memory_order::relax, internals::elem_relax<T>>::size_;
+        using internals::Worker_queue<T, internals::Memory_order::relax, internals::elem_relax<T>>::empty_queue_;
+        using internals::Worker_queue<T, internals::Memory_order::relax, internals::elem_relax<T>>::m_;
+        using internals::Worker_queue<T, internals::Memory_order::relax, internals::elem_relax<T>>::cv_can_pop_;
+        using internals::Worker_queue<T, internals::Memory_order::relax, internals::elem_relax<T>>::cv_can_push_;
+        using internals::Worker_queue<T, internals::Memory_order::relax, internals::elem_relax<T>>::active_;
         public:
-            Worker_queue_relax(int n): Worker_queue<T,Memory_order::relax,elem_relax<T>>(n){};
+            Worker_queue_relax(int n): internals::Worker_queue<T,internals::Memory_order::relax,internals::elem_relax<T>>(n){};
 
             template <typename Iterator>
-            requires fdapde::vector_array_list<Iterator,T>
-            Worker_queue_relax(Iterator begin, Iterator end):Worker_queue<T,Memory_order::relax,elem_relax<T>>(begin, end){};
+            requires fdapde::internals::vector_array_list<Iterator,T>
+            Worker_queue_relax(Iterator begin, Iterator end):internals::Worker_queue<T,internals::Memory_order::relax,internals::elem_relax<T>>(begin, end){};
 
             bool push_front(value_type t){
                 std::unique_lock<std::mutex> loc(m_);
@@ -386,23 +382,23 @@ namespace fdapde {
 
     //memory_order hold: se piu thread intervengono su stesssa cella push/pop durate stato= busy aspettao
     template <typename T>
-    class Worker_queue_hold : public Worker_queue<T,Memory_order::hold,elem_hold<T>>{
+    class Worker_queue_hold : public internals::Worker_queue<T,internals::Memory_order::hold,internals::elem_hold<T>>{
         using value_type = T;
-        using Worker_queue<T, Memory_order::hold, elem_hold<T>>::queue_;
-        using Worker_queue<T, Memory_order::hold, elem_hold<T>>::head_;
-        using Worker_queue<T, Memory_order::hold, elem_hold<T>>::tail_;
-        using Worker_queue<T, Memory_order::hold, elem_hold<T>>::size_;
-        using Worker_queue<T, Memory_order::hold, elem_hold<T>>::empty_queue_;
-        using Worker_queue<T, Memory_order::hold, elem_hold<T>>::m_;
-        using Worker_queue<T, Memory_order::hold, elem_hold<T>>::cv_can_pop_;
-        using Worker_queue<T, Memory_order::hold, elem_hold<T>>::cv_can_push_;
-        using Worker_queue<T, Memory_order::hold, elem_hold<T>>::active_;
+        using internals::Worker_queue<T, internals::Memory_order::hold, internals::elem_hold<T>>::queue_;
+        using internals::Worker_queue<T, internals::Memory_order::hold, internals::elem_hold<T>>::head_;
+        using internals::Worker_queue<T, internals::Memory_order::hold, internals::elem_hold<T>>::tail_;
+        using internals::Worker_queue<T, internals::Memory_order::hold, internals::elem_hold<T>>::size_;
+        using internals::Worker_queue<T, internals::Memory_order::hold, internals::elem_hold<T>>::empty_queue_;
+        using internals::Worker_queue<T, internals::Memory_order::hold, internals::elem_hold<T>>::m_;
+        using internals::Worker_queue<T, internals::Memory_order::hold, internals::elem_hold<T>>::cv_can_pop_;
+        using internals::Worker_queue<T, internals::Memory_order::hold, internals::elem_hold<T>>::cv_can_push_;
+        using internals::Worker_queue<T, internals::Memory_order::hold, internals::elem_hold<T>>::active_;
         public:
-            Worker_queue_hold(int n): Worker_queue<T,Memory_order::hold,elem_hold<T>>(n){};
+            Worker_queue_hold(int n): internals::Worker_queue<T,internals::Memory_order::hold,internals::elem_hold<T>>(n){};
 
             template <typename Iterator>
-            requires fdapde::vector_array_list<Iterator,T>
-            Worker_queue_hold(Iterator begin, Iterator end):Worker_queue<T,Memory_order::hold,elem_hold<T>>(begin, end){};
+            requires internals::vector_array_list<Iterator,T>
+            Worker_queue_hold(Iterator begin, Iterator end): internals::Worker_queue<T,internals::Memory_order::hold,internals::elem_hold<T>>(begin, end){};
 
             bool push_front(value_type t){
                 std::unique_lock<std::mutex> loc(m_);
