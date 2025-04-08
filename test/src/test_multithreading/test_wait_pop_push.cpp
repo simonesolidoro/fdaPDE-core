@@ -35,19 +35,19 @@ int main(){
     t1.join();
 */
 //push_ _or_wait()
-    fdapde::Worker_queue<int> q1(5);
+    fdapde::Worker_queue_hold<int> q1(5);
     //popolo
     for(int j=0; j<5; j++){
         q1.push_front(j);
     }
-    std::thread d(&fdapde::Worker_queue<int>::push_back_or_wait,std::ref(q1),9); //prova a fare push ma coda piena quindi aspetta finche non viene fatto pop
+    std::thread d(&fdapde::Worker_queue_hold<int>::push_back_or_wait,std::ref(q1),9); //prova a fare push ma coda piena quindi aspetta finche non viene fatto pop
     q1.pop_back();
     q1.print(); 
     q1.print();
     d.join();
 {
-    std::thread d2(&fdapde::Worker_queue<int>::push_front_or_wait,std::ref(q1),9); //prova a fare pop ma coda vuota quindi aspetta finche non viene fatto push
-    //q1.pop_front();
+    std::thread d2(&fdapde::Worker_queue_hold<int>::push_front_or_wait,std::ref(q1),9); //prova a fare pop ma coda vuota quindi aspetta finche non viene fatto push
+    q1.pop_front();
     q1.print(); 
     q1.print();
     d2.join();

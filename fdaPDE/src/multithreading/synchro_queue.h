@@ -27,7 +27,7 @@ namespace fdapde {
     template <typename Iterator, typename T>
     concept vector_array_list = std::contiguous_iterator<Iterator> || std::same_as<Iterator, typename std::list<T>::iterator> ;
 
-    // concept per verificare E aia membri v_ ed state_.  TODO: un po inutile, bisognerebbe verificare che membri v_ e state_ possano fare cio che fanno in costruttore da conteiner
+    // concept per verificare E abbia membri v_ ed state_.  TODO: un po inutile, bisognerebbe verificare che membri v_ e state_ possano fare cio che fanno in costruttore da conteiner
     template <typename E>
     concept value = requires{E::v_;};
 
@@ -61,7 +61,7 @@ namespace fdapde {
         std::condition_variable cv_ready_to_push_; // per avvisare che possibile fare push (notify da un pop)
     };
 
-
+    // classe base TODO: metterla in namespace internal
     template <typename T,Memory_order U, typename E>  //TODO: costrain concept per garantire che E abbia membro state_ e v_, usati per costruttore da iteratori di conteiner
     requires fdapde::value<E> && fdapde::status<E>
     class Worker_queue{
