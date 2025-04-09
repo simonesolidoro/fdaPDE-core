@@ -461,13 +461,14 @@ public:
                 }
                 // coda non vuota ma magari un push_back ha modificato indici e non ancora inserito elemento (caso critico coda vuota poi push_back poi pop_front)
                 // new_head = index di elemento da rimuovere
-                int new_head = (head_== 0)? (size_-1) : (head_-1);
+                int new_head = (head_== 0)? (size_-1) : (head_-1);  
                 head_ = new_head;
                 if(head_==tail_) {empty_queue_ = true;}  //head_ ==tail_ after pop() means empty, in general means full
                 cv_can_push_.notify_one();
                 queue_[new_head].count_pop_ ++;
                 loc.unlock();
 
+                //OSS: importate lasciare new_head perche poi head_ potrebbe essere modificata da altri thread
                 std::unique_lock<std::mutex> loc_el(queue_[new_head].m_el_);
                 queue_[new_head].cv_ready_to_pop_.wait(loc_el,[this,new_head](){return queue_[new_head].state_.load(std::memory_order_acquire)==Full;});
                 
@@ -493,6 +494,7 @@ public:
                 if(!flag){return std::nullopt;}
                 // new_head = index di elemento da rimuovere
                 int new_head = (head_== 0)? (size_-1) : (head_-1);
+                head_ = new_head;
                 if(head_==tail_) {empty_queue_ = true;}  //head_ ==tail_ after pop() means empty, in general means full
                 cv_can_push_.notify_one();
                 queue_[new_head].count_pop_ ++;
