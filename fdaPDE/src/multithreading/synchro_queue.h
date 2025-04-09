@@ -372,8 +372,8 @@ public:
             // TODO: togliere while, per il momento lasciato cosi ci pensiamo dopo
             bool empty() const {
                 std::lock_guard<std::mutex> loc(m_);
-                if(empty_queue_){
-                    //TODO //aspetta che ultimo pop tolga effettuvamente l'ultimo elemento
+                if(empty_queue_){ //OSS: massimo un pop che deve acora eseguire perchè altri vedono busy e non si mettoo in coda
+                    while(queue_[tail_].state_.load(std::memory_order_acquire) != Empty){} //momentaneo while finche non troviamo altro modo
                     return true;
                 }
                 else
