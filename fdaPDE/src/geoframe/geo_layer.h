@@ -248,7 +248,7 @@ struct GeoLayer {
         triangulation_(triangulation), data_(), geo_data_(), n_rows_(0), strides_(), extents_(), structured_(false) {
         std::fill(strides_.begin(), strides_.end(), 1);   // default to unstructured layer
 
-        if constexpr (!internals::is_tuple_v<GeoData_> && !internals::is_tuple_v<GeoData_> && is_full_geo_point) {
+        if constexpr (Order == 1 || (!internals::is_tuple_v<GeoData_> && is_full_geo_point)) {
             load_geometry_(geo_data);
         } else {
             static_assert(std::tuple_size_v<GeoData_> == Order);
@@ -256,7 +256,21 @@ struct GeoLayer {
             internals::for_each_index_in_pack<std::tuple_size_v<GeoData_>>(
               [&]<int Ns_>() { load_geometry_index_<Ns_>(std::get<Ns_>(geo_data)); });
             // move to structured layer
-            make_structured();
+            if constexpr (is_full_geo_point) {
+                make_structured();
+            } else {
+                n_rows_ = 1;
+                internals::for_each_index_in_pack<Order>([&]<int Ns_>() {
+                    extents_[Ns_] = std::get<Ns_>(geo_data_).rows();
+                    n_rows_ *= extents_[Ns_];
+                });
+                structured_ = true;
+                // set strides
+                strides_[0] = 1;
+                for (int i = 1; i < Order; ++i) {
+                    for (int j = 0; j < i; ++j) { strides_[i] *= extents_[j]; }
+                }
+            }
         }
     }
     template <typename LayerType>
@@ -403,7 +417,7 @@ struct GeoLayer {
         for (int i = 1; i < Order; ++i) {
             for (int j = 0; j < i; ++j) { strides_[i] *= extents_[j]; }
         }
-	structured_ = true;
+        structured_ = true;
         return;
     }
 
@@ -615,26 +629,27 @@ struct GeoLayer {
             if constexpr (std::is_same_v<geo_t, internals::polygon_layer_descriptor>) {
                 // print polygon incidence matrix
                 out[Ns].push_back("<POLYGON>");
-                BinaryMatrix<Dynamic, Dynamic> incidence_mat = data.geometry<Ns>().incidence_matrix();
                 int n_bits = 6;
                 for (int i = 0; i < n_rows; ++i) {
-                    std::string coord_str = "(";
-                    if (incidence_mat.cols() < n_bits) {
-                        for (int j = 0; j < n_bits - 1; j++) { coord_str += incidence_mat(i, j) ? "1 " : "0 "; }
-                        coord_str += incidence_mat(i, n_bits - 1) ? "1" : "0";
+                    auto region = std::get<Ns>(data.geometry(i));
+                    std::string coord_str = "";
+                    if (region.rows() < n_bits) {
+                        for (int j = 0; j < n_bits - 1; j++) { coord_str += region[j] ? "1 " : "0 "; }
+                        coord_str += region[n_bits - 1] ? "1" : "0";
                     } else {
-                        for (int j = 0; j < n_bits / 2; j++) { coord_str += incidence_mat(i, j) ? "1 " : "0 "; }
+                        for (int j = 0; j < n_bits / 2; j++) { coord_str += region[j] ? "1 " : "0 "; }
                         coord_str += ".... ";
                         for (int j = n_bits / 2; j < n_bits - 1; j++) {
-                            coord_str += incidence_mat(i, j) ? "1 " : "0 ";
+                            coord_str += region[region.rows() - j - 1] ? "1 " : "0 ";
                         }
-                        coord_str += incidence_mat(i, n_bits - 1) ? "1" : "0";
+                        coord_str += region[region.rows() - n_bits - 2] ? "1" : "0";
                     }
                     coord_str += ")";
                     out[Ns].push_back(coord_str);
                 }
             }
         });
+	
         using internals::dtype;
         for (int i = Order, n = n_cols; i < n; ++i) {
             const auto& desc = data.header()[i - Order];
@@ -730,6 +745,13 @@ struct GeoLayer {
     void load_geometry_(int flag) {
         internals::for_each_index_in_pack<Order>([&]<int Ns>() { load_geometry_index_<Ns>(flag); });
     }
+    template <typename GeoDescriptor>
+        requires(
+          internals::is_vector_like_v<GeoDescriptor> &&
+          std::is_convertible_v<internals::subscript_result_of_t<GeoDescriptor, int>, int>)
+    void load_geometry_(const GeoDescriptor& regions) {
+        load_geometry_index_<0>(regions);
+    }
     // single geomtric indexes reading utilities
     template <int N> void load_geometry_index_(const Eigen::Matrix<double, Dynamic, Dynamic>& coords) {
         fdapde_assert(coords.cols() == embed_dim[N]);
@@ -750,6 +772,17 @@ struct GeoLayer {
     void load_geometry_index_(const std::string& filename, bool header = true, bool index_col = false) {
         load_geometry_index_<N>(parse_file_<double>(filename, header, index_col));
 	return;
+    }
+    template <int N, typename GeoDescriptor>
+        requires(
+          internals::is_vector_like_v<GeoDescriptor> &&
+          std::is_convertible_v<internals::subscript_result_of_t<GeoDescriptor, int>, int>)
+    void load_geometry_index_(const GeoDescriptor& regions) {
+        fdapde_static_assert(
+          std::is_same_v<POLYGON FDAPDE_COMMA std::tuple_element_t<N FDAPDE_COMMA GeoInfo>>,
+          THIS_METHOD_IS_FOR_POLYGON_INDEXES_ONLY);
+        std::get<N>(geo_data_) = std::tuple_element_t<N, geo_storage_t>(std::get<N>(triangulation_), regions);
+        if (n_rows_ == 0) { n_rows_ = std::get<N>(geo_data_).rows(); }
     }
 
     storage_t data_;
