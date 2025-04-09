@@ -198,8 +198,9 @@ public:
             //TODO: tutti metodi or wait da capire semantica
             bool push_front_or_wait(value_type t, int s){
                 std::unique_lock<std::mutex> loc(m_);
-                cv_can_push_.wait_for(loc,std::chrono::seconds(s),[this](){return !this->active_ ||  this->head_ != this->tail_ || this->empty_queue_;});
+                bool flag = cv_can_push_.wait_for(loc,std::chrono::seconds(s),[this](){return !this->active_ ||  this->head_ != this->tail_ || this->empty_queue_;});
                 if(!active_){return false;}
+                if(!flag){return false;}
                 int h = head_; //index dove inserira elemento
                 if(queue_[h].state_.load(std::memory_order_acquire) != Empty)
                     return false;
@@ -248,9 +249,9 @@ public:
 
             std::optional<value_type> pop_front_or_wait(int s){
                 std::unique_lock<std::mutex> loc(m_);
-                cv_can_pop_.wait_for(loc,std::chrono::seconds(s),[this](){return !this->active_ || !this->empty_queue_;});
+                bool flag = cv_can_pop_.wait_for(loc,std::chrono::seconds(s),[this](){return !this->active_ || !this->empty_queue_;});
                 if(!active_) return std::nullopt;
-
+                if(!flag){return std::nullopt;}
                 int new_head = (head_== 0)? (size_-1) : (head_-1);
                 
                 if(queue_[new_head].state_.load(std::memory_order_acquire) != Full)
@@ -296,9 +297,9 @@ public:
 
             bool push_back_or_wait(value_type t, int s){
                 std::unique_lock<std::mutex> loc(m_);
-                cv_can_push_.wait_for(loc,std::chrono::seconds(s),[this](){return !this->active_ || this->head_ != this->tail_ || this->empty_queue_;});
+                bool flag = cv_can_push_.wait_for(loc,std::chrono::seconds(s),[this](){return !this->active_ || this->head_ != this->tail_ || this->empty_queue_;});
                 if(!active_){return false;}
-
+                if(!flag){return false;}
                 int new_tail = (tail_ == 0)? (size_-1) : (tail_ -1);
                 
                 if(queue_[new_tail].state_.load(std::memory_order_acquire) != Empty)
@@ -344,9 +345,10 @@ public:
 
             std::optional<value_type> pop_back_or_wait(int s){
                 std::unique_lock<std::mutex> loc(m_);
-                cv_can_pop_.wait_for(loc,std::chrono::seconds(s),[this](){return !this->active_ || !this->empty_queue_;}); // loc mutex, controllo condizione in lamda, se falsa unlock mutex e wait se vera va avanti
+                bool flag = cv_can_pop_.wait_for(loc,std::chrono::seconds(s),[this](){return !this->active_ || !this->empty_queue_;}); // loc mutex, controllo condizione in lamda, se falsa unlock mutex e wait se vera va avanti
                 //copia codice di pop_back() tranne check se coda vuota, alternativa a chiamata diretta di pop_back che però porta a dover usare recursive mutex (definito dal libro come il male assoluto)
                 if(!active_) return std::nullopt; //se chiamato distruttore distruttore notifica a tutti di verificare condizione wait 
+                if(!flag){return std::nullopt;}
                 int t = tail_; // tmp idice di elmeto da pop
 
                 if(queue_[t].state_.load(std::memory_order_acquire) != Full)
@@ -428,8 +430,9 @@ public:
 
             bool push_front_or_wait(value_type t, int s){
                 std::unique_lock<std::mutex> loc(m_);
-                cv_can_push_.wait_for(loc,std::chrono::seconds(s),[this](){return !this->active_ ||  this->head_ != this->tail_ || this->empty_queue_;});
+                bool flag  = cv_can_push_.wait_for(loc,std::chrono::seconds(s),[this](){return !this->active_ ||  this->head_ != this->tail_ || this->empty_queue_;});
                 if(!active_){return false;}
+                if(!flag){return false;}
                 int h = head_; //index dove inserira elemento
                 head_ = (head_ == size_-1)? (0) : (head_ + 1);
                 empty_queue_ = false; //magari gia false quindi ridondante,ma evita if(empty_queue_) {empty_queue_ = false;} non so quale piu efficiente 
@@ -485,8 +488,9 @@ public:
 
             std::optional<value_type> pop_front_or_wait(int s){
                 std::unique_lock<std::mutex> loc(m_);
-                cv_can_pop_.wait_for(loc,std::chrono::seconds(s),[this](){return !this->active_ || !this->empty_queue_;});
+                bool flag = cv_can_pop_.wait_for(loc,std::chrono::seconds(s),[this](){return !this->active_ || !this->empty_queue_;});
                 if(!active_) return std::nullopt;
+                if(!flag){return std::nullopt;}
                 // new_head = index di elemento da rimuovere
                 int new_head = (head_== 0)? (size_-1) : (head_-1);
                 if(head_==tail_) {empty_queue_ = true;}  //head_ ==tail_ after pop() means empty, in general means full
@@ -539,9 +543,9 @@ public:
 
             bool push_back_or_wait(value_type t, int s){
                 std::unique_lock<std::mutex> loc(m_);
-                cv_can_push_.wait_for(loc,std::chrono::seconds(s),[this](){return !this->active_ || this->head_ != this->tail_ || this->empty_queue_;});
+                bool flag = cv_can_push_.wait_for(loc,std::chrono::seconds(s),[this](){return !this->active_ || this->head_ != this->tail_ || this->empty_queue_;});
                 if(!active_){return false;}
-
+                if(!flag){return false;}
                 int new_tail = (tail_ == 0)? (size_-1) : (tail_ -1);
                 empty_queue_ = false; //magari gia false quindi ridondante,ma evita if(empty_queue_) {empty_queue_ = false;} non so quale piu efficiente 
                 tail_ = new_tail;
@@ -593,10 +597,10 @@ public:
 
             std::optional<value_type> pop_back_or_wait(int s){
                 std::unique_lock<std::mutex> loc(m_);
-                cv_can_pop_.wait_for(loc,std::chrono::seconds(s),[this](){return !this->active_ || !this->empty_queue_;}); // loc mutex, controllo condizione in lamda, se falsa unlock mutex e wait se vera va avanti
+                bool flag = cv_can_pop_.wait_for(loc,std::chrono::seconds(s),[this](){return !this->active_ || !this->empty_queue_;}); // loc mutex, controllo condizione in lamda, se falsa unlock mutex e wait se vera va avanti
                 //copia codice di pop_back() tranne check se coda vuota, alternativa a chiamata diretta di pop_back che però porta a dover usare recursive mutex (definito dal libro come il male assoluto)
                 if(!active_) return std::nullopt; //se chiamato distruttore distruttore notifica a tutti di verificare condizione wait 
-
+                if(!flag){return std::nullopt;}
                 int t = tail_; // tmp idice di elmeto da pop
                 tail_ = (tail_ == size_-1)? (0):(tail_+1);
                 if(head_==tail_) {empty_queue_ = true;}
