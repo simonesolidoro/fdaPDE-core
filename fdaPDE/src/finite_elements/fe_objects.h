@@ -724,7 +724,7 @@ struct FeMap :
     Derived xpr_;
     mutable Eigen::Matrix<Scalar, Dynamic, Dynamic> map_;
 };
-
+  
 // FeMap specialization for FeFunction types
 template <typename FeSpace>
 class FeMap<FeFunction<FeSpace>> : public ScalarFieldBase<FeSpace::embed_dim, FeMap<FeFunction<FeSpace>>> {
@@ -767,11 +767,66 @@ class FeMap<FeFunction<FeSpace>> : public ScalarFieldBase<FeSpace::embed_dim, Fe
     const Derived* xpr_;
     mutable Eigen::Matrix<Scalar, Dynamic, Dynamic> map_;
 };
+  
+// wraps an already evaluated field at (quadrature) nodes into a fe_assembler_packet callable object
+template <int StaticInputSize_, int Rows_, int Cols_, typename DataT>
+    requires(
+      StaticInputSize_ > 0 && Rows_ > 0 && Cols_ > 0 &&
+      ((Rows_ == 1 && Cols_ == 1 && internals::is_vector_like_v<DataT>) || internals::is_matrix_like_v<DataT>))
+class FeCoeff :
+    public std::conditional_t<
+      Rows_ == 1 && Cols_ == 1, ScalarFieldBase<StaticInputSize_, FeCoeff<StaticInputSize_, Rows_, Cols_, DataT>>,
+      MatrixFieldBase<StaticInputSize_, FeCoeff<StaticInputSize_, Rows_, Cols_, DataT>>> {
+   private:
+    using Derived = FeMap<DataT>;
+    static constexpr bool is_scalar = (Rows_ == 1 && Cols_ == 1);
+   public:
+    using InputType = internals::fe_assembler_packet<StaticInputSize_>;
+    using Scalar = double;
+    static constexpr int StaticInputSize = StaticInputSize_;
+    using Base = std::conditional_t<
+      Rows_ == 1 && Cols_ == 1, ScalarFieldBase<StaticInputSize_, FeCoeff<StaticInputSize_, Rows_, Cols_, DataT>>,
+      MatrixFieldBase<StaticInputSize_, FeCoeff<StaticInputSize_, Rows_, Cols_, DataT>>>;
+    static constexpr int NesetAsRef = 0;
+    static constexpr int XprBits = int(fe_assembler_flags::compute_physical_quad_nodes);
+    static constexpr int ReadOnly = 1;
+    static constexpr int Rows = Rows_;
+    static constexpr int Cols = Cols_;
+
+    constexpr FeCoeff() = default;
+    constexpr FeCoeff(const DataT& data) : data_(data) { }
+    // fe assembler evaluation
+    constexpr auto operator()(const InputType& fe_packet) const {
+        if constexpr (is_scalar) {
+            return data_[fe_packet.quad_node_id];
+        } else {
+            Eigen::Matrix<Scalar, Rows, Cols> tmp;
+            for (int i = 0; i < Rows; ++i) {
+                for (int j = 0; j < Cols; ++j) { tmp(i, j) = data_(fe_packet.quad_node_id, i * Cols + j); }
+            }
+            return tmp;
+        }
+    }
+    constexpr auto eval(int i, const InputType& fe_packet) const {
+        fdapde_static_assert(Rows != 1 && Cols == 1, THIS_METHOD_IS_ONLY_FOR_VECTOR_FIELDS);
+        return data_(fe_packet.quad_node_id, i);
+    }
+    constexpr auto eval(int i, int j, const InputType& fe_packet) const {
+        fdapde_static_assert(Rows != 1 && Cols != 1, THIS_METHOD_IS_ONLY_FOR_MATRIX_FIELDS);
+        return data_(fe_packet.quad_node_id, i * Rows + j);
+    }
+    constexpr int input_size() const { return StaticInputSize; }
+    constexpr int rows() const { return Rows; }
+    constexpr int cols() const { return Cols; }
+    const DataT& data() const { return data_; }
+   private:
+    DataT data_;
+};
 
 template <typename Triangulation_>
-struct CellDiameterDescriptor :
-    ScalarFieldBase<Triangulation_::embed_dim, CellDiameterDescriptor<Triangulation_>> {
-    using Base = ScalarFieldBase<Triangulation_::embed_dim, CellDiameterDescriptor<Triangulation_>>;
+struct CellDiameter :
+    ScalarFieldBase<Triangulation_::embed_dim, CellDiameter<Triangulation_>> {
+    using Base = ScalarFieldBase<Triangulation_::embed_dim, CellDiameter<Triangulation_>>;
     using Triangulation = std::decay_t<Triangulation_>;
     using InputType = internals::fe_assembler_packet<Triangulation::embed_dim>;
     using Scalar = double;
@@ -779,8 +834,8 @@ struct CellDiameterDescriptor :
     static constexpr int NestAsRef = 0;
     static constexpr int XprBits = 0 | int(fe_assembler_flags::compute_cell_id);
 
-    constexpr CellDiameterDescriptor() noexcept : triangulation_(nullptr) { }
-    constexpr CellDiameterDescriptor(const Triangulation_& triangulation) noexcept :
+    constexpr CellDiameter() noexcept : triangulation_(nullptr) { }
+    constexpr CellDiameter(const Triangulation_& triangulation) noexcept :
         triangulation_(std::addressof(triangulation)) {
         fdapde_assert(triangulation_->n_nodes() != 0 && triangulation_->n_cells() != 0);
     }
