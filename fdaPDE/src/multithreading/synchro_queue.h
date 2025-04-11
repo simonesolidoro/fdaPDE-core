@@ -404,7 +404,6 @@ public:
 
             bool push_front(value_type t){
                 std::unique_lock<std::mutex> loc(m_);
-                //TODO: se coda piena forse non serve questo primo check perche tranto fatto poi in singolo elemento ( check stato == full)
                 if (head_ == tail_ && !empty_queue_ ){// coda piena
                     std::cerr<<"queue full"<<std::endl; // per debug poi da togliere
                     return false;
@@ -420,7 +419,7 @@ public:
                 queue_[h].cv_ready_to_push_.wait(loc_el,[this,h](){return queue_[h].state_.load(std::memory_order_acquire)==Empty;});
                 //push di elemento
                 queue_[h].v_ = std::move(t);
-                queue_[h].state_.store(Full, std::memory_order_release); //aggiorna stato di elem con release
+                queue_[h].state_.store(Full, std::memory_order_release); //aggiorna stato di elem con release,TODO: basterebbe relax perche in mutex forse
                 queue_[h].cv_ready_to_pop_.notify_one();
                 queue_[h].count_push_ --;
                 loc_el.unlock();
