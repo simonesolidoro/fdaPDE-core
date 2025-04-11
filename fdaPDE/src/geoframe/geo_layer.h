@@ -725,7 +725,8 @@ struct GeoLayer {
     }
     // load geometry
     void load_geometry_(const Eigen::Matrix<double, Dynamic, Dynamic>& coords) {
-        fdapde_static_assert(is_full_geo_point, THIS_METHOD_IS_FOR_FULL_POINT_LAYERS_ONLY);
+        fdapde_static_assert(
+          Order == 1 || is_full_geo_point, THIS_METHOD_IS_FOR_ORDER_ONE_OR_FULL_POINT_GEOFRAMES_ONLY);
         constexpr int full_embed_dim = std::accumulate(embed_dim.begin(), embed_dim.end(), 0);
         fdapde_assert((n_rows_ == 0 || n_rows_ == coords.rows()) && coords.cols() == full_embed_dim);
         int offset = 0;
@@ -738,9 +739,18 @@ struct GeoLayer {
         return;
     }
     void load_geometry_(const std::string& filename, bool header = true, bool index_col = false) {
-        fdapde_static_assert(is_full_geo_point, THIS_METHOD_IS_FOR_FULL_POINT_LAYERS_ONLY);
-        load_geometry_(parse_file_<double>(filename, header, index_col));
-	return;
+        fdapde_static_assert(
+          Order == 1 || is_full_geo_point, THIS_METHOD_IS_FOR_ORDER_ONE_OR_FULL_POINT_GEOFRAMES_ONLY);
+        if constexpr (is_full_geo_point) {
+            load_geometry_(parse_file_<double>(filename, header, index_col));
+        } else {
+            if constexpr (is_geo_v<0, POLYGON>) {
+                using binary_t = BinaryMatrix<Dynamic, Dynamic>;
+                load_geometry_(binary_t(parse_file_<int>(filename, header, index_col)));
+            }
+            if constexpr (is_geo_v<0, POINT>) { load_geometry_(parse_file_<double>(filename, header, index_col)); }
+        }
+        return;
     }
     void load_geometry_(int flag) {
         internals::for_each_index_in_pack<Order>([&]<int Ns>() { load_geometry_index_<Ns>(flag); });
@@ -752,7 +762,7 @@ struct GeoLayer {
     void load_geometry_(const GeoDescriptor& regions) {
         load_geometry_index_<0>(regions);
     }
-    // single geomtric indexes reading utilities
+    // single geometric indexes reading utilities
     template <int N> void load_geometry_index_(const Eigen::Matrix<double, Dynamic, Dynamic>& coords) {
         fdapde_assert(coords.cols() == embed_dim[N]);
         std::get<N>(geo_data_) = std::tuple_element_t<N, geo_storage_t>(std::get<N>(triangulation_), coords);
@@ -775,8 +785,9 @@ struct GeoLayer {
     }
     template <int N, typename GeoDescriptor>
         requires(
-          internals::is_vector_like_v<GeoDescriptor> &&
-          std::is_convertible_v<internals::subscript_result_of_t<GeoDescriptor, int>, int>)
+          std::is_same_v<GeoDescriptor, BinaryMatrix<Dynamic, Dynamic>> ||
+          (internals::is_vector_like_v<GeoDescriptor> &&
+           std::is_convertible_v<internals::subscript_result_of_t<GeoDescriptor, int>, int>))
     void load_geometry_index_(const GeoDescriptor& regions) {
         fdapde_static_assert(
           std::is_same_v<POLYGON FDAPDE_COMMA std::tuple_element_t<N FDAPDE_COMMA GeoInfo>>,

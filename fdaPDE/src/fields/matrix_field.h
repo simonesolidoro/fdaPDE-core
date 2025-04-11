@@ -127,9 +127,9 @@ class MatrixFieldProduct : public MatrixFieldBase<Lhs::StaticInputSize, MatrixFi
         fdapde_static_assert(Rhs::Cols == 1 || Lhs::Rows == 1, INVALID_MATRIX_VECTOR_PRODUCT_DIMENSIONS);
         Scalar res = 0;
         if constexpr (Rhs::Cols == 1) {
-            for (int k = 0; k < lhs_.cols(); ++k) { res += lhs_.eval(i, k, p) * rhs_.eval(i, p); }
+            for (int k = 0; k < lhs_.cols(); ++k) { res += lhs_.eval(i, k, p) * rhs_.eval(k, p); }
         } else {
-            for (int k = 0; k < lhs_.cols(); ++k) { res += lhs_.eval(i, p) * rhs_.eval(k, i, p); }
+            for (int k = 0; k < rhs_.rows(); ++k) { res += lhs_.eval(k, p) * rhs_.eval(k, i, p); }
         }
 	return res;
     }

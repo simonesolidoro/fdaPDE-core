@@ -787,14 +787,16 @@ class FeCoeff :
     using Base = std::conditional_t<
       Rows_ == 1 && Cols_ == 1, ScalarFieldBase<StaticInputSize_, FeCoeff<StaticInputSize_, Rows_, Cols_, DataT>>,
       MatrixFieldBase<StaticInputSize_, FeCoeff<StaticInputSize_, Rows_, Cols_, DataT>>>;
-    static constexpr int NesetAsRef = 0;
+    static constexpr int NestAsRef = 0;
     static constexpr int XprBits = int(fe_assembler_flags::compute_physical_quad_nodes);
     static constexpr int ReadOnly = 1;
     static constexpr int Rows = Rows_;
     static constexpr int Cols = Cols_;
 
     constexpr FeCoeff() = default;
-    constexpr FeCoeff(const DataT& data) : data_(data) { }
+    template <typename DataT_>
+        requires(std::is_convertible_v<DataT_, DataT>)
+    constexpr FeCoeff(const DataT_& data) : data_(data) { }
     // fe assembler evaluation
     constexpr auto operator()(const InputType& fe_packet) const {
         if constexpr (is_scalar) {
@@ -808,12 +810,11 @@ class FeCoeff :
         }
     }
     constexpr auto eval(int i, const InputType& fe_packet) const {
-        fdapde_static_assert(Rows != 1 && Cols == 1, THIS_METHOD_IS_ONLY_FOR_VECTOR_FIELDS);
+        fdapde_static_assert(Rows != 1 && Cols == 1, THIS_METHOD_IS_FOR_VECTOR_FIELDS_ONLY);
         return data_(fe_packet.quad_node_id, i);
     }
     constexpr auto eval(int i, int j, const InputType& fe_packet) const {
-        fdapde_static_assert(Rows != 1 && Cols != 1, THIS_METHOD_IS_ONLY_FOR_MATRIX_FIELDS);
-        return data_(fe_packet.quad_node_id, i * Rows + j);
+        return data_(fe_packet.quad_node_id, i * Cols + j);
     }
     constexpr int input_size() const { return StaticInputSize; }
     constexpr int rows() const { return Rows; }
