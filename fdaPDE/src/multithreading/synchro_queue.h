@@ -48,7 +48,7 @@ struct elem_relax{
 
 template<typename T>
 struct elem_hold{
-    std::atomic<char> state_ = Empty; //stato binario Empty / Full  TODO: valutare se meglio atomic flag
+    bool state_ = true; //stato binario true = empty / false = full
     std::optional<T> v_;
     mutable std::mutex m_el_;
     // OSS: due cv necessarie perché garantisce pop e push si alternino (se chiamo su stessa cella push pop push primo push quando finisce notifica se solo una cv puo essere arrivi notifica a push,  e non a pop,che si sveglia vede non piu busy e sovrascrive, se in cv.wait oltre a check se !=busy aggiungo check !=full  cosi si sveglia vede full e torna a dormire -> deadlock di pop che aspetta per sempre)
@@ -91,7 +91,10 @@ public:
         int n = std::distance(begin, end); //itertor di list non supportano end-begin
         std::vector<E> temp_queue(n);
         for(int i =0; i<n;i++){
-            temp_queue[i].state_.store(Full);
+            if constexpr(U == fdapde::internals::Memory_order::relax)
+                temp_queue[i].state_.store(Full);
+            if constexpr(U == fdapde::internals::Memory_order::hold)    
+                temp_queue[i].state_ = false;
             temp_queue[i].v_ = *(begin);
             std::advance(begin,1);         // list non supporta begin + 1
         }
@@ -138,11 +141,21 @@ public:
     int get_head()const {return head_;}
     void print(){
         for (int i=0; i<size_; i++){
-            if(queue_[i].state_.load(std::memory_order_acquire) == Empty){
-                std::cout<<0<<" ";
+            if constexpr(U == fdapde::internals::Memory_order::relax){    
+                if(queue_[i].state_.load(std::memory_order_acquire) == Empty){
+                    std::cout<<0<<" ";
+                }
+                else{
+                    std::cout<<queue_[i].v_.value()<<"  ";
+                }
             }
-            else{
-                std::cout<<queue_[i].v_.value()<<"  ";
+            if constexpr(U == fdapde::internals::Memory_order::hold){
+                if(queue_[i].state_){
+                    std::cout<<0<<" ";
+                }
+                else{
+                    std::cout<<queue_[i].v_.value()<<"  ";
+                }
             }
         }
         std::cout<<std::endl;
@@ -416,10 +429,10 @@ public:
                 loc.unlock();
 
                 std::unique_lock<std::mutex> loc_el(queue_[h].m_el_);
-                queue_[h].cv_ready_to_push_.wait(loc_el,[this,h](){return queue_[h].state_.load(std::memory_order_acquire)==Empty;});
+                queue_[h].cv_ready_to_push_.wait(loc_el,[this,h](){return queue_[h].state_;});
                 //push di elemento
                 queue_[h].v_ = std::move(t);
-                queue_[h].state_.store(Full, std::memory_order_release); //aggiorna stato di elem con release,TODO: basterebbe relax perche in mutex forse
+                queue_[h].state_ = false; //aggiorna stato di elem a full
                 queue_[h].cv_ready_to_pop_.notify_one();
                 queue_[h].count_push_ --;
                 loc_el.unlock();
@@ -440,10 +453,10 @@ public:
                 loc.unlock();
 
                 std::unique_lock<std::mutex> loc_el(queue_[h].m_el_);
-                queue_[h].cv_ready_to_push_.wait(loc_el,[this,h](){return queue_[h].state_.load(std::memory_order_acquire)==Empty;});
+                queue_[h].cv_ready_to_push_.wait(loc_el,[this,h](){return queue_[h].state_;});
                 //push di elemento
                 queue_[h].v_ = std::move(t);
-                queue_[h].state_.store(Full, std::memory_order_release); //aggiorna stato di elem con release
+                queue_[h].state_ = false; //aggiorna stato di elem con release
                 queue_[h].cv_ready_to_pop_.notify_one();
                 queue_[h].count_push_ --;
                 loc_el.unlock();
@@ -469,12 +482,12 @@ public:
 
                 //OSS: importate lasciare new_head perche poi head_ potrebbe essere modificata da altri thread
                 std::unique_lock<std::mutex> loc_el(queue_[new_head].m_el_);
-                queue_[new_head].cv_ready_to_pop_.wait(loc_el,[this,new_head](){return queue_[new_head].state_.load(std::memory_order_acquire)==Full;});
+                queue_[new_head].cv_ready_to_pop_.wait(loc_el,[this,new_head](){return !queue_[new_head].state_;});
                 
                 // pop 
                 value_type ret = std::move(queue_[new_head].v_.value());
                 queue_[new_head].v_ = std::nullopt;
-                queue_[new_head].state_.store(Empty, std::memory_order_release);
+                queue_[new_head].state_ = true;
 
                 queue_[new_head].cv_ready_to_push_.notify_one();
                 queue_[new_head].count_pop_ --;
@@ -500,12 +513,12 @@ public:
                 loc.unlock();
 
                 std::unique_lock<std::mutex> loc_el(queue_[new_head].m_el_);
-                queue_[new_head].cv_ready_to_pop_.wait(loc_el,[this,new_head](){return queue_[new_head].state_.load(std::memory_order_acquire)==Full;});
+                queue_[new_head].cv_ready_to_pop_.wait(loc_el,[this,new_head](){return !queue_[new_head].state_;});
                 
                 // pop 
                 value_type ret = std::move(queue_[new_head].v_.value());
                 queue_[new_head].v_ = std::nullopt;
-                queue_[new_head].state_.store(Empty, std::memory_order_release);
+                queue_[new_head].state_ = true;
 
                 queue_[new_head].cv_ready_to_push_.notify_one();
                 queue_[new_head].count_pop_ --;
@@ -532,9 +545,9 @@ public:
                 loc.unlock();
 
                 std::unique_lock<std::mutex> loc_el(queue_[new_tail].m_el_);
-                queue_[new_tail].cv_ready_to_push_.wait(loc_el,[this,new_tail](){return queue_[new_tail].state_.load(std::memory_order_acquire)==Empty;});
+                queue_[new_tail].cv_ready_to_push_.wait(loc_el,[this,new_tail](){return queue_[new_tail].state_;});
                 queue_[new_tail].v_ = std::move(t);
-                queue_[new_tail].state_.store(Full, std::memory_order_release);
+                queue_[new_tail].state_ = false;
                 queue_[new_tail].cv_ready_to_pop_.notify_one();
                 queue_[new_tail].count_push_ --;
                 loc_el.unlock();
@@ -555,9 +568,9 @@ public:
                 loc.unlock();
 
                 std::unique_lock<std::mutex> loc_el(queue_[new_tail].m_el_);
-                queue_[new_tail].cv_ready_to_push_.wait(loc_el,[this,new_tail](){return queue_[new_tail].state_.load(std::memory_order_acquire)==Empty;});
+                queue_[new_tail].cv_ready_to_push_.wait(loc_el,[this,new_tail](){return queue_[new_tail].state_;});
                 queue_[new_tail].v_ = std::move(t);
-                queue_[new_tail].state_.store(Full, std::memory_order_release);
+                queue_[new_tail].state_ = false;
                 queue_[new_tail].cv_ready_to_pop_.notify_one();
                 queue_[new_tail].count_push_ --;
                 loc_el.unlock();
@@ -581,11 +594,11 @@ public:
                 loc.unlock();
 
                 std::unique_lock<std::mutex> loc_el(queue_[t].m_el_);
-                queue_[t].cv_ready_to_pop_.wait(loc_el,[this,t](){return queue_[t].state_.load(std::memory_order_acquire)==Full;});
+                queue_[t].cv_ready_to_pop_.wait(loc_el,[this,t](){return !queue_[t].state_;});
                 // sostituisce in posto che viene liberato il valore di defaul di value_type
                 value_type ret = std::move(queue_[t].v_.value());
                 queue_[t].v_ = std::nullopt;
-                queue_[t].state_.store(Empty, std::memory_order_release);
+                queue_[t].state_ = true;
                 queue_[t].cv_ready_to_push_.notify_one();
                 queue_[t].count_pop_ --;
                 if(queue_[t].count_push_ == 0 )
@@ -610,11 +623,11 @@ public:
                 loc.unlock();
 
                 std::unique_lock<std::mutex> loc_el(queue_[t].m_el_);
-                queue_[t].cv_ready_to_pop_.wait(loc_el,[this,t](){return queue_[t].state_.load(std::memory_order_acquire)==Full;});
+                queue_[t].cv_ready_to_pop_.wait(loc_el,[this,t](){return !queue_[t].state_;});
                 // sostituisce in posto che viene liberato il valore di defaul di value_type
                 value_type ret = std::move(queue_[t].v_.value());
                 queue_[t].v_ = std::nullopt;
-                queue_[t].state_.store(Empty, std::memory_order_release);
+                queue_[t].state_ = true;
                 queue_[t].cv_ready_to_push_.notify_one();
                 queue_[t].count_pop --;
                 if(queue_[t].count_push == 0 )
