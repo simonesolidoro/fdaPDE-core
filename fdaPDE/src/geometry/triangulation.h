@@ -358,7 +358,7 @@ template <int N> class Triangulation<2, N> : public TriangulationBase<2, N, Tria
     }
     static Triangulation<2, N> UnitSquare(int n_nodes, int flags = 0) { return Square(0.0, 1.0, n_nodes, flags); }
     // icoshpere surface generation
-    static Triangulation<2, N> Sphere(double r, int n_refinments, int flags = 0) {
+    static Triangulation<2, N> Sphere(double radius, int n_refinments, int flags = 0) {
         fdapde_static_assert(N == 3, THIS_METHOD_IS_FOR_THREE_DIMENSIONAL_SURFACE_TRIANGULATIONS_ONLY);
 	// unit icosahedron construction
         constexpr double a = 1.0;
@@ -430,12 +430,14 @@ template <int N> class Triangulation<2, N> : public TriangulationBase<2, N, Tria
         }
         Eigen::Map<Eigen::Matrix<double, Dynamic, Dynamic, Eigen::RowMajor>> nodes_mtx(
           nodes.data(), nodes.size() / embed_dim, embed_dim);
+	// scale to requested radius
+	if(radius != 1.0) { nodes_mtx *= radius; }
         Eigen::Map<Eigen::Matrix<int, Dynamic, Dynamic, Eigen::RowMajor>> cells_mtx(
           refined_cells.data(), refined_cells.size() / n_nodes_per_cell, n_nodes_per_cell);
         Eigen::Matrix<int, Dynamic, Dynamic> boundary = Eigen::Matrix<int, Dynamic, Dynamic>::Zero(nodes_mtx.rows(), 1);
         return Triangulation<2, N>(nodes_mtx, cells_mtx, boundary, flags);
     }
-
+    static Triangulation<2, N> UnitSphere(int n_refinments, int flags = 0) { return Sphere(1.0, n_refinments, flags); }
     // getters
     const typename Base::CellType& cell(int id) const {
         if (Base::flags_ & cache_cells) {   // cell caching enabled
