@@ -357,7 +357,85 @@ template <int N> class Triangulation<2, N> : public TriangulationBase<2, N, Tria
         return Triangulation<2, N>::Rectangle(a, b, a, b, n_nodes, n_nodes, flags);
     }
     static Triangulation<2, N> UnitSquare(int n_nodes, int flags = 0) { return Square(0.0, 1.0, n_nodes, flags); }
-  
+    // icoshpere surface generation
+    static Triangulation<2, N> Sphere(double r, int n_refinments, int flags = 0) {
+        fdapde_static_assert(N == 3, THIS_METHOD_IS_FOR_THREE_DIMENSIONAL_SURFACE_TRIANGULATIONS_ONLY);
+	// unit icosahedron construction
+        constexpr double a = 1.0;
+        constexpr double b = 1.0 / std::numbers::phi;   // inverse golden ratio
+        std::vector<double> ico_nodes = {
+	  -a, 0, b, a, 0, b, -a, 0, -b, a, 0, -b, 0, b, a, 0, b, -a, 0, -b, a, 0, -b, -a, b, a, 0, -b, a, 0, b, -a, 0,
+	  -b, -a, 0};
+	std::vector<int> ico_cells = {
+	   0, 4, 6, 0, 6, 11, 0, 2, 11, 0, 9, 2, 0, 9, 4, 3, 8, 5, 3, 5, 7, 3, 7, 10, 3, 10, 1, 3, 1, 8, 1, 10, 6, 6,
+	   11, 10, 10, 11, 7, 7, 11, 2, 7, 2, 5, 2, 5, 9, 9, 5, 8, 9, 4, 8, 4, 8, 1, 4, 1, 6};
+        // normalize to unit sphere
+        constexpr double norm = std::sqrt(a * a + b * b);
+        std::for_each(ico_nodes.begin(), ico_nodes.end(), [](double& v) { v /= norm; });
+
+	// refinment
+        using vec_t = Eigen::Matrix<double, embed_dim, 1>;
+        using edge_t = std::array<int, n_nodes_per_edge>;
+        using hash_t = internals::std_array_hash<int, n_nodes_per_edge>;
+        std::unordered_map<edge_t, int, hash_t> edges_map;   // for each edge, the ID of its midpoint
+        edge_t edge;
+	// Loop subdivision algorithm with spherical projection
+        auto slerp_split = [&](
+                             int cell_id, int& node_id, std::vector<double>& nodes, const std::vector<int>& cells,
+                             std::vector<int>& refined_cells) {
+            std::vector<int> n(6);
+            for (int j = 0; j < n_nodes_per_cell; ++j) { n[j] = cells[cell_id * n_nodes_per_cell + j]; }
+
+            for (int j = 0; j < edge_pattern.rows(); ++j) {
+                // construct edge
+                for (int k = 0; k < n_nodes_per_edge; ++k) {
+                    edge[k] = cells[cell_id * n_nodes_per_cell + edge_pattern(j, k)];
+                }
+                std::sort(edge.begin(), edge.end());   // normalize wrt node ordering
+                auto it = edges_map.find(edge);
+                if (it == edges_map.end()) {   // never processed edge
+                    edges_map.emplace(edge, node_id);
+                    n[n_nodes_per_cell + j] = node_id;
+                    node_id++;
+                    // compute slerp interpolation
+                    double dot_prod = 0;
+                    for (int i = 0; i < embed_dim; ++i) {
+                        dot_prod += nodes[edge[0] * embed_dim + i] * nodes[edge[1] * embed_dim + i];
+                    }
+                    double rho = std::acos(dot_prod);
+                    // midpoint along circular arc
+                    double a = std::sin(0.5 * rho), b = std::sin(rho);
+                    for (int i = 0; i < embed_dim; ++i) {
+                        nodes.push_back(a / b * (nodes[edge[0] * embed_dim + i] + nodes[edge[1] * embed_dim + i]));
+                    }
+                } else {
+                    n[n_nodes_per_cell + j] = edges_map.at(edge);
+                }
+            }
+            // compute cell numbering (exploit edge_ordering structure)
+            std::vector<int> cvec = {n[0], n[3], n[4], n[1], n[3], n[5], n[5], n[2], n[4], n[4], n[3], n[5]};
+            refined_cells.insert(refined_cells.end(), cvec.begin(), cvec.end());
+        };
+        // mesh construction
+        std::vector<double> nodes = ico_nodes;
+        int node_id = nodes.size() / n_nodes_per_cell;
+        std::vector<int> cells = ico_cells, refined_cells;
+        for (int i = 0; i < n_refinments; ++i) {
+            refined_cells.clear();
+            edges_map.clear();
+            for (int j = 0; j < cells.size() / n_nodes_per_cell; ++j) {
+                slerp_split(j, node_id, nodes, cells, refined_cells);
+            }
+            cells = refined_cells;
+        }
+        Eigen::Map<Eigen::Matrix<double, Dynamic, Dynamic, Eigen::RowMajor>> nodes_mtx(
+          nodes.data(), nodes.size() / embed_dim, embed_dim);
+        Eigen::Map<Eigen::Matrix<int, Dynamic, Dynamic, Eigen::RowMajor>> cells_mtx(
+          refined_cells.data(), refined_cells.size() / n_nodes_per_cell, n_nodes_per_cell);
+        Eigen::Matrix<int, Dynamic, Dynamic> boundary = Eigen::Matrix<int, Dynamic, Dynamic>::Zero(nodes_mtx.rows(), 1);
+        return Triangulation<2, N>(nodes_mtx, cells_mtx, boundary, flags);
+    }
+
     // getters
     const typename Base::CellType& cell(int id) const {
         if (Base::flags_ & cache_cells) {   // cell caching enabled
