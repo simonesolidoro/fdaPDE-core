@@ -52,8 +52,9 @@ struct elem_hold{
     std::optional<T> v_;
     mutable std::mutex m_el_;
     // OSS: due cv necessarie perché garantisce pop e push si alternino (se chiamo su stessa cella push pop push primo push quando finisce notifica se solo una cv puo essere arrivi notifica a push,  e non a pop,che si sveglia vede non piu busy e sovrascrive, se in cv.wait oltre a check se !=busy aggiungo check !=full  cosi si sveglia vede full e torna a dormire -> deadlock di pop che aspetta per sempre)
-    std::condition_variable cv_ready_to_pop_; // per avvisare che possibile fare pop (notufy da un push)
-    std::condition_variable cv_ready_to_push_; // per avvisare che possibile fare push (notify da un pop)
+    //OSS: NO!! CORREZIONE: basta una cv, perchè non puo verificarsi che un pop e un push sulla stessa cella dormano contemporanemante( i realta puo ma non è un problema, vedi fine osservazione), unico problema se secondo push va a dormire perche sblocca mutex di el tra la notify_one() di primo push e il blocco del mutex del pop, vede full e va a dormire, ed allora push e pop dormono insieme ma ormai notify_one è stato lanciato e non puo andare a svegliare thread che si è messo a dormire dopo il lancio,
+    // fonte di ultima affermzzioe cppreference: "This makes it impossible for notify_one() to, for example, be delayed and unblock a thread that started waiting just after the call to notify_one() was made." 
+    std::condition_variable cv_ready_el_; 
 
     std::condition_variable cv_empty_;
     int count_push_ = 0;
@@ -395,7 +396,7 @@ public:
 
     };
 
-    //memory_order hold: se piu thread intervengono su stesssa cella push/pop durate stato= busy aspettao
+    //memory_order hold: se piu thread intervengono su stesssa cella push/pop aspettano che precedente finisca
     template <typename T>
     class Worker_queue_hold : public internals::Worker_queue<T,internals::Memory_order::hold,internals::elem_hold<T>>{
         using value_type = T;
@@ -422,18 +423,17 @@ public:
                     return false;
                 }
                 int h = head_; //index dove inserira elemento
-                head_ = (head_ == size_-1)? (0) : (head_ + 1);
+                head_ = (head_ == size_-1)? (0) : (head_ + 1); //head_++
                 empty_queue_ = false; //magari gia false quindi ridondante,ma evita if(empty_queue_) {empty_queue_ = false;} non so quale piu efficiente 
                 cv_can_pop_.notify_one(); // for pop_or_wait
                 queue_[h].count_push_ ++;
                 loc.unlock();
 
                 std::unique_lock<std::mutex> loc_el(queue_[h].m_el_);
-                queue_[h].cv_ready_to_push_.wait(loc_el,[this,h](){return queue_[h].state_;});
-                //push di elemento
-                queue_[h].v_ = std::move(t);
+                queue_[h].cv_ready_el_.wait(loc_el,[this,h](){return queue_[h].state_;}); // to be sure state_ = true (empty)
+                queue_[h].v_ = std::move(t); //push di elemento
                 queue_[h].state_ = false; //aggiorna stato di elem a full
-                queue_[h].cv_ready_to_pop_.notify_one();
+                queue_[h].cv_ready_el_.notify_one(); // notifica pop dormiente su stesso elemento
                 queue_[h].count_push_ --;
                 loc_el.unlock();
             
@@ -453,11 +453,11 @@ public:
                 loc.unlock();
 
                 std::unique_lock<std::mutex> loc_el(queue_[h].m_el_);
-                queue_[h].cv_ready_to_push_.wait(loc_el,[this,h](){return queue_[h].state_;});
+                queue_[h].cv_ready_el_.wait(loc_el,[this,h](){return queue_[h].state_;});
                 //push di elemento
                 queue_[h].v_ = std::move(t);
                 queue_[h].state_ = false; //aggiorna stato di elem con release
-                queue_[h].cv_ready_to_pop_.notify_one();
+                queue_[h].cv_ready_el_.notify_one();
                 queue_[h].count_push_ --;
                 loc_el.unlock();
             
@@ -482,14 +482,14 @@ public:
 
                 //OSS: importate lasciare new_head perche poi head_ potrebbe essere modificata da altri thread
                 std::unique_lock<std::mutex> loc_el(queue_[new_head].m_el_);
-                queue_[new_head].cv_ready_to_pop_.wait(loc_el,[this,new_head](){return !queue_[new_head].state_;});
+                queue_[new_head].cv_ready_el_.wait(loc_el,[this,new_head](){return !queue_[new_head].state_;});
                 
                 // pop 
                 value_type ret = std::move(queue_[new_head].v_.value());
                 queue_[new_head].v_ = std::nullopt;
                 queue_[new_head].state_ = true;
 
-                queue_[new_head].cv_ready_to_push_.notify_one();
+                queue_[new_head].cv_ready_el_.notify_one();
                 queue_[new_head].count_pop_ --;
                 if(queue_[new_head].count_push_ == 0 )
                     queue_[new_head].cv_empty_.notify_one();
@@ -513,14 +513,14 @@ public:
                 loc.unlock();
 
                 std::unique_lock<std::mutex> loc_el(queue_[new_head].m_el_);
-                queue_[new_head].cv_ready_to_pop_.wait(loc_el,[this,new_head](){return !queue_[new_head].state_;});
+                queue_[new_head].cv_ready_el_.wait(loc_el,[this,new_head](){return !queue_[new_head].state_;});
                 
                 // pop 
                 value_type ret = std::move(queue_[new_head].v_.value());
                 queue_[new_head].v_ = std::nullopt;
                 queue_[new_head].state_ = true;
 
-                queue_[new_head].cv_ready_to_push_.notify_one();
+                queue_[new_head].cv_ready_el_.notify_one();
                 queue_[new_head].count_pop_ --;
                 if(queue_[new_head].count_push_ == 0 )
                     queue_[new_head].cv_empty_.notify_one();
@@ -545,10 +545,10 @@ public:
                 loc.unlock();
 
                 std::unique_lock<std::mutex> loc_el(queue_[new_tail].m_el_);
-                queue_[new_tail].cv_ready_to_push_.wait(loc_el,[this,new_tail](){return queue_[new_tail].state_;});
+                queue_[new_tail].cv_ready_el_.wait(loc_el,[this,new_tail](){return queue_[new_tail].state_;});
                 queue_[new_tail].v_ = std::move(t);
                 queue_[new_tail].state_ = false;
-                queue_[new_tail].cv_ready_to_pop_.notify_one();
+                queue_[new_tail].cv_ready_el_.notify_one();
                 queue_[new_tail].count_push_ --;
                 loc_el.unlock();
 
@@ -568,10 +568,10 @@ public:
                 loc.unlock();
 
                 std::unique_lock<std::mutex> loc_el(queue_[new_tail].m_el_);
-                queue_[new_tail].cv_ready_to_push_.wait(loc_el,[this,new_tail](){return queue_[new_tail].state_;});
+                queue_[new_tail].cv_ready_el_.wait(loc_el,[this,new_tail](){return queue_[new_tail].state_;});
                 queue_[new_tail].v_ = std::move(t);
                 queue_[new_tail].state_ = false;
-                queue_[new_tail].cv_ready_to_pop_.notify_one();
+                queue_[new_tail].cv_ready_el_.notify_one();
                 queue_[new_tail].count_push_ --;
                 loc_el.unlock();
                 
@@ -594,12 +594,12 @@ public:
                 loc.unlock();
 
                 std::unique_lock<std::mutex> loc_el(queue_[t].m_el_);
-                queue_[t].cv_ready_to_pop_.wait(loc_el,[this,t](){return !queue_[t].state_;});
+                queue_[t].cv_ready_el_.wait(loc_el,[this,t](){return !queue_[t].state_;});
                 // sostituisce in posto che viene liberato il valore di defaul di value_type
                 value_type ret = std::move(queue_[t].v_.value());
                 queue_[t].v_ = std::nullopt;
                 queue_[t].state_ = true;
-                queue_[t].cv_ready_to_push_.notify_one();
+                queue_[t].cv_ready_el_.notify_one();
                 queue_[t].count_pop_ --;
                 if(queue_[t].count_push_ == 0 )
                     queue_[t].cv_empty_.notify_one();
@@ -623,12 +623,12 @@ public:
                 loc.unlock();
 
                 std::unique_lock<std::mutex> loc_el(queue_[t].m_el_);
-                queue_[t].cv_ready_to_pop_.wait(loc_el,[this,t](){return !queue_[t].state_;});
+                queue_[t].cv_ready_el_.wait(loc_el,[this,t](){return !queue_[t].state_;});
                 // sostituisce in posto che viene liberato il valore di defaul di value_type
                 value_type ret = std::move(queue_[t].v_.value());
                 queue_[t].v_ = std::nullopt;
                 queue_[t].state_ = true;
-                queue_[t].cv_ready_to_push_.notify_one();
+                queue_[t].cv_ready_el_.notify_one();
                 queue_[t].count_pop --;
                 if(queue_[t].count_push == 0 )
                     queue_[t].cv_empty_.notify_one();
