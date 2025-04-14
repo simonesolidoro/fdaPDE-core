@@ -63,7 +63,7 @@ struct elem_hold{
 
 // classe base 
 //TODO: inutile 3 template argomenti, basta tipo elemento (E) che sottointende memory_order. togliere Memory_order U e modificare codice di conseguenza
-template <typename T,Memory_order U, typename E>  //TODO: costrain concept per garantire che E abbia membro state_ e v_, usati per costruttore da iteratori di conteiner
+template <typename T, typename E>  //TODO: costrain concept per garantire che E abbia membro state_ e v_, usati per costruttore da iteratori di conteiner
 class Worker_queue{
     using value_type = T;
 
@@ -93,9 +93,9 @@ public:
         int n = std::distance(begin, end); //itertor di list non supportano end-begin
         std::vector<E> temp_queue(n);
         for(int i =0; i<n;i++){
-            if constexpr(U == fdapde::internals::Memory_order::relax)
+            if constexpr(std::is_same_v<E,fdapde::internals::elem_relax<T>>)
                 temp_queue[i].state_.store(Full);
-            if constexpr(U == fdapde::internals::Memory_order::hold)    
+            if constexpr(std::is_same_v<E,fdapde::internals::elem_hold<T>>)    
                 temp_queue[i].state_ = false;
             temp_queue[i].v_ = *(begin);
             std::advance(begin,1);         // list non supporta begin + 1
@@ -144,7 +144,7 @@ public:
     int get_head()const {return head_;}
     void print(){
         for (int i=0; i<size_; i++){
-            if constexpr(U == fdapde::internals::Memory_order::relax){    
+            if constexpr(std::is_same_v<E,fdapde::internals::elem_relax<T>>){    
                 if(queue_[i].state_.load(std::memory_order_acquire) == Empty){
                     std::cout<<0<<" ";
                 }
@@ -152,7 +152,7 @@ public:
                     std::cout<<queue_[i].v_.value()<<"  ";
                 }
             }
-            if constexpr(U == fdapde::internals::Memory_order::hold){
+            if constexpr(std::is_same_v<E,fdapde::internals::elem_hold<T>>){
                 if(queue_[i].state_){
                     std::cout<<0<<" ";
                 }
@@ -169,22 +169,22 @@ public:
 
     //memory_order relax: se piu thread intervengono su stesssa cella push/pop durate stato= busy ritorna false/nullopt senza aspettare
     template <typename T>
-    class Worker_queue_relax : public internals::Worker_queue<T, internals::Memory_order::relax, internals::elem_relax<T>>{
+    class Worker_queue_relax : public internals::Worker_queue<T, internals::elem_relax<T>>{
         using value_type = T;
-        using internals::Worker_queue<T, internals::Memory_order::relax, internals::elem_relax<T>>::queue_;
-        using internals::Worker_queue<T, internals::Memory_order::relax, internals::elem_relax<T>>::head_;
-        using internals::Worker_queue<T, internals::Memory_order::relax, internals::elem_relax<T>>::tail_;
-        using internals::Worker_queue<T, internals::Memory_order::relax, internals::elem_relax<T>>::size_;
-        using internals::Worker_queue<T, internals::Memory_order::relax, internals::elem_relax<T>>::empty_queue_;
-        using internals::Worker_queue<T, internals::Memory_order::relax, internals::elem_relax<T>>::m_;
-        using internals::Worker_queue<T, internals::Memory_order::relax, internals::elem_relax<T>>::cv_can_now_;
-        using internals::Worker_queue<T, internals::Memory_order::relax, internals::elem_relax<T>>::active_;
+        using internals::Worker_queue<T, internals::elem_relax<T>>::queue_;
+        using internals::Worker_queue<T, internals::elem_relax<T>>::head_;
+        using internals::Worker_queue<T, internals::elem_relax<T>>::tail_;
+        using internals::Worker_queue<T, internals::elem_relax<T>>::size_;
+        using internals::Worker_queue<T, internals::elem_relax<T>>::empty_queue_;
+        using internals::Worker_queue<T, internals::elem_relax<T>>::m_;
+        using internals::Worker_queue<T, internals::elem_relax<T>>::cv_can_now_;
+        using internals::Worker_queue<T, internals::elem_relax<T>>::active_;
         public:
-            Worker_queue_relax(int n): internals::Worker_queue<T,internals::Memory_order::relax,internals::elem_relax<T>>(n){};
+            Worker_queue_relax(int n): internals::Worker_queue<T,internals::elem_relax<T>>(n){};
 
             template <typename Iterator>
             requires fdapde::internals::vector_array_list<Iterator,T>
-            Worker_queue_relax(Iterator begin, Iterator end):internals::Worker_queue<T,internals::Memory_order::relax,internals::elem_relax<T>>(begin, end){};
+            Worker_queue_relax(Iterator begin, Iterator end):internals::Worker_queue<T,internals::elem_relax<T>>(begin, end){};
 
             bool push_front(value_type t){
                 std::unique_lock<std::mutex> loc(m_);
@@ -399,22 +399,22 @@ public:
 
     //memory_order hold: se piu thread intervengono su stesssa cella push/pop aspettano che precedente finisca
     template <typename T>
-    class Worker_queue_hold : public internals::Worker_queue<T,internals::Memory_order::hold,internals::elem_hold<T>>{
+    class Worker_queue_hold : public internals::Worker_queue<T,internals::elem_hold<T>>{
         using value_type = T;
-        using internals::Worker_queue<T, internals::Memory_order::hold, internals::elem_hold<T>>::queue_;
-        using internals::Worker_queue<T, internals::Memory_order::hold, internals::elem_hold<T>>::head_;
-        using internals::Worker_queue<T, internals::Memory_order::hold, internals::elem_hold<T>>::tail_;
-        using internals::Worker_queue<T, internals::Memory_order::hold, internals::elem_hold<T>>::size_;
-        using internals::Worker_queue<T, internals::Memory_order::hold, internals::elem_hold<T>>::empty_queue_; //TODO: (OSS:empty_queue_ serve perchè alternativa giardare stato di elemento queue_[tail_/head_] se tail_ == head_, ma per lettura attendibile servirebbe bloccare mutex su elemento) TODO:valutare se piu conveniente blocco mutex ma elimino if(),  =false e = true fatti su empty_queue_ (metodi piu leggeri)
-        using internals::Worker_queue<T, internals::Memory_order::hold, internals::elem_hold<T>>::m_;
-        using internals::Worker_queue<T, internals::Memory_order::hold, internals::elem_hold<T>>::cv_can_now_;
-        using internals::Worker_queue<T, internals::Memory_order::hold, internals::elem_hold<T>>::active_;
+        using internals::Worker_queue<T, internals::elem_hold<T>>::queue_;
+        using internals::Worker_queue<T, internals::elem_hold<T>>::head_;
+        using internals::Worker_queue<T, internals::elem_hold<T>>::tail_;
+        using internals::Worker_queue<T, internals::elem_hold<T>>::size_;
+        using internals::Worker_queue<T, internals::elem_hold<T>>::empty_queue_; //TODO: (OSS:empty_queue_ serve perchè alternativa giardare stato di elemento queue_[tail_/head_] se tail_ == head_, ma per lettura attendibile servirebbe bloccare mutex su elemento) TODO:valutare se piu conveniente blocco mutex ma elimino if(),  =false e = true fatti su empty_queue_ (metodi piu leggeri)
+        using internals::Worker_queue<T, internals::elem_hold<T>>::m_;
+        using internals::Worker_queue<T, internals::elem_hold<T>>::cv_can_now_;
+        using internals::Worker_queue<T, internals::elem_hold<T>>::active_;
         public:
-            Worker_queue_hold(int n): internals::Worker_queue<T,internals::Memory_order::hold,internals::elem_hold<T>>(n){};
+            Worker_queue_hold(int n): internals::Worker_queue<T,internals::elem_hold<T>>(n){};
 
             template <typename Iterator>
             requires internals::vector_array_list<Iterator,T>
-            Worker_queue_hold(Iterator begin, Iterator end): internals::Worker_queue<T,internals::Memory_order::hold,internals::elem_hold<T>>(begin, end){};
+            Worker_queue_hold(Iterator begin, Iterator end): internals::Worker_queue<T,internals::elem_hold<T>>(begin, end){};
             
             ~Worker_queue_hold(){
                 active_ = false;
