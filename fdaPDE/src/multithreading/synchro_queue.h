@@ -415,7 +415,14 @@ public:
             template <typename Iterator>
             requires internals::vector_array_list<Iterator,T>
             Worker_queue_hold(Iterator begin, Iterator end): internals::Worker_queue<T,internals::Memory_order::hold,internals::elem_hold<T>>(begin, end){};
-
+            
+            ~Worker_queue_hold(){
+                active_ = false;
+                for(internals::elem_hold<T> & e : queue_){
+                    e.cv_ready_el_.notify_all();
+                    e.cv_empty_.notify_all();
+                } 
+            }
             bool push_front(value_type t){
                 std::unique_lock<std::mutex> loc(m_);
                 if (head_ == tail_ && !empty_queue_ ){// coda piena
@@ -431,6 +438,7 @@ public:
 
                 std::unique_lock<std::mutex> loc_el(queue_[h].m_el_);
                 queue_[h].cv_ready_el_.wait(loc_el,[this,h](){return queue_[h].state_;}); // to be sure state_ = true (empty)
+                if(!active_){return false;}
                 queue_[h].v_ = std::move(t); //push di elemento
                 queue_[h].state_ = false; //aggiorna stato di elem a full
                 queue_[h].cv_ready_el_.notify_one(); // notifica pop dormiente su stesso elemento
@@ -454,6 +462,7 @@ public:
 
                 std::unique_lock<std::mutex> loc_el(queue_[h].m_el_);
                 queue_[h].cv_ready_el_.wait(loc_el,[this,h](){return queue_[h].state_;});
+                if(!active_){return false;}
                 //push di elemento
                 queue_[h].v_ = std::move(t);
                 queue_[h].state_ = false; //aggiorna stato di elem con release
@@ -483,7 +492,7 @@ public:
                 //OSS: importate lasciare new_head perche poi head_ potrebbe essere modificata da altri thread
                 std::unique_lock<std::mutex> loc_el(queue_[new_head].m_el_);
                 queue_[new_head].cv_ready_el_.wait(loc_el,[this,new_head](){return !queue_[new_head].state_;});
-                
+                if(!active_) return std::nullopt;
                 // pop 
                 value_type ret = std::move(queue_[new_head].v_.value());
                 queue_[new_head].v_ = std::nullopt;
@@ -514,7 +523,7 @@ public:
 
                 std::unique_lock<std::mutex> loc_el(queue_[new_head].m_el_);
                 queue_[new_head].cv_ready_el_.wait(loc_el,[this,new_head](){return !queue_[new_head].state_;});
-                
+                if(!active_) return std::nullopt;
                 // pop 
                 value_type ret = std::move(queue_[new_head].v_.value());
                 queue_[new_head].v_ = std::nullopt;
@@ -546,6 +555,7 @@ public:
 
                 std::unique_lock<std::mutex> loc_el(queue_[new_tail].m_el_);
                 queue_[new_tail].cv_ready_el_.wait(loc_el,[this,new_tail](){return queue_[new_tail].state_;});
+                if(!active_){return false;}
                 queue_[new_tail].v_ = std::move(t);
                 queue_[new_tail].state_ = false;
                 queue_[new_tail].cv_ready_el_.notify_one();
@@ -569,6 +579,7 @@ public:
 
                 std::unique_lock<std::mutex> loc_el(queue_[new_tail].m_el_);
                 queue_[new_tail].cv_ready_el_.wait(loc_el,[this,new_tail](){return queue_[new_tail].state_;});
+                if(!active_){return false;}
                 queue_[new_tail].v_ = std::move(t);
                 queue_[new_tail].state_ = false;
                 queue_[new_tail].cv_ready_el_.notify_one();
@@ -595,6 +606,7 @@ public:
 
                 std::unique_lock<std::mutex> loc_el(queue_[t].m_el_);
                 queue_[t].cv_ready_el_.wait(loc_el,[this,t](){return !queue_[t].state_;});
+                if(!active_) return std::nullopt;
                 // sostituisce in posto che viene liberato il valore di defaul di value_type
                 value_type ret = std::move(queue_[t].v_.value());
                 queue_[t].v_ = std::nullopt;
@@ -624,6 +636,7 @@ public:
 
                 std::unique_lock<std::mutex> loc_el(queue_[t].m_el_);
                 queue_[t].cv_ready_el_.wait(loc_el,[this,t](){return !queue_[t].state_;});
+                if(!active_) return std::nullopt;
                 // sostituisce in posto che viene liberato il valore di defaul di value_type
                 value_type ret = std::move(queue_[t].v_.value());
                 queue_[t].v_ = std::nullopt;
