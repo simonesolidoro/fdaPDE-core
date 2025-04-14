@@ -61,7 +61,8 @@ struct elem_hold{
     int count_pop_ = 0;
 };
 
-// classe base TODO: metterla in namespace internal
+// classe base 
+//TODO: inutile 3 template argomenti, basta tipo elemento (E) che sottointende memory_order. togliere Memory_order U e modificare codice di conseguenza
 template <typename T,Memory_order U, typename E>  //TODO: costrain concept per garantire che E abbia membro state_ e v_, usati per costruttore da iteratori di conteiner
 class Worker_queue{
     using value_type = T;
@@ -106,7 +107,8 @@ public:
     virtual ~Worker_queue(){ //virtual cosi che distruttore di figli chiamati quado si distruggono tramite puntatore di tipo base
         active_ = false;
         cv_can_now_.notify_all();
-        //TODO: valutare se serve notitficare a tutti le cv_ready_el_, e quindi aggiungere if(!active){return ...;} nei push/pop  
+        //TODO: valutare se serve notitficare a tutti le cv_ready_el_, e quindi aggiungere if(!active){return ...;} nei push/pop. credo di no perche in hold cv_ready_el si mette in attesa solo se ha gia la certezza che si potra svegliare (perche promessa di intervento su elemento fatta in movimento indici)
+        //forse creare altra classe queue_guard che wrap worker_queue e fa raii (come mutex e lock_guard), al posto di fare raii in distruttore di stessa classe (come thread)  
     }
 
     Worker_queue(const Worker_queue&) = delete;
@@ -403,7 +405,7 @@ public:
         using internals::Worker_queue<T, internals::Memory_order::hold, internals::elem_hold<T>>::head_;
         using internals::Worker_queue<T, internals::Memory_order::hold, internals::elem_hold<T>>::tail_;
         using internals::Worker_queue<T, internals::Memory_order::hold, internals::elem_hold<T>>::size_;
-        using internals::Worker_queue<T, internals::Memory_order::hold, internals::elem_hold<T>>::empty_queue_;
+        using internals::Worker_queue<T, internals::Memory_order::hold, internals::elem_hold<T>>::empty_queue_; //TODO: (OSS:empty_queue_ serve perchè alternativa giardare stato di elemento queue_[tail_/head_] se tail_ == head_, ma per lettura attendibile servirebbe bloccare mutex su elemento) TODO:valutare se piu conveniente blocco mutex ma elimino if(),  =false e = true fatti su empty_queue_ (metodi piu leggeri)
         using internals::Worker_queue<T, internals::Memory_order::hold, internals::elem_hold<T>>::m_;
         using internals::Worker_queue<T, internals::Memory_order::hold, internals::elem_hold<T>>::cv_can_now_;
         using internals::Worker_queue<T, internals::Memory_order::hold, internals::elem_hold<T>>::active_;
