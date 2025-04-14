@@ -23,11 +23,6 @@
 
 namespace fdapde {
 
-//enumerator  state of elem
-static constexpr char Empty = 'e';
-static constexpr char Busy = 'b';
-static constexpr char Full = 'f';
-
 
 namespace internals {
 
@@ -35,38 +30,18 @@ namespace internals {
 template <typename Iterator, typename T>
 concept vector_array_list = std::contiguous_iterator<Iterator> || std::same_as<Iterator, typename std::list<T>::iterator> ;
 
-enum Memory_order {
-    relax, // non aspetta se elem busy
-    hold, // aspetta se elem busy (no while ma Condition_Variable)
-};
+//forward declaration
+template<typename T>
+struct elem_relax;
 
 template<typename T>
-struct elem_relax{
-    std::atomic<char> state_ = Empty; //
-    std::optional<T> v_;
-};
-
-template<typename T>
-struct elem_hold{
-    bool state_ = true; //stato binario true = empty / false = full
-    std::optional<T> v_;
-    mutable std::mutex m_el_;
-    // OSS: due cv necessarie perché garantisce pop e push si alternino (se chiamo su stessa cella push pop push primo push quando finisce notifica se solo una cv puo essere arrivi notifica a push,  e non a pop,che si sveglia vede non piu busy e sovrascrive, se in cv.wait oltre a check se !=busy aggiungo check !=full  cosi si sveglia vede full e torna a dormire -> deadlock di pop che aspetta per sempre)
-    //OSS: NO!! CORREZIONE: basta una cv, perchè non puo verificarsi che un pop e un push sulla stessa cella dormano contemporanemante( i realta puo ma non è un problema, vedi fine osservazione), unico problema se secondo push va a dormire perche sblocca mutex di el tra la notify_one() di primo push e il blocco del mutex del pop, vede full e va a dormire, ed allora push e pop dormono insieme ma ormai notify_one è stato lanciato e non puo andare a svegliare thread che si è messo a dormire dopo il lancio,
-    // fonte di ultima affermzzioe cppreference: "This makes it impossible for notify_one() to, for example, be delayed and unblock a thread that started waiting just after the call to notify_one() was made." 
-    std::condition_variable cv_ready_el_; 
-
-    std::condition_variable cv_empty_;
-    int count_push_ = 0;
-    int count_pop_ = 0;
-};
+struct elem_hold;
 
 // classe base 
 //TODO: inutile 3 template argomenti, basta tipo elemento (E) che sottointende memory_order. togliere Memory_order U e modificare codice di conseguenza
 template <typename T, typename E>  //TODO: costrain concept per garantire che E abbia membro state_ e v_, usati per costruttore da iteratori di conteiner
 class Worker_queue{
     using value_type = T;
-
     typedef std::vector<E> container;
 protected:
     container queue_;
@@ -79,6 +54,10 @@ protected:
     std::condition_variable cv_can_now_;
     bool active_ = true; //TODO: valutare se ora che or_wait meotdi hanno wait_for serve ancora active e distruttore, penso di si.
 public:
+    //enumerator  state of elem
+    static constexpr char Empty = 'e';
+    static constexpr char Busy = 'b';
+    static constexpr char Full = 'f';
     // default constructor credo poi da associare a metodo resize()
     Worker_queue() = default;
     // construct whit size of queue_=n;
@@ -164,6 +143,26 @@ public:
         std::cout<<std::endl;
     }
 };
+template<typename T>
+struct elem_relax{
+    std::atomic<char> state_ = fdapde::internals::Worker_queue<T,elem_relax>::Empty; //
+    std::optional<T> v_;
+};
+
+template<typename T>
+struct elem_hold{
+    bool state_ = true; //stato binario true = empty / false = full
+    std::optional<T> v_;
+    mutable std::mutex m_el_;
+    // OSS: due cv necessarie perché garantisce pop e push si alternino (se chiamo su stessa cella push pop push primo push quando finisce notifica se solo una cv puo essere arrivi notifica a push,  e non a pop,che si sveglia vede non piu busy e sovrascrive, se in cv.wait oltre a check se !=busy aggiungo check !=full  cosi si sveglia vede full e torna a dormire -> deadlock di pop che aspetta per sempre)
+    //OSS: NO!! CORREZIONE: basta una cv, perchè non puo verificarsi che un pop e un push sulla stessa cella dormano contemporanemante( i realta puo ma non è un problema, vedi fine osservazione), unico problema se secondo push va a dormire perche sblocca mutex di el tra la notify_one() di primo push e il blocco del mutex del pop, vede full e va a dormire, ed allora push e pop dormono insieme ma ormai notify_one è stato lanciato e non puo andare a svegliare thread che si è messo a dormire dopo il lancio,
+    // fonte di ultima affermzzioe cppreference: "This makes it impossible for notify_one() to, for example, be delayed and unblock a thread that started waiting just after the call to notify_one() was made." 
+    std::condition_variable cv_ready_el_; 
+
+    std::condition_variable cv_empty_;
+    int count_push_ = 0;
+    int count_pop_ = 0;
+};
 
 }
 
@@ -179,6 +178,10 @@ public:
         using internals::Worker_queue<T, internals::elem_relax<T>>::m_;
         using internals::Worker_queue<T, internals::elem_relax<T>>::cv_can_now_;
         using internals::Worker_queue<T, internals::elem_relax<T>>::active_;
+        //enum per state_
+        using internals::Worker_queue<T, internals::elem_relax<T>>::Empty;
+        using internals::Worker_queue<T, internals::elem_relax<T>>::Full;
+        using internals::Worker_queue<T, internals::elem_relax<T>>::Busy;
         public:
             Worker_queue_relax(int n): internals::Worker_queue<T,internals::elem_relax<T>>(n){};
 
