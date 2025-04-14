@@ -780,8 +780,13 @@ struct GeoLayer {
     }
     template <int N>
     void load_geometry_index_(const std::string& filename, bool header = true, bool index_col = false) {
-        load_geometry_index_<N>(parse_file_<double>(filename, header, index_col));
-	return;
+        if constexpr (is_geo_v<N, POINT>) {
+            load_geometry_index_<N>(parse_file_<double>(filename, header, index_col));
+        } else {
+            using binary_t = BinaryMatrix<Dynamic, Dynamic>;
+            load_geometry_index_<N>(binary_t(parse_file_<double>(filename, header, index_col)));
+        }
+        return;
     }
     template <int N, typename GeoDescriptor>
         requires(
