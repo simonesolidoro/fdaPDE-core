@@ -18,21 +18,74 @@
 #include<list>
 
 int main(){
+{//relax o wait
+    std::cout<<"test costruttori con relax_nowait"<<std::endl;
     using value = int;
     value el = 1;
     std::list<value> v ={el,el,el};
 
-    fdapde::Worker_queue_hold<int> q(v.begin(),v.end());
+    fdapde::Synchro_queue<int,fdapde::relax_nowait> q(v.begin(),v.end());
     q.print();
     std::vector<value> v1 ={el,el,el};
 
-    fdapde::Worker_queue_hold<int> q1(v1.begin(),v1.end());
+    fdapde::Synchro_queue<int,fdapde::relax_nowait> q1(v1.begin(),v1.end());
     q1.print();
     std::array<value,3> v2 ={el,el,el};
 
-    fdapde::Worker_queue_hold<int> q2(v2.begin(),v2.end());
+    fdapde::Synchro_queue<int,fdapde::relax_nowait>q2(v2.begin(),v2.end());
     q2.print();
+}
+{//relax wait
+    std::cout<<"test costruttori con relax_wait"<<std::endl;
+    using value = int;
+    value el = 1;
+    std::list<value> v ={el,el,el};
 
+    fdapde::Synchro_queue<int,fdapde::relax_wait> q(v.begin(),v.end());
+    q.print();
+    std::vector<value> v1 ={el,el,el};
+
+    fdapde::Synchro_queue<int,fdapde::relax_wait> q1(v1.begin(),v1.end());
+    q1.print();
+    std::array<value,3> v2 ={el,el,el};
+
+    fdapde::Synchro_queue<int,fdapde::relax_wait>q2(v2.begin(),v2.end());
+    q2.print();
+}
+{// hold nowait
+    std::cout<<"test costruttori con hold_nowait"<<std::endl;
+    using value = int;
+    value el = 1;
+    std::list<value> v ={el,el,el};
+
+    fdapde::Synchro_queue<int,fdapde::hold_nowait> q(v.begin(),v.end());
+    q.print();
+    std::vector<value> v1 ={el,el,el};
+
+    fdapde::Synchro_queue<int,fdapde::hold_nowait> q1(v1.begin(),v1.end());
+    q1.print();
+    std::array<value,3> v2 ={el,el,el};
+
+    fdapde::Synchro_queue<int,fdapde::hold_nowait>q2(v2.begin(),v2.end());
+    q2.print();
+}
+{//hold wait
+    std::cout<<"test costruttori con hold_wait"<<std::endl;
+    using value = int;
+    value el = 1;
+    std::list<value> v ={el,el,el};
+
+    fdapde::Synchro_queue<int,fdapde::hold_wait> q(v.begin(),v.end());
+    q.print();
+    std::vector<value> v1 ={el,el,el};
+
+    fdapde::Synchro_queue<int,fdapde::hold_wait> q1(v1.begin(),v1.end());
+    q1.print();
+    std::array<value,3> v2 ={el,el,el};
+
+    fdapde::Synchro_queue<int,fdapde::hold_wait>q2(v2.begin(),v2.end());
+    q2.print();
+}
 
     return 1;
 

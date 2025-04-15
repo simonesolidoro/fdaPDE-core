@@ -35,7 +35,7 @@
 #include<deque>
 
 // worker
-#include "src/multithreading/synchro_queue.h"
+#include "src/multithreading/synchro_queue_2.h"
 
 // clang-format on
 

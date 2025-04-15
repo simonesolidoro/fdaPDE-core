@@ -16,75 +16,31 @@
  
  #include<fdaPDE/multithreading.h>
  
- void vuoto(fdapde::Worker_queue_hold<int> & q){
+ void vuoto(fdapde::Synchro_queue<int,fdapde::hold_wait> & q){
    std::cout<<std::this_thread::get_id()<<"dice che è: "<<q.empty()<<std::endl;
  }
 
  int main(){
 
-    fdapde::Worker_queue_hold<int> q(10);
-
-/*    //funzionamento empty() 
-    std::cout<<q.empty()<<std::endl;
-
-    q.push_back(2);
-
-    std::cout<<q.empty()<<std::endl;
-
-    q.pop_back();
-    std::cout<<q.empty()<<std::endl;
-
-    q.push_front(3);
-    std::cout<<q.empty()<<std::endl;
-
-    q.pop_front();
-    std::cout<<q.empty()<<std::endl;
-*/
-    //funzionamento di occupied_----------> !!!!! qualcosa non funziona, run piu volte a volte q.empty() ridà falso. 
+    fdapde::Synchro_queue<int,fdapde::hold_wait> q(10);
+ 
     std::vector<std::thread> pool;
     int k=0;
     for(int i=0; i<10; i++){
       if((k % 2) == 0)
-         pool.emplace_back(&fdapde::Worker_queue_hold<int>::push_front,std::ref(q),k);
+         pool.emplace_back(&fdapde::Synchro_queue<int,fdapde::hold_wait>::push_front,std::ref(q),k);
       else
-         pool.emplace_back(&fdapde::Worker_queue_hold<int>::pop_front,std::ref(q));
+         pool.emplace_back(&fdapde::Synchro_queue<int,fdapde::hold_wait>::pop_front,std::ref(q));
       k++;
     }
-    //q.print();
-    std::cout<<"vede: "<<q.empty()<<std::endl;
+    q.print();
+    std::cout<<"vede: "<<q.empty()<<"   dovrebbe vedere 1 (coda vuota 1=true)"<<std::endl;
+    q.print();
     
    
 
-    for(int i =0; i<pool.size(); i++){
+    for(size_t i =0; i<pool.size(); i++){
       pool[i].join();
     }
      return 0;
     }
-
-   //   OSS: non ce garanzia su che thread esegua prima e quindi possibile vengano fatti due pop di fila e poi due push 
-            /*questo spiega
-            root@LAPTOP-P7UDNGNK test_multithreading # ./test_empty
-            queue empty
-            vede: 0
-            4  0 0 0 0 0 0 0 0 0
-            */
-
-
-   //    con empty() basato su occupied_ capita:
-            /*
-            root@LAPTOP-P7UDNGNK test_multithreading # ./test_empty
-            vede: 0
-            0 0 0 0 0 0 0 0 0 0
-            */
-         //
-
-
-
-   //    con empty() basato su empty_queue_ stesso problema
-            /*
-            root@LAPTOP-P7UDNGNK test_multithreading # ./test_empty
-            vede: 0
-            0 0 0 0 0 0 0 0 0 0
-            */
-         // dice che coda non vuota  (vede: 0) ma non ce stato nessun doppio pop ("queue empty")
-      

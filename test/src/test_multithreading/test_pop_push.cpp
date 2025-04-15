@@ -18,13 +18,15 @@
  
  int main(){
 
+{//relax_owait
+    std::cout<<"---------------------------------test pop push con relax_nowait---------------------------------"<<std::endl;
     std::vector<int> test = {1,2,3,4,5,6};
 
-    fdapde::Worker_queue_relax<int> q1(test.begin(),test.end());
+    fdapde::Synchro_queue<int,fdapde::relax_nowait> q1(test.begin(),test.end());
 
     q1.print();
 
-    fdapde::Worker_queue_relax<int> q(10);
+    fdapde::Synchro_queue<int,fdapde::relax_nowait> q(10);
 
     //push_front()
     for (int i =1; i<11; i++){
@@ -51,6 +53,117 @@
         q.pop_back();
     std::cout<<"pop_back():  "<<std::endl;
     q.print();
+}
 
+{//relax_wait
+    std::cout<<"---------------------------------test pop push con relax_nowait---------------------------------"<<std::endl;
+    std::vector<int> test = {1,2,3,4,5,6};
+
+    fdapde::Synchro_queue<int,fdapde::relax_wait> q1(test.begin(),test.end());
+
+    q1.print();
+
+    fdapde::Synchro_queue<int,fdapde::relax_wait> q(10);
+
+    //push_front()
+    for (int i =1; i<11; i++){
+        q.push_front(i);
+    }
+    std::cout<<"push_front():  "<<std::endl;
+    q.print();
+ 
+    //pop_front
+    for(int j=1; j<11; j++)
+        q.pop_front();
+    std::cout<<"pop_front():  "<<std::endl;
+    q.print();
+
+    //push_back()
+    for (int i =1; i<11; i++){
+        q.push_back(i);
+    }
+    std::cout<<"push_back():  "<<std::endl;
+    q.print();
+ 
+    //pop_back()
+    for(int j=1; j<11; j++)
+        q.pop_back();
+    std::cout<<"pop_back():  "<<std::endl;
+    q.print();
+}
+
+{//hold_nowait
+    std::cout<<"---------------------------------test pop push con hold_nowait---------------------------------"<<std::endl;
+    std::vector<int> test = {1,2,3,4,5,6};
+
+    fdapde::Synchro_queue<int,fdapde::hold_nowait> q1(test.begin(),test.end());
+
+    q1.print();
+
+    fdapde::Synchro_queue<int,fdapde::hold_nowait> q(10);
+
+    //push_front()
+    for (int i =1; i<11; i++){
+        q.push_front(i);
+    }
+    std::cout<<"push_front():  "<<std::endl;
+    q.print();
+ 
+    //pop_front
+    for(int j=1; j<11; j++)
+        q.pop_front();
+    std::cout<<"pop_front():  "<<std::endl;
+    q.print();
+
+    //push_back()
+    for (int i =1; i<11; i++){
+        q.push_back(i);
+    }
+    std::cout<<"push_back():  "<<std::endl;
+    q.print();
+ 
+    //pop_back()
+    for(int j=1; j<11; j++)
+        q.pop_back();
+    std::cout<<"pop_back():  "<<std::endl;
+    q.print();
+}
+
+{//relax_wait
+    std::cout<<"---------------------------------test pop push con hold_wait---------------------------------"<<std::endl;
+    std::vector<int> test = {1,2,3,4,5,6};
+
+    fdapde::Synchro_queue<int,fdapde::hold_wait> q1(test.begin(),test.end());
+
+    q1.print();
+
+    fdapde::Synchro_queue<int,fdapde::hold_wait> q(10);
+
+    //push_front()
+    for (int i =1; i<11; i++){
+        q.push_front(i);
+    }
+    std::cout<<"push_front():  "<<std::endl;
+    q.print();
+ 
+    //pop_front
+    for(int j=1; j<11; j++)
+        q.pop_front();
+    std::cout<<"pop_front():  "<<std::endl;
+    q.print();
+
+    //push_back()
+    for (int i =1; i<11; i++){
+        q.push_back(i);
+    }
+    std::cout<<"push_back():  "<<std::endl;
+    q.print();
+ 
+    //pop_back()
+    for(int j=1; j<11; j++)
+        q.pop_back();
+    std::cout<<"pop_back():  "<<std::endl;
+    q.print();
+}
      return 0;
     }
