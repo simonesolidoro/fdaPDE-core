@@ -22,7 +22,7 @@ using value = std::string;
 
 int main(int argc, char** argv){
     int size_coda= std::stoi(argv[1]);
-    fdapde::Worker_queue_hold<value> q1(size_coda);
+    fdapde::Synchro_queue<value,fdapde::hold_nowait> q1(size_coda);
     value el = "ciao";
 
 //push_back() sinolo thread
