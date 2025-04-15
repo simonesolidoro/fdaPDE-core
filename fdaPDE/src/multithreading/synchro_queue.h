@@ -25,10 +25,12 @@ namespace fdapde {
 
 
 namespace internals {
-
+    
+/*definito in Synchro_queue_2.h quindi qui commentato per poter includere sia  Synchro_queue_2.h sia  Synchro_queue.h 
 //define concept (iterator of vector,array,list)
 template <typename Iterator, typename T>
 concept vector_array_list = std::contiguous_iterator<Iterator> || std::same_as<Iterator, typename std::list<T>::iterator> ;
+*/
 
 //forward declaration
 template<typename T>

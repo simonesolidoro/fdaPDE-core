@@ -34,9 +34,10 @@
 #include<chrono>
 #include<deque>
 
-// worker
+// per nuove code parzialmente specializzate
 #include "src/multithreading/synchro_queue_2.h"
-
+// per test performance su vecchie code
+#include "src/multithreading/synchro_queue.h"
 // clang-format on
 
 #endif
