@@ -672,8 +672,7 @@ namespace fdapde{
             std::optional<T> v_;
             mutable std::mutex m_el_;
             std::condition_variable cv_ready_el_; 
-            int count_push_ = 0; // per ora lasciati da vedere se possibile con stato intermedio
-            int count_pop_ = 0;
+            int count_pop_ = 0; // per ora lasciati da vedere se possibile con stato intermedio //OSS: tolto count_push perche era inutile
         };
         typedef std::vector<elem_hold> container;
         private:
@@ -768,7 +767,7 @@ namespace fdapde{
                 int h = head_; //index dove inserira elemento
                 head_ = (head_ == size_-1)? (0) : (head_ + 1); //head_++
                 empty_queue_ = false; //magari gia false quindi ridondante,ma evita if(empty_queue_) {empty_queue_ = false;} non so quale piu efficiente 
-                queue_[h].count_push_ ++;
+
                 loc.unlock();
 
                 std::unique_lock<std::mutex> loc_el(queue_[h].m_el_);
@@ -776,7 +775,7 @@ namespace fdapde{
                 if(!active_){return false;}
                 queue_[h].v_ = std::move(t); //push di elemento
                 queue_[h].state_ = false; //aggiorna stato di elem a full
-                queue_[h].count_push_ --;
+
                 queue_[h].cv_ready_el_.notify_one(); // notifica pop dormiente su stesso elemento
                 loc_el.unlock();
             
@@ -822,7 +821,6 @@ namespace fdapde{
                 int new_tail = (tail_ == 0)? (size_-1) : (tail_ -1);
                 empty_queue_ = false; //magari gia false quindi ridondante,ma evita if(empty_queue_) {empty_queue_ = false;} non so quale piu efficiente 
                 tail_ = new_tail;
-                queue_[new_tail].count_push_ ++;
                 loc.unlock();
 
                 std::unique_lock<std::mutex> loc_el(queue_[new_tail].m_el_);
@@ -830,7 +828,7 @@ namespace fdapde{
                 if(!active_){return false;}
                 queue_[new_tail].v_ = std::move(t);
                 queue_[new_tail].state_ = false;
-                queue_[new_tail].count_push_ --;
+
                 queue_[new_tail].cv_ready_el_.notify_one();
                 loc_el.unlock();
 
@@ -904,8 +902,7 @@ namespace fdapde{
             std::optional<value_type> v_;
             mutable std::mutex m_el_;
             std::condition_variable cv_ready_el_; 
-            int count_push_ = 0; // per ora lasciati da vedere se possibile con stato intermedio
-            int count_pop_ = 0;
+            int count_pop_ = 0; // per ora lasciati da vedere se possibile con stato intermedio //OSS: tolto count_push tanto non serve basta verificare che count_pop sia a 0. prima serviva perche la cv_empty andava notificata da pop solo se count_push = 0. scherzo non serviva nemmeno prima bastava notificare quando count_pop era =0
         };
         typedef std::vector<elem_hold> container;
         private:
@@ -1002,7 +999,7 @@ namespace fdapde{
                 head_ = (head_ == size_-1)? (0) : (head_ + 1); //head_++
                 empty_queue_ = false; //magari gia false quindi ridondante,ma evita if(empty_queue_) {empty_queue_ = false;} non so quale piu efficiente 
                 cv_can_now_.notify_one(); // for pop_or_wait
-                queue_[h].count_push_ ++;
+
                 loc.unlock();
 
                 std::unique_lock<std::mutex> loc_el(queue_[h].m_el_);
@@ -1011,7 +1008,7 @@ namespace fdapde{
                 queue_[h].v_ = std::move(t); //push di elemento
                 queue_[h].state_ = false; //aggiorna stato di elem a full
                 queue_[h].cv_ready_el_.notify_one(); // notifica pop dormiente su stesso elemento
-                queue_[h].count_push_ --;
+
                 loc_el.unlock();
             
                 return true; 
@@ -1026,7 +1023,7 @@ namespace fdapde{
                 head_ = (head_ == size_-1)? (0) : (head_ + 1);
                 empty_queue_ = false; //magari gia false quindi ridondante,ma evita if(empty_queue_) {empty_queue_ = false;} non so quale piu efficiente 
                 cv_can_now_.notify_one(); // for pop_or_wait
-                queue_[h].count_push_ ++;
+
                 loc.unlock();
 
                 std::unique_lock<std::mutex> loc_el(queue_[h].m_el_);
@@ -1036,7 +1033,7 @@ namespace fdapde{
                 queue_[h].v_ = std::move(t);
                 queue_[h].state_ = false; //aggiorna stato di elem con release
                 queue_[h].cv_ready_el_.notify_one();
-                queue_[h].count_push_ --;
+
                 loc_el.unlock();
             
                 return true; 
@@ -1051,7 +1048,6 @@ namespace fdapde{
                 head_ = (head_ == size_-1)? (0) : (head_ + 1);
                 empty_queue_ = false; //magari gia false quindi ridondante,ma evita if(empty_queue_) {empty_queue_ = false;} non so quale piu efficiente 
                 cv_can_now_.notify_one(); // for pop_or_wait
-                queue_[h].count_push_ ++;
                 loc.unlock();
 
                 std::unique_lock<std::mutex> loc_el(queue_[h].m_el_);
@@ -1061,7 +1057,7 @@ namespace fdapde{
                 queue_[h].v_ = std::move(t);
                 queue_[h].state_ = false; //aggiorna stato di elem con release
                 queue_[h].cv_ready_el_.notify_one();
-                queue_[h].count_push_ --;
+
                 loc_el.unlock();
             
                 return true; 
@@ -1171,7 +1167,6 @@ namespace fdapde{
                 empty_queue_ = false; //magari gia false quindi ridondante,ma evita if(empty_queue_) {empty_queue_ = false;} non so quale piu efficiente 
                 tail_ = new_tail;
                 cv_can_now_.notify_one();
-                queue_[new_tail].count_push_ ++;
                 loc.unlock();
 
                 std::unique_lock<std::mutex> loc_el(queue_[new_tail].m_el_);
@@ -1180,7 +1175,6 @@ namespace fdapde{
                 queue_[new_tail].v_ = std::move(t);
                 queue_[new_tail].state_ = false;
                 queue_[new_tail].cv_ready_el_.notify_one();
-                queue_[new_tail].count_push_ --;
                 loc_el.unlock();
 
                 return true;
@@ -1195,7 +1189,6 @@ namespace fdapde{
                 empty_queue_ = false; //magari gia false quindi ridondante,ma evita if(empty_queue_) {empty_queue_ = false;} non so quale piu efficiente 
                 tail_ = new_tail;
                 cv_can_now_.notify_one();
-                queue_[new_tail].count_push_ ++;
                 loc.unlock();
 
                 std::unique_lock<std::mutex> loc_el(queue_[new_tail].m_el_);
@@ -1204,7 +1197,6 @@ namespace fdapde{
                 queue_[new_tail].v_ = std::move(t);
                 queue_[new_tail].state_ = false;
                 queue_[new_tail].cv_ready_el_.notify_one();
-                queue_[new_tail].count_push_ --;
                 loc_el.unlock();
                 
                 return true;
@@ -1218,7 +1210,6 @@ namespace fdapde{
                 empty_queue_ = false; //magari gia false quindi ridondante,ma evita if(empty_queue_) {empty_queue_ = false;} non so quale piu efficiente 
                 tail_ = new_tail;
                 cv_can_now_.notify_one();
-                queue_[new_tail].count_push_ ++;
                 loc.unlock();
 
                 std::unique_lock<std::mutex> loc_el(queue_[new_tail].m_el_);
@@ -1227,7 +1218,6 @@ namespace fdapde{
                 queue_[new_tail].v_ = std::move(t);
                 queue_[new_tail].state_ = false;
                 queue_[new_tail].cv_ready_el_.notify_one();
-                queue_[new_tail].count_push_ --;
                 loc_el.unlock();
                 
                 return true;
