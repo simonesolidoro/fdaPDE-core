@@ -20,7 +20,7 @@
 using value = std::string;
 
 // pop_front di n elementi per worker queue 
-void pop_front_di_n_elem(fdapde::Worker_queue_relax<value> & q,int n){
+void pop_front_di_n_elem(fdapde::Synchro_queue<value,fdapde::relax_nowait> & q,int n){
     for (int j=0; j<n; j++){
         q.pop_front();
     }
@@ -32,11 +32,11 @@ int main(int argc, char** argv){
     int n_thread = std::stoi(argv[2]);
     int n_singolo= size_coda / n_thread;
 
-    fdapde::Worker_queue_relax<value> q1(size_coda);
+    fdapde::Synchro_queue<value,fdapde::relax_nowait> q1(size_coda);
     value el = "ciao";
 //pop_front() multithreading
 
-    fdapde::Worker_queue_relax<value> q2(size_coda);
+    fdapde::Synchro_queue<value,fdapde::relax_nowait> q2(size_coda);
 
     //popolo
     for (int i=0; i<size_coda; i++){
