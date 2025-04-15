@@ -38,7 +38,6 @@ template<typename T>
 struct elem_hold;
 
 // classe base 
-//TODO: inutile 3 template argomenti, basta tipo elemento (E) che sottointende memory_order. togliere Memory_order U e modificare codice di conseguenza
 template <typename T, typename E>  //TODO: costrain concept per garantire che E abbia membro state_ e v_, usati per costruttore da iteratori di conteiner
 class Worker_queue{
     using value_type = T;
@@ -52,9 +51,9 @@ protected:
     mutable std::mutex m_;
     //OSS: CORREZIONE: basta ache qui 1 cv, perchè simile a cv_ready_el vedi appunti per spiegazione
     std::condition_variable cv_can_now_;
-    bool active_ = true; //TODO: valutare se ora che or_wait meotdi hanno wait_for serve ancora active e distruttore, penso di si.
+    bool active_ = true; //TODO: valutare se ora che or_wait meotdi hanno wait_for serve ancora active e distruttore, penso di si. SI: active e meccanismo tipo raii serve per sicurezza in caso si throw exception
 public:
-    //enumerator  state of elem
+    //enumerator state of elem.  TODO: solo per relax, quidi forse da mettere in relax e non base. oppure usare Empty e Full in hold al posto di bool per stato binario
     static constexpr char Empty = 'e';
     static constexpr char Busy = 'b';
     static constexpr char Full = 'f';
@@ -143,12 +142,15 @@ public:
         std::cout<<std::endl;
     }
 };
+
+//elemeto di worker_queue_relax (std::vector<elem_relax<T>> queue_)
 template<typename T>
 struct elem_relax{
     std::atomic<char> state_ = fdapde::internals::Worker_queue<T,elem_relax>::Empty; //
     std::optional<T> v_;
 };
 
+//elemeto di worker_queue_hold (std::vector<elem_hold<T>> queue_)
 template<typename T>
 struct elem_hold{
     bool state_ = true; //stato binario true = empty / false = full
@@ -170,6 +172,7 @@ struct elem_hold{
     template <typename T>
     class Worker_queue_relax : public internals::Worker_queue<T, internals::elem_relax<T>>{
         using value_type = T;
+        //base data member
         using internals::Worker_queue<T, internals::elem_relax<T>>::queue_;
         using internals::Worker_queue<T, internals::elem_relax<T>>::head_;
         using internals::Worker_queue<T, internals::elem_relax<T>>::tail_;
@@ -213,7 +216,6 @@ struct elem_hold{
                 return true; 
             }
             
-            //TODO: tutti metodi or wait da capire semantica
             bool push_front_or_wait(value_type t, int s){
                 std::unique_lock<std::mutex> loc(m_);
                 bool flag = cv_can_now_.wait_for(loc,std::chrono::seconds(s),[this](){return !this->active_ ||  this->head_ != this->tail_ || this->empty_queue_;});
@@ -242,9 +244,8 @@ struct elem_hold{
                     std::cerr<<"queue empty"<<std::endl;
                     return std::nullopt;
                 }
-                // coda non vuota ma magari un push_back ha modificato indici e non ancora inserito elemento (caso critico coda vuota poi push_back poi pop_front)
-                // new_head = index di elemento da rimuovere
-                int new_head = (head_== 0)? (size_-1) : (head_-1);
+
+                int new_head = (head_== 0)? (size_-1) : (head_-1); // new_head = index di elemento da rimuovere
 
                 if(queue_[new_head].state_.load(std::memory_order_acquire) != Full)
                     return std::nullopt;
@@ -426,6 +427,7 @@ struct elem_hold{
                     e.cv_empty_.notify_all();
                 } 
             }
+            
             bool push_front(value_type t){
                 std::unique_lock<std::mutex> loc(m_);
                 if (head_ == tail_ && !empty_queue_ ){// coda piena
