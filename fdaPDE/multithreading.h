@@ -38,6 +38,7 @@
 // per nuove code parzialmente specializzate
 #include "src/multithreading/synchro_queue_2.h"
 #include "src/multithreading/Synchro_queue_wait_2.h"
+#include "src/multithreading/deque.h"
 
 // clang-format on
 

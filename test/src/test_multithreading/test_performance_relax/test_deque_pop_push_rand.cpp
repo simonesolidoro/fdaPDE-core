@@ -21,7 +21,7 @@ using value = std::string;
 
 
 // push_back di n elementi per worker queue
-void operation_in_thread(fdapde::Synchro_queue<value,fdapde::relax_nowait> & q, std::vector<int>::iterator begin,std::vector<int>::iterator end, value el){
+void operation_in_thread(Worker_queue_deque<value>& q, std::vector<int>::iterator begin,std::vector<int>::iterator end, value el){
     /*
     for (auto operation=begin; operation<end; operation++) {
         std::cout << *operation << std::endl;
@@ -67,7 +67,7 @@ int main(int argc, char** argv){
     }
 
 
-    fdapde::Synchro_queue<value,fdapde::relax_nowait> q(size_coda*2);
+    Worker_queue_deque<value>q;
 
     for (int j=0; j<size_coda; j++) {
         q.push_back(el);
