@@ -29,6 +29,7 @@
 #include<concepts>
 #include<list>
 
+
 // per debug e test momentaneo
 #include<iostream>
 #include<chrono>
@@ -36,6 +37,7 @@
 
 // per nuove code parzialmente specializzate
 #include "src/multithreading/synchro_queue_2.h"
+#include "src/multithreading/synchro_queue_wait_2.h"
 
 // clang-format on
 
