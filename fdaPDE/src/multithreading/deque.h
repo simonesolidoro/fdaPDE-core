@@ -5,7 +5,7 @@
 #ifndef DEQUE_H
 #define DEQUE_H
 
-#include<fdaPDE/multithreading.h>
+#include "header_check.h"
 
 // worker_queue con deque
 template <typename T>
