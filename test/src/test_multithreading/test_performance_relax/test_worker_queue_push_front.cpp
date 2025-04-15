@@ -18,43 +18,22 @@
 
 
 using value = std::string;
-
-
-// push_back di n elementi per worker queue 
-void push_back_di_n_elem(fdapde::Worker_queue<value> & q,int n, value el){
-    for (int j=0; j<n; j++){
-        q.push_back(el);
-    }
-};
-
-
 int main(int argc, char** argv){
     int size_coda= std::stoi(argv[1]);
 
-    int n_thread = std::stoi(argv[2]);
-    int n_singolo= size_coda / n_thread;
-
-    fdapde::Worker_queue<value> q1(size_coda);
+    fdapde::Worker_queue_relax<value> q1(size_coda);
     value el = "ciao";
 
-    //push_back() multithreading
-   fdapde::Worker_queue<value> q(size_coda);
+//push_front() singolo thread
 
-    auto start = std::chrono::high_resolution_clock::now();  
-    //worker_queue push_back parallelo
-    std::vector<std::thread> thread_pool;
-    for (int j=0; j<n_thread; j++){
-        thread_pool.emplace_back(push_back_di_n_elem,std::ref(q),n_singolo, el);
+    auto start = std::chrono::high_resolution_clock::now();
+    for(int j=0; j<size_coda-1; j++){
+        q1.push_front(el);
     }
 
-    for (int k= 0; k<n_thread; k++){
-        thread_pool[k].join();
-    }
-    //q1.print(); //per debug
     auto end = std::chrono::high_resolution_clock::now();
     auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start);  
-    //std::cout<<"push_back in worker_queue di n_elementi: "<<size_coda<<" con n_thread:"<<n_thread<<" impiegato:"<<duration.count()<< " microsecondi\n";
+    //std::cout<<"push_frot worker_queue di n_elementi: "<<size_coda<<" impiegato:"<<duration.count()<< " microsecondi\n";
     std::cout<<duration.count()<<",";
     return 0;
 }
-

@@ -20,10 +20,10 @@
 using value = std::string;
 
 
-// push_front di n elementi per worker queue 
-void push_front_di_n_elem(fdapde::Worker_queue<value> & q,int n, value el){
+// pop_back di n elementi per worker queue 
+void pop_back_di_n_elem(fdapde::Worker_queue_hold<value> & q,int n){
     for (int j=0; j<n; j++){
-        q.push_front(el);
+        q.pop_back();
     }
 };
 
@@ -34,30 +34,32 @@ int main(int argc, char** argv){
     int n_thread = std::stoi(argv[2]);
     int n_singolo= size_coda / n_thread;
 
-    fdapde::Worker_queue<value> q1(size_coda);
+    fdapde::Worker_queue_hold<value> q1(size_coda);
     value el = "ciao";
 
-//push_back() multithreading
+//pop_back() multithreading
 
-    fdapde::Worker_queue<value> q(size_coda);
+    fdapde::Worker_queue_hold<value> q2(size_coda);
 
-    auto start = std::chrono::high_resolution_clock::now();  
-    //worker_queue push_back parallelo
-    std::vector<std::thread> thread_pool;
+    //popolo
+    for (int i=0; i<size_coda; i++){
+        q2.push_front(el);
+    }
+
+    auto start2 = std::chrono::high_resolution_clock::now();
+    //worker_queue pop_back parallelo
+    std::vector<std::thread> thread_pool2;
     for (int j=0; j<n_thread; j++){
-        thread_pool.emplace_back(push_front_di_n_elem,std::ref(q),n_singolo, el);
+        thread_pool2.emplace_back(pop_back_di_n_elem,std::ref(q2),n_singolo);
     }
 
     for (int k= 0; k<n_thread; k++){
-        thread_pool[k].join();
-    }
-    //q1.print(); //per debug
-    auto end = std::chrono::high_resolution_clock::now();
-    auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start);  
-    //std::cout<<"push_back in worker_queue di n_elementi: "<<size_coda<<" con n_thread:"<<n_thread<<" impiegato:"<<duration.count()<< " microsecondi\n";
-    std::cout<<duration.count()<<",";
-    
-
+        thread_pool2[k].join();
+    }    
+    auto end2 = std::chrono::high_resolution_clock::now();
+    auto duration2 = std::chrono::duration_cast<std::chrono::microseconds>(end2 - start2);  
+    //std::cout<<"pop_back() in worker_queue di n_elementi: "<<size_coda<<" con n_thread:"<<n_thread<<" impiegato:"<<duration2.count()<< " microsecondi\n";
+    std::cout<<duration2.count()<<",";
     return 0;
 }
 

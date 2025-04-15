@@ -16,7 +16,7 @@
 
 #include<fdaPDE/multithreading.h>
 
-void pushbackconc(std::vector<int> V, fdapde::Worker_queue<int> & q){
+void pushbackconc(std::vector<int> V, fdapde::Worker_queue_hold<int> & q){
     for (auto x: V){
         q.push_back(x);
     }
@@ -25,7 +25,7 @@ void pushbackconc(std::vector<int> V, fdapde::Worker_queue<int> & q){
 
 int main(){
     int size_coda=10;
-    fdapde::Worker_queue<int> q1(size_coda);
+    fdapde::Worker_queue_hold<int> q1(size_coda);
     
 /*
     // push_back concorrente semplice

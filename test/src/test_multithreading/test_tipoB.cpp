@@ -15,16 +15,17 @@
  // along with this program.  If not, see <http://www.gnu.org/licenses/>.
  
  #include<fdaPDE/multithreading.h>
+
+ //per test cocept per costrain E to have member v_ e state_
+ struct eee{
+  int v_;
+  int state_;
+};
  
  int main(){
 
-    std::vector<int> test = {1,2,3,4,5,6};
 
-    fdapde::Worker_queue_relax<int> q1(test.begin(),test.end());
-
-    q1.print();
-
-    fdapde::Worker_queue_relax<int> q(10);
+    fdapde::Worker_queue_hold<int> q(10);
 
     //push_front()
     for (int i =1; i<11; i++){
@@ -32,7 +33,7 @@
     }
     std::cout<<"push_front():  "<<std::endl;
     q.print();
- 
+
     //pop_front
     for(int j=1; j<11; j++)
         q.pop_front();
@@ -45,12 +46,43 @@
     }
     std::cout<<"push_back():  "<<std::endl;
     q.print();
- 
+
     //pop_back()
     for(int j=1; j<11; j++)
         q.pop_back();
     std::cout<<"pop_back():  "<<std::endl;
     q.print();
 
+    std::cout<<"test push-pop-push-pop...."<<std::endl;
+
+    std::vector<std::thread> pool;
+    int k=0;
+    for(int i=0; i<10; i++){
+      if((k % 2) == 0)
+         pool.emplace_back(&fdapde::Worker_queue_hold<int>::push_front,std::ref(q),k);
+      else
+         pool.emplace_back(&fdapde::Worker_queue_hold<int>::pop_front,std::ref(q));
+      k++;
+      q.print();
+    }
+    
+
+    for(int i =0; i<pool.size(); i++){
+      pool[i].join();
+    }
+    q.resize(3);
+    q.print();
+    q.clear();
+    q.print();
+    q.size();
+
+    std::vector<int> v={1,2,3};
+    fdapde::Worker_queue_hold<int> p(v.begin(),v.end());
+    p.print();
+    fdapde::Worker_queue_relax<int> p1(v.begin(),v.end());
+    p1.print();
+
+    //test concept on E 
+    fdapde::Worker_queue<int,fdapde::Memory_order::relax,eee> w;
      return 0;
     }

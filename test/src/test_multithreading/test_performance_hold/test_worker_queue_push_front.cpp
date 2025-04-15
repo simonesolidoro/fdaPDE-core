@@ -14,29 +14,26 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-#ifndef __FDAPDE_MULTITHREADING_MODULE_H__
-#define __FDAPDE_MULTITHREADING_MODULE_H__
+#include<fdaPDE/multithreading.h>
 
-// clang-format off
-#include<vector>
-#include<mutex>
-#include<thread>
-#include<memory>
-#include<optional>
-#include<atomic>
-#include<condition_variable>
-#include<functional>
-#include<concepts>
-#include<list>
 
-// per debug e test momentaneo
-#include<iostream>
-#include<chrono>
-#include<deque>
+using value = std::string;
+int main(int argc, char** argv){
+    int size_coda= std::stoi(argv[1]);
 
-// worker
-#include "src/multithreading/synchro_queue.h"
+    fdapde::Worker_queue_hold<value> q1(size_coda);
+    value el = "ciao";
 
-// clang-format on
+//push_front() singolo thread
 
-#endif
+    auto start = std::chrono::high_resolution_clock::now();
+    for(int j=0; j<size_coda-1; j++){
+        q1.push_front(el);
+    }
+
+    auto end = std::chrono::high_resolution_clock::now();
+    auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start);  
+    //std::cout<<"push_frot worker_queue di n_elementi: "<<size_coda<<" impiegato:"<<duration.count()<< " microsecondi\n";
+    std::cout<<duration.count()<<",";
+    return 0;
+}

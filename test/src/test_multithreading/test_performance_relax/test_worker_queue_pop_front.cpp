@@ -15,25 +15,30 @@
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 #include<fdaPDE/multithreading.h>
-#include<list>
-
-int main(){
-    using value = int;
-    value el = 1;
-    std::list<value> v ={el,el,el};
-
-    fdapde::Worker_queue_hold<int> q(v.begin(),v.end());
-    q.print();
-    std::vector<value> v1 ={el,el,el};
-
-    fdapde::Worker_queue_hold<int> q1(v1.begin(),v1.end());
-    q1.print();
-    std::array<value,3> v2 ={el,el,el};
-
-    fdapde::Worker_queue_hold<int> q2(v2.begin(),v2.end());
-    q2.print();
 
 
-    return 1;
+using value = std::string;
 
+int main(int argc, char** argv){
+    int size_coda= std::stoi(argv[1]);
+
+    fdapde::Worker_queue_relax<value> q1(size_coda);
+    value el = "ciao";
+
+//pop_front() singolo thread
+   //popolo
+    for (int i=0; i<size_coda; i++){
+        q1.push_front(el);
+    }
+
+    auto start2 = std::chrono::high_resolution_clock::now();
+    for(int j=0; j<size_coda-1; j++){
+        q1.pop_front();
+    }
+
+    auto end2 = std::chrono::high_resolution_clock::now();
+    auto duration2 = std::chrono::duration_cast<std::chrono::microseconds>(end2 - start2);  
+    //std::cout<<"pop_frot worker_queue di n_elementi: "<<size_coda<<" impiegato:"<<duration2.count()<< " microsecondi\n";
+    std::cout<<duration2.count()<<",";
+    return 0;
 }
