@@ -235,45 +235,12 @@ namespace fdapde{
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-    
-
     template <typename T>  
     class Synchro_queue<T,hold_nowait>{
         using value_type = T;
         //elemeto di worker_queue_hold (std::vector<elem_hold<T>> queue_)
         struct elem_hold{
-            std::atomic<bool> state_ = true; //stato binario true = empty / false = full
+            bool state_ = true; //stato binario true = empty / false = full
             std::optional<T> v_;
             mutable std::mutex m_el_;
             std::condition_variable cv_ready_to_pop_;
@@ -378,10 +345,10 @@ namespace fdapde{
                 loc.unlock();
 
                 std::unique_lock<std::mutex> loc_el(queue_[h].m_el_);
-                queue_[h].cv_ready_to_push_.wait(loc_el,[this,h](){return queue_[h].state_.load(std::memory_order_acquire);}); // to be sure state_ = true (empty)
+                queue_[h].cv_ready_to_push_.wait(loc_el,[this,h](){return queue_[h].state_;}); // to be sure state_ = true (empty)
                 if(!active_){return false;}
                 queue_[h].v_ = std::move(t); //push di elemento
-                queue_[h].state_.store(false,std::memory_order_release); //aggiorna stato di elem a full
+                queue_[h].state_ = false; //aggiorna stato di elem a full
 
                 queue_[h].cv_ready_to_pop_.notify_one(); // notifica pop dormiente su stesso elemento
                 loc_el.unlock();
@@ -405,12 +372,12 @@ namespace fdapde{
 
                 //OSS: importate lasciare new_head perche poi head_ potrebbe essere modificata da altri thread
                 std::unique_lock<std::mutex> loc_el(queue_[new_head].m_el_);
-                queue_[new_head].cv_ready_to_pop_.wait(loc_el,[this,new_head](){return !queue_[new_head].state_.load(std::memory_order_acquire);});
+                queue_[new_head].cv_ready_to_pop_.wait(loc_el,[this,new_head](){return !queue_[new_head].state_;});
                 if(!active_) return std::nullopt;
                 // pop 
                 value_type ret = std::move(queue_[new_head].v_.value());
                 queue_[new_head].v_ = std::nullopt;
-                queue_[new_head].state_.store(true,std::memory_order_release);
+                queue_[new_head].state_ = true;
                 queue_[new_head].count_pop_ --;
                 queue_[new_head].cv_ready_to_push_.notify_one();
                 loc_el.unlock();                
@@ -431,10 +398,10 @@ namespace fdapde{
                 loc.unlock();
 
                 std::unique_lock<std::mutex> loc_el(queue_[new_tail].m_el_);
-                queue_[new_tail].cv_ready_to_push_.wait(loc_el,[this,new_tail](){return queue_[new_tail].state_.load(std::memory_order_acquire);});
+                queue_[new_tail].cv_ready_to_push_.wait(loc_el,[this,new_tail](){return queue_[new_tail].state_;});
                 if(!active_){return false;}
                 queue_[new_tail].v_ = std::move(t);
-                queue_[new_tail].state_.store(false,std::memory_order_release);
+                queue_[new_tail].state_ = false;
 
                 queue_[new_tail].cv_ready_to_pop_.notify_one();
                 loc_el.unlock();
@@ -456,12 +423,12 @@ namespace fdapde{
                 loc.unlock();
 
                 std::unique_lock<std::mutex> loc_el(queue_[t].m_el_);
-                queue_[t].cv_ready_to_pop_.wait(loc_el,[this,t](){return !queue_[t].state_.load(std::memory_order_acquire);});
+                queue_[t].cv_ready_to_pop_.wait(loc_el,[this,t](){return !queue_[t].state_;});
                 if(!active_) return std::nullopt;
                 // sostituisce in posto che viene liberato il valore di defaul di value_type
                 value_type ret = std::move(queue_[t].v_.value());
                 queue_[t].v_ = std::nullopt;
-                queue_[t].state_.store(true,std::memory_order_release);
+                queue_[t].state_ = true;
                 queue_[t].count_pop_ --;
                 queue_[t].cv_ready_to_push_.notify_one();
                 loc_el.unlock();
