@@ -41,7 +41,8 @@ namespace fdapde{
             int size_ = 0;
             bool empty_queue_ = true; // per distinguere head==tail-> vuota / head==tail-> piena
             mutable std::mutex m_;
-            std::condition_variable cv_can_now_;
+            std::condition_variable cv_can_pop_;
+            std::condition_variable cv_can_push_;
             bool active_ = true; 
 
         public:
@@ -69,7 +70,8 @@ namespace fdapde{
             }
             ~Synchro_queue(){
                 active_ = false;
-                cv_can_now_.notify_all();
+                cv_can_pop_.notify_all();
+                cv_can_push_.notify_all();
                 
             }
         
@@ -134,13 +136,13 @@ namespace fdapde{
                 //push di elemento
                 queue_[h].v_ = std::move(t);
                 queue_[h].state_.store(Full, std::memory_order_release); //aggiorna stato di elem con release.  SE un pop vede lo stato = FUll grazie a release allora sicuro vede anche l'elemeto pushato
-                cv_can_now_.notify_one(); 
+                cv_can_pop_.notify_one(); 
                 return true; 
             }
             
             bool push_front_or_wait_for(value_type t, int s){
                 std::unique_lock<std::mutex> loc(m_);
-                bool flag = cv_can_now_.wait_for(loc,std::chrono::seconds(s),[this](){return !this->active_ ||  this->head_ != this->tail_ || this->empty_queue_;});
+                bool flag = cv_can_push_.wait_for(loc,std::chrono::seconds(s),[this](){return !this->active_ ||  this->head_ != this->tail_ || this->empty_queue_;});
                 if(!active_){return false;}
                 if(!flag){return false;}
                 int h = head_; //index dove inserira elemento
@@ -156,13 +158,13 @@ namespace fdapde{
                 queue_[h].v_ = std::move(t);
                 queue_[h].state_.store(Full, std::memory_order_release); //aggiorna stato di elem con release
 
-                cv_can_now_.notify_one();
+                cv_can_pop_.notify_one();
                 return true; 
             }
 
             bool push_front_or_wait(value_type t){
                 std::unique_lock<std::mutex> loc(m_);
-                cv_can_now_.wait(loc,[this](){return !this->active_ ||  this->head_ != this->tail_ || this->empty_queue_;});
+                cv_can_push_.wait(loc,[this](){return !this->active_ ||  this->head_ != this->tail_ || this->empty_queue_;});
                 if(!active_){return false;}
                 int h = head_; //index dove inserira elemento
                 if(queue_[h].state_.load(std::memory_order_acquire) != Empty)
@@ -177,7 +179,7 @@ namespace fdapde{
                 queue_[h].v_ = std::move(t);
                 queue_[h].state_.store(Full, std::memory_order_release); //aggiorna stato di elem con release
 
-                cv_can_now_.notify_one();
+                cv_can_pop_.notify_one();
                 return true; 
             }
 
@@ -203,7 +205,7 @@ namespace fdapde{
                 queue_[new_head].v_ = std::nullopt;
                 queue_[new_head].state_.store(Empty, std::memory_order_release);
 
-                cv_can_now_.notify_one();
+                cv_can_push_.notify_one();
 
                 return ret;
                 
@@ -211,7 +213,7 @@ namespace fdapde{
 
             std::optional<value_type> pop_front_or_wait_for(int s){
                 std::unique_lock<std::mutex> loc(m_);
-                bool flag = cv_can_now_.wait_for(loc,std::chrono::seconds(s),[this](){return !this->active_ || !this->empty_queue_;});
+                bool flag = cv_can_pop_.wait_for(loc,std::chrono::seconds(s),[this](){return !this->active_ || !this->empty_queue_;});
                 if(!active_) return std::nullopt;
                 if(!flag){return std::nullopt;}
                 int new_head = (head_== 0)? (size_-1) : (head_-1);
@@ -228,14 +230,14 @@ namespace fdapde{
                 queue_[new_head].v_ = std::nullopt;
                 queue_[new_head].state_.store(Empty, std::memory_order_release);
                 
-                cv_can_now_.notify_one();
+                cv_can_push_.notify_one();
 
                 return ret;
             }
 
             std::optional<value_type> pop_front_or_wait(){
                 std::unique_lock<std::mutex> loc(m_);
-                cv_can_now_.wait(loc,[this](){return !this->active_ || !this->empty_queue_;});
+                cv_can_pop_.wait(loc,[this](){return !this->active_ || !this->empty_queue_;});
                 if(!active_) return std::nullopt;
 
                 int new_head = (head_== 0)? (size_-1) : (head_-1);
@@ -251,7 +253,7 @@ namespace fdapde{
                 queue_[new_head].v_ = std::nullopt;
                 queue_[new_head].state_.store(Empty, std::memory_order_release);
                 
-                cv_can_now_.notify_one();
+                cv_can_push_.notify_one();
 
                 return ret;
             }
@@ -276,13 +278,13 @@ namespace fdapde{
                 queue_[new_tail].v_ = std::move(t);
                 queue_[new_tail].state_.store(Full, std::memory_order_release);
                 
-                cv_can_now_.notify_one();
+                cv_can_pop_.notify_one();
                 return true;
             }
 
             bool push_back_or_wait_for(value_type t, int s){
                 std::unique_lock<std::mutex> loc(m_);
-                bool flag = cv_can_now_.wait_for(loc,std::chrono::seconds(s),[this](){return !this->active_ || this->head_ != this->tail_ || this->empty_queue_;});
+                bool flag = cv_can_push_.wait_for(loc,std::chrono::seconds(s),[this](){return !this->active_ || this->head_ != this->tail_ || this->empty_queue_;});
                 if(!active_){return false;}
                 if(!flag){return false;}
                 int new_tail = (tail_ == 0)? (size_-1) : (tail_ -1);
@@ -297,13 +299,13 @@ namespace fdapde{
                 queue_[new_tail].v_ = std::move(t);
                 queue_[new_tail].state_.store(Full, std::memory_order_release);
                 
-                cv_can_now_.notify_one();
+                cv_can_pop_.notify_one();
                 return true;
             }
 
             bool push_back_or_wait(value_type t){
                 std::unique_lock<std::mutex> loc(m_);
-                cv_can_now_.wait(loc,[this](){return !this->active_ || this->head_ != this->tail_ || this->empty_queue_;});
+                cv_can_push_.wait(loc,[this](){return !this->active_ || this->head_ != this->tail_ || this->empty_queue_;});
                 if(!active_){return false;}
 
                 int new_tail = (tail_ == 0)? (size_-1) : (tail_ -1);
@@ -317,7 +319,7 @@ namespace fdapde{
                 queue_[new_tail].v_ = std::move(t);
                 queue_[new_tail].state_.store(Full, std::memory_order_release);
                 
-                cv_can_now_.notify_one();
+                cv_can_pop_.notify_one();
                 return true;
             }
 
@@ -344,13 +346,13 @@ namespace fdapde{
                 queue_[t].v_ = std::nullopt;
                 queue_[t].state_.store(Empty, std::memory_order_release);
 
-                cv_can_now_.notify_one();
+                cv_can_push_.notify_one();
                 return ret;
             }
 
             std::optional<value_type> pop_back_or_wait_for(int s){
                 std::unique_lock<std::mutex> loc(m_);
-                bool flag = cv_can_now_.wait_for(loc,std::chrono::seconds(s),[this](){return !this->active_ || !this->empty_queue_;}); // loc mutex, controllo condizione in lamda, se falsa unlock mutex e wait se vera va avanti
+                bool flag = cv_can_pop_.wait_for(loc,std::chrono::seconds(s),[this](){return !this->active_ || !this->empty_queue_;}); // loc mutex, controllo condizione in lamda, se falsa unlock mutex e wait se vera va avanti
                 //copia codice di pop_back() tranne check se coda vuota, alternativa a chiamata diretta di pop_back che però porta a dover usare recursive mutex (definito dal libro come il male assoluto)
                 if(!active_) return std::nullopt; //se chiamato distruttore distruttore notifica a tutti di verificare condizione wait 
                 if(!flag){return std::nullopt;}
@@ -370,13 +372,13 @@ namespace fdapde{
                 queue_[t].v_ = std::nullopt;
                 queue_[t].state_.store(Empty, std::memory_order_release);
 
-                cv_can_now_.notify_one();
+                cv_can_push_.notify_one();
                 return ret;
             }
 
             std::optional<value_type> pop_back_or_wait(){
                 std::unique_lock<std::mutex> loc(m_);
-                cv_can_now_.wait(loc,[this](){return !this->active_ || !this->empty_queue_;}); // loc mutex, controllo condizione in lamda, se falsa unlock mutex e wait se vera va avanti
+                cv_can_pop_.wait(loc,[this](){return !this->active_ || !this->empty_queue_;}); // loc mutex, controllo condizione in lamda, se falsa unlock mutex e wait se vera va avanti
                 //copia codice di pop_back() tranne check se coda vuota, alternativa a chiamata diretta di pop_back che però porta a dover usare recursive mutex (definito dal libro come il male assoluto)
                 if(!active_) return std::nullopt; //se chiamato distruttore distruttore notifica a tutti di verificare condizione wait 
 
@@ -395,7 +397,7 @@ namespace fdapde{
                 queue_[t].v_ = std::nullopt;
                 queue_[t].state_.store(Empty, std::memory_order_release);
 
-                cv_can_now_.notify_one();
+                cv_can_push_.notify_one();
                 return ret;
             }
 
@@ -450,7 +452,8 @@ namespace fdapde{
             int size_ = 0;
             bool empty_queue_ = true; // per distinguere head==tail-> vuota / head==tail-> piena
             mutable std::mutex m_;
-            std::condition_variable cv_can_now_;
+            std::condition_variable cv_can_pop_;
+            std::condition_variable cv_can_push_;
             bool active_ = true; //TODO: valutare se ora che or_wait meotdi hanno wait_for serve ancora active e distruttore, penso di si. SI: active e meccanismo tipo raii serve per sicurezza in caso si throw exception
         public:
             // default constructor credo poi da associare a metodo resize()
@@ -477,7 +480,8 @@ namespace fdapde{
             }
             ~Synchro_queue(){ 
                 active_ = false;
-                cv_can_now_.notify_all();  
+                cv_can_pop_.notify_all();
+                cv_can_push_.notify_all();  
                 for(elem_hold & e : queue_){
                     e.cv_ready_el_.notify_all();
                 } 
@@ -536,7 +540,7 @@ namespace fdapde{
                 int h = head_; //index dove inserira elemento
                 head_ = (head_ == size_-1)? (0) : (head_ + 1); //head_++
                 empty_queue_ = false; //magari gia false quindi ridondante,ma evita if(empty_queue_) {empty_queue_ = false;} non so quale piu efficiente 
-                cv_can_now_.notify_one(); // for pop_or_wait
+                cv_can_pop_.notify_one(); // for pop_or_wait
 
                 loc.unlock();
 
@@ -554,13 +558,13 @@ namespace fdapde{
 
             bool push_front_or_wait_for(value_type t, int s){
                 std::unique_lock<std::mutex> loc(m_);
-                bool flag  = cv_can_now_.wait_for(loc,std::chrono::seconds(s),[this](){return !this->active_ ||  this->head_ != this->tail_ || this->empty_queue_;});
+                bool flag  = cv_can_push_.wait_for(loc,std::chrono::seconds(s),[this](){return !this->active_ ||  this->head_ != this->tail_ || this->empty_queue_;});
                 if(!active_){return false;}
                 if(!flag){return false;}
                 int h = head_; //index dove inserira elemento
                 head_ = (head_ == size_-1)? (0) : (head_ + 1);
                 empty_queue_ = false; //magari gia false quindi ridondante,ma evita if(empty_queue_) {empty_queue_ = false;} non so quale piu efficiente 
-                cv_can_now_.notify_one(); // for pop_or_wait
+                cv_can_pop_.notify_one(); // for pop_or_wait
 
                 loc.unlock();
 
@@ -580,12 +584,12 @@ namespace fdapde{
 
             bool push_front_or_wait(value_type t){
                 std::unique_lock<std::mutex> loc(m_);
-                cv_can_now_.wait(loc,[this](){return !this->active_ ||  this->head_ != this->tail_ || this->empty_queue_;});
+                cv_can_push_.wait(loc,[this](){return !this->active_ ||  this->head_ != this->tail_ || this->empty_queue_;});
                 if(!active_){return false;}
                 int h = head_; //index dove inserira elemento
                 head_ = (head_ == size_-1)? (0) : (head_ + 1);
                 empty_queue_ = false; //magari gia false quindi ridondante,ma evita if(empty_queue_) {empty_queue_ = false;} non so quale piu efficiente 
-                cv_can_now_.notify_one(); // for pop_or_wait
+                cv_can_pop_.notify_one(); // for pop_or_wait
                 loc.unlock();
 
                 std::unique_lock<std::mutex> loc_el(queue_[h].m_el_);
@@ -613,7 +617,7 @@ namespace fdapde{
                 int new_head = (head_== 0)? (size_-1) : (head_-1);  
                 head_ = new_head;
                 if(head_==tail_) {empty_queue_ = true;}  //head_ ==tail_ after pop() means empty, in general means full
-                cv_can_now_.notify_one();
+                cv_can_push_.notify_one();
                 queue_[new_head].count_pop_ ++;
                 loc.unlock();
 
@@ -637,14 +641,14 @@ namespace fdapde{
 
             std::optional<value_type> pop_front_or_wait_for(int s){
                 std::unique_lock<std::mutex> loc(m_);
-                bool flag = cv_can_now_.wait_for(loc,std::chrono::seconds(s),[this](){return !this->active_ || !this->empty_queue_;});
+                bool flag = cv_can_pop_.wait_for(loc,std::chrono::seconds(s),[this](){return !this->active_ || !this->empty_queue_;});
                 if(!active_) return std::nullopt;
                 if(!flag){return std::nullopt;}
                 // new_head = index di elemento da rimuovere
                 int new_head = (head_== 0)? (size_-1) : (head_-1);
                 head_ = new_head;
                 if(head_==tail_) {empty_queue_ = true;}  //head_ ==tail_ after pop() means empty, in general means full
-                cv_can_now_.notify_one();
+                cv_can_push_.notify_one();
                 queue_[new_head].count_pop_ ++;
                 loc.unlock();
 
@@ -667,13 +671,13 @@ namespace fdapde{
 
             std::optional<value_type> pop_front_or_wait(){
                 std::unique_lock<std::mutex> loc(m_);
-                cv_can_now_.wait(loc,[this](){return !this->active_ || !this->empty_queue_;});
+                cv_can_pop_.wait(loc,[this](){return !this->active_ || !this->empty_queue_;});
                 if(!active_) return std::nullopt;
                 // new_head = index di elemento da rimuovere
                 int new_head = (head_== 0)? (size_-1) : (head_-1);
                 head_ = new_head;
                 if(head_==tail_) {empty_queue_ = true;}  //head_ ==tail_ after pop() means empty, in general means full
-                cv_can_now_.notify_one();
+                cv_can_push_.notify_one();
                 queue_[new_head].count_pop_ ++;
                 loc.unlock();
 
@@ -704,7 +708,7 @@ namespace fdapde{
                 int new_tail = (tail_ == 0)? (size_-1) : (tail_ -1);
                 empty_queue_ = false; //magari gia false quindi ridondante,ma evita if(empty_queue_) {empty_queue_ = false;} non so quale piu efficiente 
                 tail_ = new_tail;
-                cv_can_now_.notify_one();
+                cv_can_pop_.notify_one();
                 loc.unlock();
 
                 std::unique_lock<std::mutex> loc_el(queue_[new_tail].m_el_);
@@ -720,13 +724,13 @@ namespace fdapde{
 
             bool push_back_or_wait_for(value_type t, int s){
                 std::unique_lock<std::mutex> loc(m_);
-                bool flag = cv_can_now_.wait_for(loc,std::chrono::seconds(s),[this](){return !this->active_ || this->head_ != this->tail_ || this->empty_queue_;});
+                bool flag = cv_can_push_.wait_for(loc,std::chrono::seconds(s),[this](){return !this->active_ || this->head_ != this->tail_ || this->empty_queue_;});
                 if(!active_){return false;}
                 if(!flag){return false;}
                 int new_tail = (tail_ == 0)? (size_-1) : (tail_ -1);
                 empty_queue_ = false; //magari gia false quindi ridondante,ma evita if(empty_queue_) {empty_queue_ = false;} non so quale piu efficiente 
                 tail_ = new_tail;
-                cv_can_now_.notify_one();
+                cv_can_pop_.notify_one();
                 loc.unlock();
 
                 std::unique_lock<std::mutex> loc_el(queue_[new_tail].m_el_);
@@ -742,12 +746,12 @@ namespace fdapde{
 
             bool push_back_or_wait(value_type t){
                 std::unique_lock<std::mutex> loc(m_);
-                cv_can_now_.wait(loc,[this](){return !this->active_ || this->head_ != this->tail_ || this->empty_queue_;});
+                cv_can_push_.wait(loc,[this](){return !this->active_ || this->head_ != this->tail_ || this->empty_queue_;});
                 if(!active_){return false;}
                 int new_tail = (tail_ == 0)? (size_-1) : (tail_ -1);
                 empty_queue_ = false; //magari gia false quindi ridondante,ma evita if(empty_queue_) {empty_queue_ = false;} non so quale piu efficiente 
                 tail_ = new_tail;
-                cv_can_now_.notify_one();
+                cv_can_pop_.notify_one();
                 loc.unlock();
 
                 std::unique_lock<std::mutex> loc_el(queue_[new_tail].m_el_);
@@ -772,7 +776,7 @@ namespace fdapde{
                 int t = tail_; // tmp idice di elmeto da pop
                 tail_ = (tail_ == size_-1)? (0):(tail_+1);
                 if(head_==tail_) {empty_queue_ = true;}
-                cv_can_now_.notify_one();
+                cv_can_push_.notify_one();
                 queue_[t].count_pop_ ++;
                 loc.unlock();
 
@@ -794,14 +798,14 @@ namespace fdapde{
 
             std::optional<value_type> pop_back_or_wait_for(int s){
                 std::unique_lock<std::mutex> loc(m_);
-                bool flag = cv_can_now_.wait_for(loc,std::chrono::seconds(s),[this](){return !this->active_ || !this->empty_queue_;}); // loc mutex, controllo condizione in lamda, se falsa unlock mutex e wait se vera va avanti
+                bool flag = cv_can_pop_.wait_for(loc,std::chrono::seconds(s),[this](){return !this->active_ || !this->empty_queue_;}); // loc mutex, controllo condizione in lamda, se falsa unlock mutex e wait se vera va avanti
                 //copia codice di pop_back() tranne check se coda vuota, alternativa a chiamata diretta di pop_back che però porta a dover usare recursive mutex (definito dal libro come il male assoluto)
                 if(!active_) return std::nullopt; //se chiamato distruttore distruttore notifica a tutti di verificare condizione wait 
                 if(!flag){return std::nullopt;}
                 int t = tail_; // tmp idice di elmeto da pop
                 tail_ = (tail_ == size_-1)? (0):(tail_+1);
                 if(head_==tail_) {empty_queue_ = true;}
-                cv_can_now_.notify_one();
+                cv_can_push_.notify_one();
                 queue_[t].count_pop_ ++;
                 loc.unlock();
 
@@ -822,14 +826,14 @@ namespace fdapde{
 
             std::optional<value_type> pop_back_or_wait(){
                 std::unique_lock<std::mutex> loc(m_);
-                cv_can_now_.wait(loc,[this](){return !this->active_ || !this->empty_queue_;}); // loc mutex, controllo condizione in lamda, se falsa unlock mutex e wait se vera va avanti
+                cv_can_pop_.wait(loc,[this](){return !this->active_ || !this->empty_queue_;}); // loc mutex, controllo condizione in lamda, se falsa unlock mutex e wait se vera va avanti
                 //copia codice di pop_back() tranne check se coda vuota, alternativa a chiamata diretta di pop_back che però porta a dover usare recursive mutex (definito dal libro come il male assoluto)
                 if(!active_) return std::nullopt; //se chiamato distruttore distruttore notifica a tutti di verificare condizione wait 
 
                 int t = tail_; // tmp idice di elmeto da pop
                 tail_ = (tail_ == size_-1)? (0):(tail_+1);
                 if(head_==tail_) {empty_queue_ = true;}
-                cv_can_now_.notify_one();
+                cv_can_push_.notify_one();
                 queue_[t].count_pop_ ++;
                 loc.unlock();
 
