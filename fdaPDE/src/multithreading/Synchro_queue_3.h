@@ -365,7 +365,7 @@ namespace fdapde{
             std::optional<value_type> pop_back(){
                 std::unique_lock<std::mutex> loc(m_);
                 int t = pop_b_indx<T,hold_nowait>(*this);
-                if(t<0) return false;
+                if(t<0) return std::nullopt;
                 loc.unlock();
 
                 std::unique_lock<std::mutex> loc_el(queue_[t].m_el_);
@@ -823,7 +823,7 @@ namespace fdapde{
             E.count_pop_ --;
             E.cv_ready_to_push_.notify_one();
         }
-        return std::move(ret);
+        return ret;
     };
 
 
