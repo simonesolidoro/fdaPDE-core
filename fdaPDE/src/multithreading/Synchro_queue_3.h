@@ -55,7 +55,7 @@ namespace fdapde{
 
     template<typename T>
     struct elem<T,hold_wait> : elem<T,hold_nowait>{};
-    /* non serve compila lo stesso (non so perche)
+
     //forward declaration of helper function: indx TODO: capire se meglio togliere friend e passare solo emmbri interessati con reference
     template<typename T,typename M> 
     int push_f_indx(Synchro_queue<T,M> & S);
@@ -75,7 +75,7 @@ namespace fdapde{
 
     template<typename T,typename M> 
     T pop_fb_pop(elem<T,M>& E);
-*/
+
     template<typename T>
     class Synchro_queue<T,relax_nowait>{
         using value_type = T;
