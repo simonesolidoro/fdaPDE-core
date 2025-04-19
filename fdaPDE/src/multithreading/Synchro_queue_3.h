@@ -57,6 +57,27 @@ namespace fdapde{
     template<typename T>
     struct elem<T,hold_wait> : elem<T,hold_nowait>{};
 
+
+    //forward declaration of helper function: indx TODO: capire se meglio togliere friend e passare solo emmbri interessati con reference
+    template<typename T,typename M> 
+    int push_f_indx(Synchro_queue<T,M> & S);
+
+    template<typename T,typename M> 
+    int pop_f_indx(Synchro_queue<T,M> & S);
+
+    template<typename T, typename M>
+    int push_b_indx(Synchro_queue<T,M> & S);
+
+    template<typename T,typename M> 
+    int pop_b_indx(Synchro_queue<T,M> & S);
+
+    //forward declaration of helper function: push/pop OSS: non serve che siano friend perche passati membri privati tramite reference
+    template<typename T,typename M> 
+    void push_fb_push(elem<T,M>& E,T& new_value);
+
+    template<typename T,typename M> 
+    T pop_fb_pop(elem<T,M>& E);
+
     template<typename T>
     class Synchro_queue<T,relax_nowait>{
         using value_type = T;
