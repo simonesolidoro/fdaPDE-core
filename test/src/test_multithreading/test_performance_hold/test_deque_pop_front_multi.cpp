@@ -46,10 +46,10 @@ int main(int argc, char** argv){
     for (int i=0; i<size_coda; i++){
         q2.push_front(el);
     }
-
+    std::vector<std::thread> thread_pool2;
     auto start2 = std::chrono::high_resolution_clock::now();
     //worker_queue pop_back parallelo
-    std::vector<std::thread> thread_pool2;
+    
     for (int j=0; j<n_thread; j++){
         thread_pool2.emplace_back(pop_front_di_n_elem_d,std::ref(q2),n_singolo);
     }

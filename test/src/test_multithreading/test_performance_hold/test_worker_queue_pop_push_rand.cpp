@@ -22,11 +22,6 @@ using value = std::string;
 
 // push_back di n elementi per worker queue
 void operation_in_thread(fdapde::Synchro_queue<value,fdapde::hold_nowait> & q, std::vector<int>::iterator begin,std::vector<int>::iterator end, value el){
-    /*
-    for (auto operation=begin; operation<end; operation++) {
-        std::cout << *operation << std::endl;
-    }
-    */
 
     for (auto operation=begin; operation<end; operation++) {
         switch (*operation) {

@@ -74,10 +74,10 @@ int main(int argc, char** argv){
     }
 
     //q.print();
-
+    std::vector<std::thread> thread_pool;
     auto start = std::chrono::high_resolution_clock::now();
     //worker_queue push_back parallelo
-    std::vector<std::thread> thread_pool;
+    
     for (int j=0; j<n_thread; j++){
         thread_pool.emplace_back(operation_in_thread,std::ref(q),operations.begin()+j*n_singolo,operations.begin()+(j+1)*n_singolo-1, el);
     }

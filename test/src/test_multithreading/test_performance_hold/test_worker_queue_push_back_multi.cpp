@@ -39,10 +39,10 @@ int main(int argc, char** argv){
 
     //push_back() multithreading
     fdapde::Synchro_queue<value,fdapde::hold_nowait> q(size_coda);
-
+    std::vector<std::thread> thread_pool;
     auto start = std::chrono::high_resolution_clock::now();  
     //worker_queue push_back parallelo
-    std::vector<std::thread> thread_pool;
+    
     for (int j=0; j<n_thread; j++){
         thread_pool.emplace_back(push_back_di_n_elem,std::ref(q),n_singolo, el);
     }
