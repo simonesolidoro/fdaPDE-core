@@ -725,7 +725,7 @@ namespace fdapde{
         int h = S.head_; //index dove inserira elemento
         if constexpr(std::is_same_v<M,relax_nowait>){
             if(S.queue_[h].state_.load(std::memory_order_acquire) != Synchro_queue<T,relax_nowait>::Empty)
-                return false;
+                return -1;
             S.queue_[h].state_.store(Synchro_queue<T,relax_nowait>::Busy, std::memory_order_release); //TODO: capire se forse dato che dentro mutex memory order superfluo. forse ottimale  memory_order_relax
         }
         S.head_ = (S.head_ == S.size_-1)? (0) : (S.head_ + 1); //head_++
@@ -827,7 +827,7 @@ namespace fdapde{
             E.count_pop_ --;
             E.cv_ready_to_push_.notify_one();
         }
-        return ret;
+        return ret; 
     };
 
 
