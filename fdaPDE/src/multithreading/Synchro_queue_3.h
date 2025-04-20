@@ -90,7 +90,7 @@ namespace fdapde{
             int size_ = 0;
             //toltta empty_queue_, per distinguere se piena o vuota in caso head == tail usato stato elemento queeu_[tail]. e poi in push e pop tolto check su stato coda perchè implicito in check stato elemento, empty() modificata cosi che non lo usa piu 
             mutable std::mutex m_;
-            bool active_ = true; 
+            //bool active_ = true; non serve in relax_nowait 
 
         public:
             //enumerator state of elem.  
