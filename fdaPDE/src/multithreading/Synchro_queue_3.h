@@ -88,7 +88,7 @@ namespace fdapde{
             int head_ = 0; //indx of 1 over "first" element
             int tail_ = 0; //indx of "last" element
             int size_ = 0;
-            bool empty_queue_ = true; // per distinguere head==tail-> vuota / head==tail-> piena
+            //toltta empty_queue_, per distinguere se piena o vuota in caso head == tail usato stato elemento queeu_[tail]. e poi in push e pop tolto check su stato coda perchè implicito in check stato elemento, empty() modificata cosi che non lo usa piu 
             mutable std::mutex m_;
             bool active_ = true; 
 
@@ -117,7 +117,6 @@ namespace fdapde{
                 }
                 std::swap(queue_, temp_queue);
                 size_ = queue_.size();
-                empty_queue_ = false;
             }
         
             Synchro_queue(const Synchro_queue&) = delete;
@@ -130,7 +129,6 @@ namespace fdapde{
                 size_ = n;
                 head_ = 0;
                 tail_ = 0;
-                empty_queue_ = true;
             }
         
             // wrap of function size() of vector thrade-safe
@@ -145,7 +143,6 @@ namespace fdapde{
                 queue_.clear();
                 head_ = 0;
                 tail_ = 0;
-                empty_queue_ = true;
             }
         
             //per debug momentanei
@@ -213,7 +210,7 @@ namespace fdapde{
 
             bool empty() const {
                 std::lock_guard<std::mutex> loc(m_);
-                if(empty_queue_){ //OSS: massimo un pop che deve acora eseguire perchè altri vedono busy e non si mettoo in coda
+                if(head_ == tail_ && queue_[tail_].state_.load(std::memory_order_acquire)!=Full){ //OSS: massimo un pop che deve acora eseguire perchè altri vedono busy e non si mettoo in coda
                     while(queue_[tail_].state_.load(std::memory_order_acquire) != Empty){} //momentaneo while finche non troviamo altro modo
                     return true;
                 }
@@ -723,6 +720,7 @@ namespace fdapde{
                 std::cerr<<"queue full"<<std::endl; // per debug poi da togliere
                 return -1;
             }
+            S.empty_queue_ = false; //magari gia false quindi ridondante,ma evita if(empty_queue_) {empty_queue_ = false;} non so quale piu efficiente. 
         }
         int h = S.head_; //index dove inserira elemento
         if constexpr(std::is_same_v<M,relax_nowait>){
@@ -731,7 +729,6 @@ namespace fdapde{
             S.queue_[h].state_.store(Synchro_queue<T,relax_nowait>::Busy, std::memory_order_release); //TODO: capire se forse dato che dentro mutex memory order superfluo. forse ottimale  memory_order_relax
         }
         S.head_ = (S.head_ == S.size_-1)? (0) : (S.head_ + 1); //head_++
-        S.empty_queue_ = false; //magari gia false quindi ridondante,ma evita if(empty_queue_) {empty_queue_ = false;} non so quale piu efficiente
         if constexpr(std::is_same_v<M,hold_wait>){
             S.cv_can_pop_.notify_one(); // for pop_or_wait 
         }
@@ -752,9 +749,9 @@ namespace fdapde{
                 return -1;
             S.queue_[new_head].state_.store(Synchro_queue<T,relax_nowait>::Busy, std::memory_order_release);
         }
-        S.head_ = new_head;
-        if(S.head_==S.tail_) {S.empty_queue_ = true;}  
+        S.head_ = new_head; 
         if constexpr(std::is_same_v<M,hold_nowait> || std::is_same_v<M,hold_wait>){
+            if(S.head_==S.tail_) {S.empty_queue_ = true;} 
             S.queue_[new_head].count_pop_ ++;
         }
         if constexpr(std::is_same_v<M,hold_wait>){
@@ -770,6 +767,7 @@ namespace fdapde{
                 std::cerr<<"queue full"<<std::endl; // per debug poi da togliere
                 return -1;
             }
+            S.empty_queue_ = false;
         }
         int new_tail = (S.tail_ == 0)? (S.size_-1) : (S.tail_ -1);
         if constexpr(std::is_same_v<M,relax_nowait>){
@@ -778,7 +776,6 @@ namespace fdapde{
             S.queue_[new_tail].state_.store(Synchro_queue<T,relax_nowait>::Busy, std::memory_order_release);
         }
         S.tail_ = new_tail;                         
-        S.empty_queue_ = false;
         if constexpr(std::is_same_v<M,hold_wait>){
             S.cv_can_pop_.notify_one();
         }
@@ -800,8 +797,8 @@ namespace fdapde{
             S.queue_[t].state_.store(Synchro_queue<T,relax_nowait>::Busy, std::memory_order_release);
         }
         S.tail_ = (S.tail_ == S.size_-1)? (0):(S.tail_+1);
-        if(S.head_==S.tail_) {S.empty_queue_ = true;}
         if constexpr(std::is_same_v<M,hold_nowait> || std::is_same_v<M,hold_wait>){
+            if(S.head_==S.tail_) {S.empty_queue_ = true;}
             S.queue_[t].count_pop_ ++;
         }
         if constexpr(std::is_same_v<M,hold_wait>){
