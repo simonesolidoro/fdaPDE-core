@@ -718,9 +718,11 @@ namespace fdapde{
     //TODO: possiile mettere lock di mutex dentro *_indx function.
     template<typename T,typename M> 
     int push_f_indx(Synchro_queue<T,M> & S){
-        if (S.head_ == S.tail_ && !S.empty_queue_ ){// coda piena
-            std::cerr<<"queue full"<<std::endl; // per debug poi da togliere
-            return -1;
+        if constexpr(std::is_same_v<M,hold_nowait> || std::is_same_v<M,hold_wait>){
+            if (S.head_ == S.tail_ && !S.empty_queue_ ){// TODO: capire se possibile togliere questo check in relax_nowait perche tanto se coda piena elemento in cui si vuole fare push sara full
+                std::cerr<<"queue full"<<std::endl; // per debug poi da togliere
+                return -1;
+            }
         }
         int h = S.head_; //index dove inserira elemento
         if constexpr(std::is_same_v<M,relax_nowait>){
@@ -738,9 +740,11 @@ namespace fdapde{
 
     template<typename T,typename M> 
     int pop_f_indx(Synchro_queue<T,M> & S){
-        if (S.empty_queue_){
-            std::cerr<<"queue empty"<<std::endl;
-            return -1;
+        if constexpr(std::is_same_v<M,hold_nowait> || std::is_same_v<M,hold_wait>){
+            if (S.empty_queue_){
+                std::cerr<<"queue empty"<<std::endl;
+                return -1;
+            }
         }
         int new_head = (S.head_== 0)? (S.size_-1) : (S.head_-1); // new_head = index di elemento da rimuovere
         if constexpr(std::is_same_v<M,relax_nowait>){
@@ -761,9 +765,11 @@ namespace fdapde{
 
     template<typename T, typename M>
     int push_b_indx(Synchro_queue<T,M> & S){
-        if (S.head_ == S.tail_ && !S.empty_queue_ ){// coda piena
-            std::cerr<<"queue full"<<std::endl; // per debug poi da togliere
-            return -1;
+        if constexpr(std::is_same_v<M,hold_nowait> || std::is_same_v<M,hold_wait>){
+            if (S.head_ == S.tail_ && !S.empty_queue_ ){// coda piena
+                std::cerr<<"queue full"<<std::endl; // per debug poi da togliere
+                return -1;
+            }
         }
         int new_tail = (S.tail_ == 0)? (S.size_-1) : (S.tail_ -1);
         if constexpr(std::is_same_v<M,relax_nowait>){
@@ -781,9 +787,11 @@ namespace fdapde{
 
     template<typename T,typename M>
     int pop_b_indx(Synchro_queue<T,M> & S){
-        if(S.empty_queue_ ){
-            std::cerr << "Queue is empty" << std::endl;
-            return -1;
+        if constexpr(std::is_same_v<M,hold_nowait> || std::is_same_v<M,hold_wait>){
+            if(S.empty_queue_ ){
+                std::cerr << "Queue is empty" << std::endl;
+                return -1;
+            }
         }
         int t = S.tail_; // tmp idice di elmeto da pop
         if constexpr(std::is_same_v<M,relax_nowait>){
