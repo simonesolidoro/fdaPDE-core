@@ -232,7 +232,7 @@ namespace fdapde{
             int head_ = 0; //indx of 1 over "first" element
             int tail_ = 0; //indx of "last" element
             int size_ = 0;
-            bool empty_queue_ = true; // per distinguere head==tail-> vuota / head==tail-> piena
+            bool empty_queue_ = true; // per distinguere head==tail-> vuota / head==tail-> piena. OSS: qui tenuto al contraio di relax_nowait, perchè stato di elemento puo cambiare perchè modificato fuori da mutex (bisognrebbe mettere contatori e un while per aspettare tutte le modifiche, ma insensato), invece empty_queue_ modificato nel primo mutex quindi la sua lettura nel primo mutex è affidabile
             mutable std::mutex m_;
             bool active_ = true; //TODO: valutare se ora che or_wait meotdi hanno wait_for serve ancora active e distruttore, penso di si. SI: active e meccanismo tipo raii serve per sicurezza in caso si throw exception
         public:
@@ -379,10 +379,10 @@ namespace fdapde{
                 return ret;
             }
 
-            bool empty()  {
+            bool empty() const {
                 std::lock_guard<std::mutex> loc(m_);
                 if(empty_queue_){
-                    while(queue_[tail_].count_pop != 0){}; //wait untile count_pop == 0 OSS: while al posto di condition variable, ma contatori lasciati perche altrimenti stao == empty anche tra un pop e un psuh successivo gia in coda
+                    while(queue_[tail_].count_pop_ != 0){}; //wait untile count_pop == 0 OSS: while al posto di condition variable, ma contatori lasciati perche altrimenti stao == empty anche tra un pop e un psuh successivo gia in coda
                     return true;
                 }
                 else
@@ -697,7 +697,7 @@ namespace fdapde{
             }
 
             
-            bool empty()  {
+            bool empty() const {
                 std::lock_guard<std::mutex> loc(m_);
                 if(empty_queue_){
                     while(queue_[tail_].count_pop_ != 0){}; //wait untile count_pop == 0 OSS: while al posto di condition variable, ma contatori lasciati perche altrimenti stao == empty anche tra un pop e un psuh successivo gia in coda
