@@ -30,6 +30,9 @@ namespace fdapde{
             }
             S.empty_queue_ = false; //magari gia false quindi ridondante,ma evita if(empty_queue_) {empty_queue_ = false;} non so quale piu efficiente. 
         }
+        if constexpr(std::is_same_v<M,hold_wait>){
+            S.empty_queue_ = false; //magari gia false quindi ridondante,ma evita if(empty_queue_) {empty_queue_ = false;} non so quale piu efficiente. 
+        }
         int h = S.head_; //index dove inserira elemento
         if constexpr(std::is_same_v<M,relax_nowait>){
             if(S.queue_[h].state_.load(std::memory_order_acquire) != Synchro_queue<T,relax_nowait>::Empty)
@@ -76,6 +79,9 @@ namespace fdapde{
                 return -1;
             }
             S.empty_queue_ = false;
+        }
+        if constexpr(std::is_same_v<M,hold_wait>){
+            S.empty_queue_ = false; //magari gia false quindi ridondante,ma evita if(empty_queue_) {empty_queue_ = false;} non so quale piu efficiente. 
         }
         int new_tail = (S.tail_ == 0)? (S.size_-1) : (S.tail_ -1);
         if constexpr(std::is_same_v<M,relax_nowait>){
