@@ -170,8 +170,8 @@ namespace fdapde{
             bool push_front(value_type t){
                 std::unique_lock<std::mutex> loc(m_);
                 int h = push_f_indx<T,relax_nowait>(*this);
-                if(h<0) return false;
                 loc.unlock();
+                if(h<0) return false; //check extra dovuto a refactorig, ?=ne vale la pena?. OSS:spostato fuoti da lock perchè non serve fare questo check con mutex lock
                 //push di elemento
                 push_fb_push<T,relax_nowait>(queue_[h], t);
                 return true; 
@@ -180,8 +180,8 @@ namespace fdapde{
             std::optional<value_type> pop_front(){
                 std::unique_lock<std::mutex> loc(m_);
                 int new_head = pop_f_indx<T,relax_nowait>(*this);
-                if(new_head<0) return std::nullopt;
                 loc.unlock();
+                if(new_head<0) return std::nullopt;
                 // pop 
                 value_type ret = pop_fb_pop<T,relax_nowait>(queue_[new_head]);
                 return ret;
@@ -190,8 +190,9 @@ namespace fdapde{
             bool push_back(value_type t){
                 std::unique_lock<std::mutex> loc(m_);
                 int new_tail = push_b_indx<T,relax_nowait>(*this);
-                if(new_tail<0) return false;
                 loc.unlock();
+                if(new_tail<0) return false;
+
                 push_fb_push<T,relax_nowait>(queue_[new_tail], t);                
                 return true;
             }
@@ -199,8 +200,8 @@ namespace fdapde{
             std::optional<value_type> pop_back(){
                 std::unique_lock<std::mutex> loc(m_);
                 int t = pop_b_indx<T,relax_nowait>(*this);
-                if(t<0) return std::nullopt;
                 loc.unlock();
+                if(t<0) return std::nullopt;
 
                 // sostituisce in posto che viene liberato il valore di defaul di value_type
                 value_type ret = pop_fb_pop<T,relax_nowait>(queue_[t]);
@@ -319,8 +320,8 @@ namespace fdapde{
             bool push_front(value_type t){
                 std::unique_lock<std::mutex> loc(m_);
                 int h = push_f_indx<T,hold_nowait>(*this);
-                if(h<0) return false;
                 loc.unlock();
+                if(h<0) return false;
 
                 std::unique_lock<std::mutex> loc_el(queue_[h].m_el_);
                 queue_[h].cv_ready_to_push_.wait(loc_el,[this,h](){return queue_[h].state_;}); // to be sure state_ = true (empty)
@@ -333,8 +334,8 @@ namespace fdapde{
             std::optional<value_type> pop_front(){
                 std::unique_lock<std::mutex> loc(m_);
                 int new_head = pop_f_indx<T,hold_nowait>(*this);
-                if(new_head<0) return std::nullopt;
                 loc.unlock();
+                if(new_head<0) return std::nullopt;
 
                 //OSS: importate lasciare new_head perche poi head_ potrebbe essere modificata da altri thread
                 std::unique_lock<std::mutex> loc_el(queue_[new_head].m_el_);
@@ -349,8 +350,8 @@ namespace fdapde{
             bool push_back(value_type t){
                 std::unique_lock<std::mutex> loc(m_);
                 int new_tail = push_b_indx<T,hold_nowait>(*this);
-                if(new_tail<0) return false;
                 loc.unlock();
+                if(new_tail<0) return false;
 
                 std::unique_lock<std::mutex> loc_el(queue_[new_tail].m_el_);
                 queue_[new_tail].cv_ready_to_push_.wait(loc_el,[this,new_tail](){return queue_[new_tail].state_;});
@@ -364,8 +365,8 @@ namespace fdapde{
             std::optional<value_type> pop_back(){
                 std::unique_lock<std::mutex> loc(m_);
                 int t = pop_b_indx<T,hold_nowait>(*this);
-                if(t<0) return std::nullopt;
                 loc.unlock();
+                if(t<0) return std::nullopt;
 
                 std::unique_lock<std::mutex> loc_el(queue_[t].m_el_);
                 queue_[t].cv_ready_to_pop_.wait(loc_el,[this,t](){return !queue_[t].state_;});
@@ -490,8 +491,8 @@ namespace fdapde{
             bool push_front(value_type t){
                 std::unique_lock<std::mutex> loc(m_);
                 int h = push_f_indx<T,hold_wait>(*this);
-                if(h<0) return false;
                 loc.unlock();
+                if(h<0) return false;
 
                 std::unique_lock<std::mutex> loc_el(queue_[h].m_el_);
                 queue_[h].cv_ready_to_push_.wait(loc_el,[this,h](){return queue_[h].state_;}); // to be sure state_ = true (empty)
@@ -540,8 +541,8 @@ namespace fdapde{
             std::optional<value_type> pop_front(){
                 std::unique_lock<std::mutex> loc(m_);
                 int new_head = pop_f_indx<T,hold_wait>(*this);
-                if(new_head<0) return std::nullopt;
                 loc.unlock();
+                if(new_head<0) return std::nullopt;
 
                 //OSS: importate lasciare new_head perche poi head_ potrebbe essere modificata da altri thread
                 std::unique_lock<std::mutex> loc_el(queue_[new_head].m_el_);
@@ -599,8 +600,8 @@ namespace fdapde{
             bool push_back(value_type t){
                 std::unique_lock<std::mutex> loc(m_);
                 int new_tail = push_b_indx<T,hold_wait>(*this);
-                if(new_tail<0) return false;
                 loc.unlock();
+                if(new_tail<0) return false;
 
                 std::unique_lock<std::mutex> loc_el(queue_[new_tail].m_el_);
                 queue_[new_tail].cv_ready_to_push_.wait(loc_el,[this,new_tail](){return queue_[new_tail].state_;});
@@ -617,7 +618,6 @@ namespace fdapde{
                 if(!active_){return false;}
                 if(!flag){return false;}
                 int new_tail = push_b_indx<T,hold_wait>(*this);
-                if(new_tail<0) return false;
                 loc.unlock();
 
                 std::unique_lock<std::mutex> loc_el(queue_[new_tail].m_el_);
@@ -634,7 +634,6 @@ namespace fdapde{
                 cv_can_push_.wait(loc,[this](){return !this->active_ || this->head_ != this->tail_ || this->empty_queue_;});
                 if(!active_){return false;}
                 int new_tail = push_b_indx<T,hold_wait>(*this);
-                if(new_tail<0) return false;
                 loc.unlock();
 
                 std::unique_lock<std::mutex> loc_el(queue_[new_tail].m_el_);
@@ -650,8 +649,8 @@ namespace fdapde{
             std::optional<value_type> pop_back(){
                 std::unique_lock<std::mutex> loc(m_);
                 int t = pop_b_indx<T,hold_wait>(*this);
-                if(t<0) return std::nullopt;
                 loc.unlock();
+                if(t<0) return std::nullopt;
 
                 std::unique_lock<std::mutex> loc_el(queue_[t].m_el_);
                 queue_[t].cv_ready_to_pop_.wait(loc_el,[this,t](){return !queue_[t].state_;});
@@ -669,7 +668,6 @@ namespace fdapde{
                 if(!active_) return std::nullopt; //se chiamato distruttore distruttore notifica a tutti di verificare condizione wait 
                 if(!flag){return std::nullopt;}
                 int t = pop_b_indx<T,hold_wait>(*this);
-                if(t<0) return std::nullopt;
                 loc.unlock();
 
                 std::unique_lock<std::mutex> loc_el(queue_[t].m_el_);
@@ -687,7 +685,6 @@ namespace fdapde{
                 //copia codice di pop_back() tranne check se coda vuota, alternativa a chiamata diretta di pop_back che però porta a dover usare recursive mutex (definito dal libro come il male assoluto)
                 if(!active_) return std::nullopt; //se chiamato distruttore distruttore notifica a tutti di verificare condizione wait 
                 int t = pop_b_indx<T,hold_wait>(*this);
-                if(t<0) return std::nullopt;
                 loc.unlock();
 
                 std::unique_lock<std::mutex> loc_el(queue_[t].m_el_);
