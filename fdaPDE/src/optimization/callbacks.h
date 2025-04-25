@@ -49,13 +49,12 @@ bool execute_post_update_step(Opt& optimizer, Obj& objective, std::tuple<Args...
     return b;
 }
 
-template <typename Opt, typename Obj>
-bool execute_obj_stopping_criterion(Opt& optimizer, Obj& objective) {
+template <typename Opt, typename Obj> bool execute_stopping_criterion(Opt& optimizer, Obj& objective) {
     bool b = false;
     if constexpr (requires(Opt opt, Obj obj) {
-                      { obj.opt_stopping_criterion(opt) } -> std::same_as<bool>;
+                      { obj.stop_if(opt) } -> std::same_as<bool>;
                   }) {
-        b |= objective.opt_stopping_criterion(optimizer);
+        b |= objective.stop_if(optimizer);
     }
     return b;
 }

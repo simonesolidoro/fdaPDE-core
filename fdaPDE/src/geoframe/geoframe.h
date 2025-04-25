@@ -45,7 +45,8 @@ template <typename... Triangulation_> struct GeoFrame {
         layer_t(const std::string& name, const CategoryType& category, const LayerType& geo_data) :
             geo_data_(std::make_shared<LayerType>(geo_data)),
             data_(std::addressof(reinterpret_cast<LayerType*>(geo_data_.get())->data())),
-            name_(name) {
+            name_(name),
+            n_rows_(geo_data.rows()) {
             geoframe_assert(category.size() == Order, "bad layer construction, no matching order.");
             std::copy(category.begin(), category.end(), category_.begin());
 	    // store pointers to spatial indexes
@@ -62,7 +63,7 @@ template <typename... Triangulation_> struct GeoFrame {
         const void* geo_data() const { return geo_data_.get(); }
         const std::array<ltype, Order>& category() const { return category_; }
         bool contains(const std::string& colname) const { return data_->contains(colname); }
-        int rows() const { return data_->rows(); }
+        int rows() const { return n_rows_; }
         int cols() const { return data_->cols(); }
         int size() const { return data_->size(); }
       
@@ -80,6 +81,7 @@ template <typename... Triangulation_> struct GeoFrame {
         storage_t* data_;
         std::array<ltype, Order> category_;
         std::string name_;
+        int n_rows_ = 0;
     };
    private:
     template <typename T> constexpr auto ltype_from_layer_tag() const {
