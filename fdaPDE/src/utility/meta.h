@@ -302,7 +302,32 @@ template <typename XprType> struct ref_select_impl<XprType, false> {
 };
 template <typename XprType> struct ref_select : ref_select_impl<XprType, has_nest_as_ref_bit<XprType>> { };
 template <typename XprType> using ref_select_t = ref_select<XprType>::type;
-  
+
+// selects one between arg1 and arg2 based on condition f
+template <typename Arg1, typename Arg2, typename F>
+    requires(
+      requires(F f, Arg1 arg1, Arg2 arg2) {
+          { f(arg1, arg2) } -> std::same_as<bool>;
+      } ||
+      requires(F f) {
+          { f() } -> std::same_as<bool>;
+      })
+const auto& select_one_between(const Arg1& arg1, const Arg2& arg2, F&& f) {
+    if constexpr ([&]() {
+                      if constexpr (requires(F f, Arg1 arg1, Arg2 arg2) {
+                                        { f(arg1, arg2) } -> std::same_as<bool>;
+                                    }) {
+                          return f(arg1, arg2);
+                      } else {
+                          return f();
+                      }
+                  }()) {
+        return arg1;
+    } else {
+        return arg2;
+    }
+}
+
 }   // namespace internals
 }   // namespace fdapde
 

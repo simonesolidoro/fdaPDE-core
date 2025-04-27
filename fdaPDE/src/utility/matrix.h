@@ -621,6 +621,16 @@ template <int Rows, int Cols, typename Derived> struct MatrixBase {
         }
 	return;
     }
+#ifdef __FDAPDE_HAS_EIGEN__
+    // conversion to Eigen matrix
+    auto as_eigen_matrix() const {
+        Eigen::Matrix<typename Derived::Scalar, Rows, Cols> m;
+        for (int i = 0; i < Rows; ++i) {
+            for (int j = 0; j < Cols; ++j) { m(i, j) = derived().operator()(i, j); }
+        }
+        return m;
+    }
+#endif
    protected:
     // trait to detect if Xpr is a compile-time vector
     template <typename Xpr> struct is_vector {

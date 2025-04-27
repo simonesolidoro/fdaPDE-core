@@ -145,6 +145,12 @@ template <typename Triangulation_, typename FeType_> class FeSpace {
     FaceBasisType face_basis_ {};
 };
 
+// detection trait for finite element spaces
+template <typename FuncSpace> struct is_fe_space {
+    static constexpr bool value = std::is_same_v<typename FuncSpace::discretization_category, finite_element_tag>;
+};
+template <typename FuncSpace> static constexpr bool is_fe_space_v = is_fe_space<FuncSpace>::value;
+
 }   // namespace fdapde
 
 #endif   // __FDAPDE_FE_SPACE_H__
