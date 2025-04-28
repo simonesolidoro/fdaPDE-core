@@ -15,12 +15,13 @@
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 #include<fdaPDE/multithreading.h>
-using job = std::function<void()>;
-void fun(){
+using job = std::function<bool()>;
+bool fun(){
     std::cout<<"fun da thread_id: "<<std::this_thread::get_id()<<std::endl;
+    return true;
 }
 int main(){
-    fdapde::Threadpool<std::function<void()>> tp(16,2);
+    fdapde::Threadpool<std::function<bool()>> tp(16,2);
     job j1 = fun;
     job j2 = fun;
     job j3 = fun;
@@ -30,8 +31,17 @@ int main(){
     tp.send_task(j2);
     tp.send_task(j3);
     tp.send_task(j4);
-    tp.send_task([](){std::cout<<"lambda da thread_id: "<<std::this_thread::get_id()<<std::endl;});
+    tp.send_task([](){std::cout<<"lambda da thread_id: "<<std::this_thread::get_id()<<std::endl;
+    return true;});
 
-    //std::this_thread::sleep_for(std::chrono::microseconds(100));
+    auto ptr_task = std::make_shared<std::packaged_task<bool()>> (fun);
+    std::future<bool> fut = ptr_task->get_future();
+    tp.send_task([ptr_task]() mutable ->bool { (*ptr_task)();
+    return true;});
+
+    fut.get();
+
+
+    //std::this_thread::sleep_for(std::chrono::seconds(3));
     return 0;
 }

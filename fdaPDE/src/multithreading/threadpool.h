@@ -32,8 +32,8 @@ namespace fdapde{
             Worker(int n):sync_queue_(n),t_(&Worker::worker_loop,this){};
             
             ~Worker(){
-                while(!sync_queue_.empty()){}; //per aspettare che worker finisca i job in coda
-                stop_ = true;
+                //while(!sync_queue_.empty()){}; //per aspettare che worker finisca i job in coda. PB: a volte empty() chiamato prima di push_back() di metodo send_task di threadpool
+                stop_ = true; //PROBLEMA: chiamato distruttore prima che job effettivamente finiti
                 t_.join();
             }
 
@@ -77,6 +77,7 @@ namespace fdapde{
                     count_task_.push_back(0);
                 }
             };
+
             //rida indice di worker piu libero (in realta finche non implementato decremento count ridà indice a cui sono stati mandti meno job non chi ne ha di meno in quel momento )
             int indx_freer(){
                 int worker_indx = 0; 
