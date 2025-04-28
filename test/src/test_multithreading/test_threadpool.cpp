@@ -19,9 +19,13 @@ using job = std::function<bool()>;
 bool fun(){
     std::cout<<"fun da thread_id: "<<std::this_thread::get_id()<<std::endl;
     return true;
-}
+};
+bool fun2(){
+    std::cout<<"fun22222222da thread_id: "<<std::this_thread::get_id()<<std::endl;
+    return true;
+};
 int main(){
-    fdapde::Threadpool<std::function<bool()>> tp(16,2);
+    fdapde::Threadpool<bool> tp(16,2);
     job j1 = fun;
     job j2 = fun;
     job j3 = fun;
@@ -34,12 +38,12 @@ int main(){
     tp.send_task([](){std::cout<<"lambda da thread_id: "<<std::this_thread::get_id()<<std::endl;
     return true;});
 
-    auto ptr_task = std::make_shared<std::packaged_task<bool()>> (fun);
+    auto ptr_task = std::make_shared<std::packaged_task<bool()>> (fun2); 
     std::future<bool> fut = ptr_task->get_future();
     tp.send_task([ptr_task]() mutable ->bool { (*ptr_task)();
     return true;});
 
-    fut.get();
+    fut.get(); //OSS: unico job che siamo sicuri verra eseguito è task a cui è associato il future gli altri potrebbero non essere eseguiti perche il distruttore potrebbe essere chiamato prima
 
 
     //std::this_thread::sleep_for(std::chrono::seconds(3));
