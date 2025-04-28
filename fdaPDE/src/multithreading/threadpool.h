@@ -39,10 +39,13 @@ namespace fdapde{
 
             void worker_loop(){
                 while(!stop_){
-                    //TODO: capire come mettere a dormire se coda vuota
+                    //TODO: capire come mettere a dormire se coda vuota, nel frattempo messo yields()
                     std::optional<job> j = sync_queue_.pop_front();
                     if(j){//esegue se non è nullopt
                         j.value()();
+                    }
+                    else{
+                        std::this_thread::yield(); //da controllo a OS, possibile che stoppi l'esecuzione del thread a favore di altro (usato per mettere una pezza a mancanza condion varibale che fa wait se coda empty)
                     }
                 }
             };
