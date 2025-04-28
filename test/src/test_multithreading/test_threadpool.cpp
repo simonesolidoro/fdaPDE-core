@@ -14,33 +14,23 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-#ifndef __FDAPDE_MULTITHREADING_MODULE_H__
-#define __FDAPDE_MULTITHREADING_MODULE_H__
+#include<fdaPDE/multithreading.h>
+using job = std::function<void()>;
+void fun(){
+    std::cout<<"fun da thread_id: "<<std::this_thread::get_id()<<std::endl;
+}
+int main(){
+    fdapde::Threadpool tp(16,2);
+    job j1 = fun;
+    job j2 = fun;
+    job j3 = fun;
+    job j4 = fun;
+    
+    tp.send_task(j1);
+    tp.send_task(j2);
+    tp.send_task(j3);
+    tp.send_task(j4);
 
-// clang-format off
-#include<vector>
-#include<mutex>
-#include<thread>
-#include<memory>
-#include<optional>
-#include<atomic>
-#include<condition_variable>
-#include<functional>
-#include<concepts>
-#include<list>
-
-
-// per debug e test momentaneo
-#include<iostream>
-#include<chrono>
-#include<deque>
-
-// per nuove code parzialmente specializzate
-//#include "src/multithreading/synchro_queue_2.h"
-//#include "src/multithreading/Synchro_queue_wait_2.h"
-#include "src/multithreading/deque.h"
-#include "src/multithreading/Synchro_queue_3.h"
-#include "src/multithreading/threadpool.h"
-// clang-format on
-
-#endif
+    std::this_thread::sleep_for(std::chrono::microseconds(100000));
+    return 0;
+}
