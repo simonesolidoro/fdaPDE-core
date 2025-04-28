@@ -324,7 +324,7 @@ namespace fdapde{
                 if(h<0) return false;
 
                 std::unique_lock<std::mutex> loc_el(queue_[h].m_el_);
-                queue_[h].cv_ready_to_push_.wait(loc_el,[this,h](){return queue_[h].state_;}); // to be sure state_ = true (empty)
+                queue_[h].cv_ready_to_push_.wait(loc_el,[this,h](){return queue_[h].state_ || !active_;}); // to be sure state_ = true (empty)
                 if(!active_){return false;}
                 push_fb_push<T,hold_nowait>(queue_[h],t);
                 loc_el.unlock();
@@ -339,7 +339,7 @@ namespace fdapde{
 
                 //OSS: importate lasciare new_head perche poi head_ potrebbe essere modificata da altri thread
                 std::unique_lock<std::mutex> loc_el(queue_[new_head].m_el_);
-                queue_[new_head].cv_ready_to_pop_.wait(loc_el,[this,new_head](){return !queue_[new_head].state_;});
+                queue_[new_head].cv_ready_to_pop_.wait(loc_el,[this,new_head](){return !queue_[new_head].state_ || !active_;});
                 if(!active_) return std::nullopt;
                 // pop 
                 value_type ret = pop_fb_pop<T,hold_nowait>(queue_[new_head]);
@@ -354,7 +354,7 @@ namespace fdapde{
                 if(new_tail<0) return false;
 
                 std::unique_lock<std::mutex> loc_el(queue_[new_tail].m_el_);
-                queue_[new_tail].cv_ready_to_push_.wait(loc_el,[this,new_tail](){return queue_[new_tail].state_;});
+                queue_[new_tail].cv_ready_to_push_.wait(loc_el,[this,new_tail](){return queue_[new_tail].state_ || !active_;});
                 if(!active_){return false;}
                 push_fb_push<T,hold_nowait>(queue_[new_tail],t);
                 loc_el.unlock();
@@ -369,7 +369,7 @@ namespace fdapde{
                 if(t<0) return std::nullopt;
 
                 std::unique_lock<std::mutex> loc_el(queue_[t].m_el_);
-                queue_[t].cv_ready_to_pop_.wait(loc_el,[this,t](){return !queue_[t].state_;});
+                queue_[t].cv_ready_to_pop_.wait(loc_el,[this,t](){return !queue_[t].state_ || !active_;}); //TODO: possiile non passare a lambda tutto this e h ma solo queue_[t]
                 if(!active_) return std::nullopt;
                 // sostituisce in posto che viene liberato il valore di defaul di value_type
                 value_type ret = pop_fb_pop<T,hold_nowait>(queue_[t]);
@@ -495,7 +495,7 @@ namespace fdapde{
                 if(h<0) return false;
 
                 std::unique_lock<std::mutex> loc_el(queue_[h].m_el_);
-                queue_[h].cv_ready_to_push_.wait(loc_el,[this,h](){return queue_[h].state_;}); // to be sure state_ = true (empty)
+                queue_[h].cv_ready_to_push_.wait(loc_el,[this,h](){return queue_[h].state_ || !active_;}); // to be sure state_ = true (empty)
                 if(!active_){return false;}
                 push_fb_push<T,hold_wait>(queue_[h],t);
                 loc_el.unlock();
@@ -512,7 +512,7 @@ namespace fdapde{
                 loc.unlock();
 
                 std::unique_lock<std::mutex> loc_el(queue_[h].m_el_);
-                queue_[h].cv_ready_to_push_.wait(loc_el,[this,h](){return queue_[h].state_;}); // to be sure state_ = true (empty)
+                queue_[h].cv_ready_to_push_.wait(loc_el,[this,h](){return queue_[h].state_ || !active_;}); // to be sure state_ = true (empty)
                 if(!active_){return false;}
                 push_fb_push<T,hold_wait>(queue_[h],t);
                 loc_el.unlock();
@@ -529,7 +529,7 @@ namespace fdapde{
                 loc.unlock();
 
                 std::unique_lock<std::mutex> loc_el(queue_[h].m_el_);
-                queue_[h].cv_ready_to_push_.wait(loc_el,[this,h](){return queue_[h].state_;}); // to be sure state_ = true (empty)
+                queue_[h].cv_ready_to_push_.wait(loc_el,[this,h](){return queue_[h].state_ || !this->active_;}); // to be sure state_ = true (empty)
                 if(!active_){return false;}
                 push_fb_push<T,hold_wait>(queue_[h],t);
                 loc_el.unlock();
@@ -546,7 +546,7 @@ namespace fdapde{
 
                 //OSS: importate lasciare new_head perche poi head_ potrebbe essere modificata da altri thread
                 std::unique_lock<std::mutex> loc_el(queue_[new_head].m_el_);
-                queue_[new_head].cv_ready_to_pop_.wait(loc_el,[this,new_head](){return !queue_[new_head].state_;});
+                queue_[new_head].cv_ready_to_pop_.wait(loc_el,[this,new_head](){return !queue_[new_head].state_ || !this->active_;});
                 if(!active_) return std::nullopt;
                 // pop 
                 value_type ret = pop_fb_pop<T,hold_wait>(queue_[new_head]); 
@@ -566,7 +566,7 @@ namespace fdapde{
 
                 //OSS: importate lasciare new_head perche poi head_ potrebbe essere modificata da altri thread
                 std::unique_lock<std::mutex> loc_el(queue_[new_head].m_el_);
-                queue_[new_head].cv_ready_to_pop_.wait(loc_el,[this,new_head](){return !queue_[new_head].state_;});
+                queue_[new_head].cv_ready_to_pop_.wait(loc_el,[this,new_head](){return !queue_[new_head].state_ || !this->active_;});
                 if(!active_) return std::nullopt;
                 // pop 
                 value_type ret = pop_fb_pop<T,hold_wait>(queue_[new_head]);
@@ -586,7 +586,7 @@ namespace fdapde{
 
                 //OSS: importate lasciare new_head perche poi head_ potrebbe essere modificata da altri thread
                 std::unique_lock<std::mutex> loc_el(queue_[new_head].m_el_);
-                queue_[new_head].cv_ready_to_pop_.wait(loc_el,[this,new_head](){return !queue_[new_head].state_;});
+                queue_[new_head].cv_ready_to_pop_.wait(loc_el,[this,new_head](){return !queue_[new_head].state_ || !this->active_;});
                 if(!active_) return std::nullopt;
                 // pop 
                 value_type ret = pop_fb_pop<T,hold_wait>(queue_[new_head]);
@@ -604,7 +604,7 @@ namespace fdapde{
                 if(new_tail<0) return false;
 
                 std::unique_lock<std::mutex> loc_el(queue_[new_tail].m_el_);
-                queue_[new_tail].cv_ready_to_push_.wait(loc_el,[this,new_tail](){return queue_[new_tail].state_;});
+                queue_[new_tail].cv_ready_to_push_.wait(loc_el,[this,new_tail](){return queue_[new_tail].state_ || !this->active_;});
                 if(!active_){return false;}
                 push_fb_push<T,hold_wait>(queue_[new_tail],t);
                 loc_el.unlock();
@@ -621,7 +621,7 @@ namespace fdapde{
                 loc.unlock();
 
                 std::unique_lock<std::mutex> loc_el(queue_[new_tail].m_el_);
-                queue_[new_tail].cv_ready_to_push_.wait(loc_el,[this,new_tail](){return queue_[new_tail].state_;});
+                queue_[new_tail].cv_ready_to_push_.wait(loc_el,[this,new_tail](){return queue_[new_tail].state_ || !this->active_;});
                 if(!active_){return false;}
                 push_fb_push<T,hold_wait>(queue_[new_tail],t);
                 loc_el.unlock();
@@ -637,7 +637,7 @@ namespace fdapde{
                 loc.unlock();
 
                 std::unique_lock<std::mutex> loc_el(queue_[new_tail].m_el_);
-                queue_[new_tail].cv_ready_to_push_.wait(loc_el,[this,new_tail](){return queue_[new_tail].state_;});
+                queue_[new_tail].cv_ready_to_push_.wait(loc_el,[this,new_tail](){return queue_[new_tail].state_ || !this->active_;});
                 if(!active_){return false;};
                 push_fb_push<T,hold_wait>(queue_[new_tail],t);
                 loc_el.unlock();
@@ -653,7 +653,7 @@ namespace fdapde{
                 if(t<0) return std::nullopt;
 
                 std::unique_lock<std::mutex> loc_el(queue_[t].m_el_);
-                queue_[t].cv_ready_to_pop_.wait(loc_el,[this,t](){return !queue_[t].state_;});
+                queue_[t].cv_ready_to_pop_.wait(loc_el,[this,t](){return !queue_[t].state_ || !this->active_;});
                 if(!active_) return std::nullopt;
                 // sostituisce in posto che viene liberato il valore di defaul di value_type
                 value_type ret = pop_fb_pop<T,hold_wait>(queue_[t]);
@@ -671,7 +671,7 @@ namespace fdapde{
                 loc.unlock();
 
                 std::unique_lock<std::mutex> loc_el(queue_[t].m_el_);
-                queue_[t].cv_ready_to_pop_.wait(loc_el,[this,t](){return !queue_[t].state_;});
+                queue_[t].cv_ready_to_pop_.wait(loc_el,[this,t](){return !queue_[t].state_ || !this->active_;});
                 if(!active_) return std::nullopt;
                 // sostituisce in posto che viene liberato il valore di defaul di value_type
                 value_type ret = pop_fb_pop<T,hold_wait>(queue_[t]);
@@ -688,7 +688,7 @@ namespace fdapde{
                 loc.unlock();
 
                 std::unique_lock<std::mutex> loc_el(queue_[t].m_el_);
-                queue_[t].cv_ready_to_pop_.wait(loc_el,[this,t](){return !queue_[t].state_;});
+                queue_[t].cv_ready_to_pop_.wait(loc_el,[this,t](){return !queue_[t].state_ || !this->active_;});
                 if(!active_) return std::nullopt;
                 // sostituisce in posto che viene liberato il valore di defaul di value_type
                 value_type ret = pop_fb_pop<T,hold_wait>(queue_[t]);
