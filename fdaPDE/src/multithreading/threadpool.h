@@ -68,11 +68,19 @@ namespace fdapde{
     template<typename T,typename... Args>
     class Threadpool{
         using job = std::function<T(Args... args)>;
+        struct indx_worker{
+            int indx_ = 0;
+            void next(int n_worker){
+                (indx_ == n_worker-1)? (indx_ = 0):(indx_++);
+            };
+        };
         private:
             std::vector<std::shared_ptr<fdapde::Worker<T,Args...>>> threadpool_; //vettore di putatori perche non movable e copiable synchro_queue per via di mutex
             std::vector<int> count_task_;
+            int n_worker_;
+            indx_worker indxw_; 
         public:
-            Threadpool(int n, int k){
+            Threadpool(int n, int k):n_worker_(k){
                 threadpool_.reserve(k);
                 for(int i=0; i<k; i++){
                     threadpool_.emplace_back(std::make_shared<fdapde::Worker<T,Args...>> (n));
@@ -93,6 +101,13 @@ namespace fdapde{
                 int indx_worker = indx_freer();
                 if(threadpool_[indx_worker]->push_back(j)){
                     count_task_[indx_worker] ++;
+                    return true;
+                }
+                return false;
+            };
+            bool send_task_round(job j){
+                if(threadpool_[indxw_.indx_]->push_back(j)){
+                    indxw_.next(n_worker_);
                     return true;
                 }
                 return false;
