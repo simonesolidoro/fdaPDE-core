@@ -19,8 +19,9 @@
 #include "header_check.h"
 
 namespace fdapde{
+    template<typename T>
     class Worker{
-        using job = std::function<void()>;
+        using job = T;
         private: 
             fdapde::Synchro_queue<job,fdapde::relax_nowait> sync_queue_;
             std::thread t_;
@@ -31,9 +32,22 @@ namespace fdapde{
             Worker(int n):sync_queue_(n),t_(&Worker::worker_loop,this){};
             
             ~Worker(){
+                while(!sync_queue_.empty()){}; //per aspettare che worker finisca i job in coda
                 stop_ = true;
                 t_.join();
             }
+
+            void worker_loop(){
+                while(!stop_){
+                    std::optional<job> j = sync_queue_.pop_front();
+                    job jj;
+                    if(j){//esegue se non è nullopt
+                        jj = j.value(); 
+                        jj();
+                    }
+                }
+            };
+
             //wrap di funzioni per pop e push
             bool push_front(job fun){
                 return  sync_queue_.push_front(fun);
@@ -47,33 +61,23 @@ namespace fdapde{
             std::optional<job> pop_back(){
                 return  sync_queue_.pop_back();
             };
-
-            void worker_loop(){
-                while(!stop_){
-                    std::optional<job> j = pop_front();
-                    job jj;
-                    if(j){
-                        jj = j.value(); //esegue se non è nullopt
-                        jj();
-                    }
-                }
-            };
     };
 
+    template<typename T>
     class Threadpool{
-        using job = std::function<void()>;
+        using job = T;
         private:
-            std::vector<std::shared_ptr<fdapde::Worker>> threadpool_; //vettore di putatori perche non movable e copiable synchro_queue per via di mutex
+            std::vector<std::shared_ptr<fdapde::Worker<job>>> threadpool_; //vettore di putatori perche non movable e copiable synchro_queue per via di mutex
             std::vector<int> count_task_;
         public:
             Threadpool(int n, int k){
                 threadpool_.reserve(k);
                 for(int i=0; i<k; i++){
-                    threadpool_.emplace_back(std::make_shared<fdapde::Worker> (n));
+                    threadpool_.emplace_back(std::make_shared<fdapde::Worker<job>> (n));
                     count_task_.push_back(0);
                 }
             };
-            //rida indice di worker piu libero
+            //rida indice di worker piu libero (in realta finche non implementato decremento count ridà indice a cui sono stati mandti meno job non chi ne ha di meno in quel momento )
             int indx_freer(){
                 int worker_indx = 0; 
                 for (size_t j=1; j<count_task_.size(); j++){

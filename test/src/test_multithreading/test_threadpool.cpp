@@ -20,7 +20,7 @@ void fun(){
     std::cout<<"fun da thread_id: "<<std::this_thread::get_id()<<std::endl;
 }
 int main(){
-    fdapde::Threadpool tp(16,2);
+    fdapde::Threadpool<std::function<void()>> tp(16,2);
     job j1 = fun;
     job j2 = fun;
     job j3 = fun;
@@ -30,7 +30,8 @@ int main(){
     tp.send_task(j2);
     tp.send_task(j3);
     tp.send_task(j4);
+    tp.send_task([](){std::cout<<"lambda da thread_id: "<<std::this_thread::get_id()<<std::endl;});
 
-    std::this_thread::sleep_for(std::chrono::microseconds(100000));
+    //std::this_thread::sleep_for(std::chrono::microseconds(100));
     return 0;
 }
