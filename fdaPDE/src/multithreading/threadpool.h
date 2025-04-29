@@ -19,7 +19,7 @@
 #include "header_check.h"
 
 namespace fdapde{
-    template<typename T,typename... Args>
+    template<typename T,typename... Args> //per ora Args... inutile perche passate funzioni con parametri come lambda senza parametri: tipo [fun,args](){fun(args);}
     class Worker{
         using job = std::function<T(Args... args)>;
         private: 
@@ -40,12 +40,15 @@ namespace fdapde{
             void worker_loop(){
                 while(!stop_){
                     //TODO: capire come mettere a dormire se coda vuota, nel frattempo messo yields()
+                    //OSS: uso di empty() brutto ma non vanifica del tutto synchro_queue perche blocca tutto mentre lo fa ma poi pop e push semi sequenziali.
+                    //     il problema è l'uso di un mutex necessario per usare una cv che renderebbe tutto sequenziale e vanifica tutto lavoro fatto fin ora(sync_queue sarebbe inutile tanto varebbe usare normale deque)
+                    //     soluzione probabilmente sara aggiungere qualche metodo in synchro_queue ma ancora non capito
                     std::optional<job> j = sync_queue_.pop_front();
                     if(j){//esegue se non è nullopt
-                        j.value()();
+                        (j.value())(); //esegue funzioni con 0 parametri 
                     }
                     else{
-                        std::this_thread::yield(); //da controllo a OS, possibile che stoppi l'esecuzione del thread a favore di altro (usato per mettere una pezza a mancanza condion varibale che fa wait se coda empty)
+                        std::this_thread::yield(); //da controllo a OS, possibile che sospenda l'esecuzione del thread a favore di altro, con che criterio non lo so (usato per mettere una pezza a mancanza condion varibale che fa wait se coda empty)
                     }
                 }
             };
@@ -63,11 +66,21 @@ namespace fdapde{
             std::optional<job> pop_back(){
                 return  sync_queue_.pop_back();
             };
+
+            //calcolo elementi in coda (non affidabile ma tanto solo indicativo)
+            int count_el (){ //OSS: problema che se h == t rida coda vuota ma magari coda piena. ci pensiamo poi a come risolvere
+                int t = sync_queue_.get_tail();
+                int h = sync_queue_.get_head();
+                int tmp;
+                (h>t)? (tmp= h-t):(tmp= t-h);
+                return tmp;
+            }
     };
 
     template<typename T,typename... Args>
     class Threadpool{
         using job = std::function<T(Args... args)>;
+        //usato per send_task_round (che è equivalente a usare coutn_task senza decremento)
         struct indx_worker{
             int indx_ = 0;
             void next(int n_worker){
@@ -76,10 +89,11 @@ namespace fdapde{
         };
         private:
             std::vector<std::shared_ptr<fdapde::Worker<T,Args...>>> threadpool_; //vettore di putatori perche non movable e copiable synchro_queue per via di mutex
-            std::vector<int> count_task_;
+            std::vector<int> count_task_; //TODO: probabimente meglio togliere da qua e associare ad ogni worker il suo contatore cosi che potra decrementarlo in worker_loop. OSS: lettura di contatore non sara affidabile perche nel mentre che leggi potrebbe cambiare (es leggo il primo che ha 10 job ora che vado a leggere ultimo magari primo ha finto, però se cosi fosse i job sarebbero piu veloci di scorrere un vettore e confrontare due valori e quindi che senso ha parallelizzarli)
             int n_worker_;
             indx_worker indxw_; 
         public:
+            //n = size code, k = numero worker
             Threadpool(int n, int k):n_worker_(k){
                 threadpool_.reserve(k);
                 for(int i=0; i<k; i++){
@@ -88,15 +102,17 @@ namespace fdapde{
                 }
             };
 
-            //ridà indice di worker piu libero (in realta finche non implementato decremento count ridà indice a cui sono stati mandti meno job non chi ne ha di meno in quel momento )
+            //ridà indice di worker piu libero (lettura di elmenti in sync_queue di worker fatta con metodo count_el non affidabile ma è abbastanza per avere un idea)
             int indx_freer(){
-                int worker_indx = 0; 
-                for (size_t j=1; j<count_task_.size(); j++){
-                    if(count_task_[j] < count_task_[worker_indx] ) 
+                int worker_indx = 0;
+                int min_elem= threadpool_[0]->count_el(); //numero elementi in primo worker 
+                for (size_t j=1; j<n_worker_; j++){
+                    if(threadpool_[j]->count_el() < min_elem ) 
                         worker_indx = j;
                 }
                 return worker_indx;
             };
+            //send con indx_freer criterio
             bool send_task(job j){
                 int indx_worker = indx_freer();
                 if(threadpool_[indx_worker]->push_back(j)){
@@ -105,6 +121,7 @@ namespace fdapde{
                 }
                 return false;
             };
+            //send a giro usando struct indxw 
             bool send_task_round(job j){
                 if(threadpool_[indxw_.indx_]->push_back(j)){
                     indxw_.next(n_worker_);
