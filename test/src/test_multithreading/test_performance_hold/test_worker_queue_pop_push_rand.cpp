@@ -25,7 +25,7 @@ void operation_in_thread(fdapde::Synchro_queue<value,fdapde::hold_nowait> & q, s
 
     for (auto operation=begin; operation<end; operation++) {
         switch (*operation) {
-        case 1:
+        case 4:
             q.push_back(el);
             break;
         case 2:
@@ -34,7 +34,7 @@ void operation_in_thread(fdapde::Synchro_queue<value,fdapde::hold_nowait> & q, s
         case 3:
             q.pop_back();
             break;
-        case 4:
+        case 1:
             q.pop_front();
             break;
         }
@@ -52,7 +52,7 @@ int main(int argc, char** argv){
 
     std::random_device rd;
     std::mt19937 gen(rd());
-    std::uniform_int_distribution<> distrib(1,4);
+    std::uniform_int_distribution<> distrib(1,2);
 
     std::vector<int> operations(size_coda);
 

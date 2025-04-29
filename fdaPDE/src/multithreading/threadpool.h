@@ -43,13 +43,14 @@ namespace fdapde{
                     //OSS: uso di empty() brutto ma non vanifica del tutto synchro_queue perche blocca tutto mentre lo fa ma poi pop e push semi sequenziali.
                     //     il problema è l'uso di un mutex necessario per usare una cv che renderebbe tutto sequenziale e vanifica tutto lavoro fatto fin ora(sync_queue sarebbe inutile tanto varebbe usare normale deque)
                     //     soluzione probabilmente sara aggiungere qualche metodo in synchro_queue ma ancora non capito
+                    //OSS: alternativa thread non va mai a dormire, se fa il pop di un nullopt va a rubare job ad altri (credo lo faccia eigen cosi)
                     std::optional<job> j = sync_queue_.pop_front();
                     if(j){//esegue se non è nullopt
-                        (j.value())(); //esegue funzioni con 0 parametri 
+                        (j.value())(); //esegue funzioni con 0 parametri e void. per non void si dovra fare wrap e associare a promise. per parametri lamda wrap che li cattura cosi no param  
                     }
                     else{
-                        std::this_thread::yield(); //da controllo a OS, possibile che sospenda l'esecuzione del thread a favore di altro, con che criterio non lo so (usato per mettere una pezza a mancanza condion varibale che fa wait se coda empty)
-                    }
+                        std::this_thread::yield(); //da controllo a OS, possibile che sospenda l'esecuzione del thread a favore di altro, (usato per mettere una pezza a mancanza condion varibale che fa wait se coda empty)
+                    }                              
                 }
             };
 
@@ -74,7 +75,7 @@ namespace fdapde{
                 int tmp;
                 (h>t)? (tmp= h-t):(tmp= t-h);
                 return tmp;
-            }
+            };
     };
 
     template<typename T,typename... Args>

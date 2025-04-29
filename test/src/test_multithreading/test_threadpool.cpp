@@ -15,7 +15,7 @@
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 #include<fdaPDE/multithreading.h>
-using job = std::function<bool()>;
+
 bool fun(){
     std::cout<<"fun da thread_id: "<<std::this_thread::get_id()<<std::endl;
     return true;
@@ -24,28 +24,74 @@ bool fun2(){
     std::cout<<"fun22222222da thread_id: "<<std::this_thread::get_id()<<std::endl;
     return true;
 };
+
+bool count (int n){
+    int i= 0;
+    for(int j=0; j<n; j++){
+        i++;
+    }
+    std::cout<<"thread:"<<std::this_thread::get_id()<<" ha contato fino a "<<i<<std::endl;
+    return true;
+};
 int main(){
+{/*void function, trasformate in bool fittizie coai che con future si aspetta esecuzione*/
+    
+    using job = std::function<bool()>;
     fdapde::Threadpool<bool> tp(16,4);
     job j1 = fun;
     job j2 = fun;
     job j3 = fun;
     job j4 = fun;
     
-    tp.send_task_round(j1);
-    tp.send_task_round(j2);
-    tp.send_task_round(j3);
-    tp.send_task_round(j4);
-    tp.send_task_round([](){std::cout<<"lambda da thread_id: "<<std::this_thread::get_id()<<std::endl;
+    tp.send_task(j1);
+    tp.send_task(j2);
+    tp.send_task(j3);
+    tp.send_task(j4);
+    tp.send_task([](){std::cout<<"lambda da thread_id: "<<std::this_thread::get_id()<<std::endl;
     return true;});
 
     auto ptr_task = std::make_shared<std::packaged_task<bool()>> (fun2); 
     std::future<bool> fut = ptr_task->get_future();
-    tp.send_task_round([ptr_task]() mutable ->bool { (*ptr_task)();
+    tp.send_task([ptr_task]() mutable ->bool { (*ptr_task)();
     return true;});
 
     fut.get(); //OSS: unico job che siamo sicuri verra eseguito è task a cui è associato il future gli altri potrebbero non essere eseguiti perche il distruttore potrebbe essere chiamato prima
 
 
     //std::this_thread::sleep_for(std::chrono::seconds(3));
+   
+}
+{/*se funzione che richiede parametri wrap in una lambda che cattura parametri cosi che lambda sia return_type() senza parametri*/
+    //OSS: cosi facendo inutile template argoment Args... in worker e in threadpool tanto tutti i job sarebbero senza parametri
+    fdapde::Threadpool<bool> tp(5,4);
+    int n = 10000;
+
+    auto ptr_task1 = std::make_shared<std::packaged_task<bool(int)>> (count);
+    std::future<bool> fut1 = ptr_task1->get_future();
+    tp.send_task_round([ptr_task1,n]() mutable ->bool { (*ptr_task1)(n);
+        return true;});
+
+    auto ptr_task2 = std::make_shared<std::packaged_task<bool(int)>> (count);
+    std::future<bool> fut2 = ptr_task2->get_future();
+    tp.send_task_round([ptr_task2,n]() mutable ->bool { (*ptr_task2)(n);
+        return true;});
+
+    auto ptr_task3 = std::make_shared<std::packaged_task<bool(int)>> (count);
+    std::future<bool> fut3 = ptr_task3->get_future();
+    tp.send_task_round([ptr_task3,n]() mutable ->bool { (*ptr_task3)(n);
+        return true;});
+
+    auto ptr_task4 = std::make_shared<std::packaged_task<bool(int)>> (count);
+    std::future<bool> fut4 = ptr_task4->get_future();
+    tp.send_task_round([ptr_task4,n]() mutable ->bool { (*ptr_task4)(n);
+        return true;});
+
+    fut1.get();
+    fut2.get();
+    fut3.get();
+    fut4.get();
+    
+
+}
     return 0;
 }

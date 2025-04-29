@@ -25,7 +25,7 @@ namespace fdapde{
     int push_f_indx(Synchro_queue<T,M> & S){
         if constexpr(std::is_same_v<M,hold_nowait> || std::is_same_v<M,hold_wait>){ //OSS: tolto hold_wait perche wait non puo fallire se inizia è perche CV ha gia checcato che coda non sia piena
             if (S.head_ == S.tail_ && !S.empty_queue_ ){// TODO: capire se possibile togliere questo check in relax_nowait perche tanto se coda piena elemento in cui si vuole fare push sara full
-                std::cerr<<"queue full"<<std::endl; // per debug poi da togliere
+                //std::cerr<<"queue full"<<std::endl; // per debug poi da togliere
                 return -1;
             }
             S.empty_queue_ = false; //magari gia false quindi ridondante,ma evita if(empty_queue_) {empty_queue_ = false;} non so quale piu efficiente. 
@@ -47,7 +47,7 @@ namespace fdapde{
     int pop_f_indx(Synchro_queue<T,M> & S){
         if constexpr(std::is_same_v<M,hold_nowait> || std::is_same_v<M,hold_wait> ){
             if (S.empty_queue_){
-                std::cerr<<"queue empty"<<std::endl;
+                //std::cerr<<"queue empty"<<std::endl;
                 return -1;
             }
         }
@@ -72,7 +72,7 @@ namespace fdapde{
     int push_b_indx(Synchro_queue<T,M> & S){
         if constexpr(std::is_same_v<M,hold_nowait> || std::is_same_v<M,hold_wait>){
             if (S.head_ == S.tail_ && !S.empty_queue_ ){// coda piena
-                std::cerr<<"queue full"<<std::endl; // per debug poi da togliere
+                //std::cerr<<"queue full"<<std::endl; // per debug poi da togliere
                 return -1;
             }
             S.empty_queue_ = false;
@@ -94,7 +94,7 @@ namespace fdapde{
     int pop_b_indx(Synchro_queue<T,M> & S){
         if constexpr(std::is_same_v<M,hold_nowait> || std::is_same_v<M,hold_wait>){
             if(S.empty_queue_ ){
-                std::cerr << "Queue is empty" << std::endl;
+                //std::cerr << "Queue is empty" << std::endl;
                 return -1;
             }
         }

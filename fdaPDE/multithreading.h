@@ -28,7 +28,7 @@
 #include<functional>
 #include<concepts>
 #include<list>
-#include<future>
+
 
 // per debug e test momentaneo
 #include<iostream>
