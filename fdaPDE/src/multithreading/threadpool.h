@@ -89,7 +89,7 @@ namespace fdapde{
         };
         private:
             std::vector<std::shared_ptr<fdapde::Worker<T,Args...>>> threadpool_; //vettore di putatori perche non movable e copiable synchro_queue per via di mutex
-            std::vector<int> count_task_; //TODO: probabimente meglio togliere da qua e associare ad ogni worker il suo contatore cosi che potra decrementarlo in worker_loop. OSS: lettura di contatore non sara affidabile perche nel mentre che leggi potrebbe cambiare (es leggo il primo che ha 10 job ora che vado a leggere ultimo magari primo ha finto, però se cosi fosse i job sarebbero piu veloci di scorrere un vettore e confrontare due valori e quindi che senso ha parallelizzarli)
+            //std::vector<int> count_task_; //TODO: probabimente meglio togliere da qua e associare ad ogni worker il suo contatore cosi che potra decrementarlo in worker_loop. OSS: lettura di contatore non sara affidabile perche nel mentre che leggi potrebbe cambiare (es leggo il primo che ha 10 job ora che vado a leggere ultimo magari primo ha finto, però se cosi fosse i job sarebbero piu veloci di scorrere un vettore e confrontare due valori e quindi che senso ha parallelizzarli)
             int n_worker_;
             indx_worker indxw_; 
         public:
@@ -98,7 +98,7 @@ namespace fdapde{
                 threadpool_.reserve(k);
                 for(int i=0; i<k; i++){
                     threadpool_.emplace_back(std::make_shared<fdapde::Worker<T,Args...>> (n));
-                    count_task_.push_back(0);
+                    //count_task_.push_back(0);
                 }
             };
 
@@ -106,7 +106,7 @@ namespace fdapde{
             int indx_freer(){
                 int worker_indx = 0;
                 int min_elem= threadpool_[0]->count_el(); //numero elementi in primo worker 
-                for (size_t j=1; j<n_worker_; j++){
+                for (int j=1; j<n_worker_; j++){
                     if(threadpool_[j]->count_el() < min_elem ) 
                         worker_indx = j;
                 }
