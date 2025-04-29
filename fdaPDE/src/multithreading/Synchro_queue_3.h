@@ -145,9 +145,11 @@ namespace fdapde{
                 tail_ = 0;
             }
         
-            //per debug momentanei
+
             int get_tail()const {return tail_;}
             int get_head()const {return head_;}
+
+            //per debug momentanei
             void print(){
                 for (int i=0; i<size_; i++){    
                     if(queue_[i].state_.load(std::memory_order_acquire) == Empty){
@@ -296,9 +298,10 @@ namespace fdapde{
                 empty_queue_ = true;
             }
 
-            //per debug momentanei
+
             int get_tail()const {return tail_;}
             int get_head()const {return head_;}
+            //per debug momentanei
             void print(){
                 for (int i=0; i<size_; i++){
                     if(queue_[i].state_){
@@ -467,9 +470,11 @@ namespace fdapde{
                 empty_queue_ = true;
             }
 
-            //per debug momentanei
+
             int get_tail()const {return tail_;}
             int get_head()const {return head_;}
+            
+            //per debug momentanei
             void print(){
                 for (int i=0; i<size_; i++){
                     if(queue_[i].state_){
