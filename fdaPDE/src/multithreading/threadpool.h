@@ -116,7 +116,7 @@ namespace fdapde{
             bool send_task(job j){
                 int indx_worker = indx_freer();
                 if(threadpool_[indx_worker]->push_back(j)){
-                    count_task_[indx_worker] ++;
+                    //count_task_[indx_worker] ++;
                     return true;
                 }
                 return false;
