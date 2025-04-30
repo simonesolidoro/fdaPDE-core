@@ -25,32 +25,48 @@ namespace fdapde{
         private: 
             fdapde::Synchro_queue<job,fdapde::relax_nowait> sync_queue_;
             std::thread t_;
-            bool stop_ = false;
-            //std::condition_variable cv_; CV su che mutex ????
+            std::atomic<bool> stop_ = false;
+            std::mutex m_;
+            std::condition_variable cv_; 
         public:
             // costruttore con numero elementi di coda
             Worker(int n):sync_queue_(n),t_(&Worker::worker_loop,this){};
             
             ~Worker(){
                 //while(!sync_queue_.empty()){}; //per aspettare che worker finisca i job in coda. PB: a volte empty() chiamato prima di push_back() di metodo send_task di threadpool
-                stop_ = true; //PROBLEMA: chiamato distruttore prima che job effettivamente finiti. SOLUZIONE: usare future associato a task in main cosi che future.get() garantisce fine di task prima di chiamata distruttore
+                stop_.store(true,std::memory_order_release); //PROBLEMA: chiamato distruttore prima che job effettivamente finiti. SOLUZIONE: usare future associato a task in main cosi che future.get() garantisce fine di task prima di chiamata distruttore
+                //DOMANDA: serve che stop_ sia atomico ? bisogna distruggere dento al mutex ? perche non è possibile che notifca arrivi a worker_loop si sveglia e controlla stop_ prima che sia effettivamente cambiato
+                cv_.notify_one();
                 t_.join();
             }
-
+            //per poter bloccare il mutex di Worker m_ in threadpool
+            std::unique_lock<std::mutex> get_loc(){
+               std::unique_lock<std::mutex> loc(m_);
+               return loc;          
+            }
+            //per poter notificare da threadpool
+            void notifica(){
+                cv_.notify_one();
+            }
             void worker_loop(){
                 while(!stop_){
                     //TODO: capire come mettere a dormire se coda vuota, nel frattempo messo yields()
                     //OSS: uso di empty() brutto ma non vanifica del tutto synchro_queue perche blocca tutto mentre lo fa ma poi pop e push semi sequenziali.
                     //     il problema è l'uso di un mutex necessario per usare una cv che renderebbe tutto sequenziale e vanifica tutto lavoro fatto fin ora(sync_queue sarebbe inutile tanto varebbe usare normale deque)
-                    //     soluzione probabilmente sara aggiungere qualche metodo in synchro_queue ma ancora non capito
+                    //OSS: possibile mettere un  mutex che avvisi e poi fare pop fuori da mutex, push pero deve essere fatto dentro per avere certezza che notify() sia coerente 
                     //OSS: alternativa thread non va mai a dormire, se fa il pop di un nullopt va a rubare job ad altri (credo lo faccia eigen cosi)
+                    std::unique_lock<std::mutex> loc(m_);
+                    cv_.wait(loc,[this](){return !sync_queue_.empty() || stop_;});
+                    loc.unlock();
+                    //OSS: cosi facendo durante un push da threadpool non possono avvenire pop (sequenziale :( ), ma rimane che durante un pop possono essere fatti dei push. si perde a meta il vantaggio di avere synchro_queue parzialmente non bloking, ma non del tutto
                     std::optional<job> j = sync_queue_.pop_front();
                     if(j){//esegue se non è nullopt
                         (j.value())(); //esegue funzioni con 0 parametri e void. per non void si dovra fare wrap e associare a promise. per parametri lamda wrap che li cattura cosi no param  
                     }
+                    /*
                     else{
                         std::this_thread::yield(); //da controllo a OS, possibile che sospenda l'esecuzione del thread a favore di altro, (usato per mettere una pezza a mancanza condion varibale che fa wait se coda empty)
-                    }                              
+                    } */                             
                 }
             };
 
@@ -116,15 +132,22 @@ namespace fdapde{
             //send con indx_freer criterio
             bool send_task(job j){
                 int indx_worker = indx_freer();
-                if(threadpool_[indx_worker]->push_back(j)){
-                    //count_task_[indx_worker] ++;
+                std::unique_lock<std::mutex> loc(threadpool_[indx_worker]->get_loc());
+                bool flag = threadpool_[indx_worker]->push_back(j);
+                threadpool_[indx_worker]->notifica();
+                loc.unlock();
+                if(flag){
                     return true;
                 }
                 return false;
             };
             //send a giro usando struct indxw 
             bool send_task_round(job j){
-                if(threadpool_[indxw_.indx_]->push_back(j)){
+                std::unique_lock<std::mutex> loc(threadpool_[indxw_.indx_]->get_loc());
+                bool flag = threadpool_[indxw_.indx_]->push_back(j);
+                threadpool_[indxw_.indx_]->notifica();
+                loc.unlock();
+                if(flag){
                     indxw_.next(n_worker_);
                     return true;
                 }
