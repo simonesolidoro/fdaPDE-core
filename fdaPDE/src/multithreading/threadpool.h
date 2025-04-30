@@ -36,6 +36,7 @@ namespace fdapde{
                 //while(!sync_queue_.empty()){}; //per aspettare che worker finisca i job in coda. PB: a volte empty() chiamato prima di push_back() di metodo send_task di threadpool
                 stop_.store(true,std::memory_order_release); //PROBLEMA: chiamato distruttore prima che job effettivamente finiti. SOLUZIONE: usare future associato a task in main cosi che future.get() garantisce fine di task prima di chiamata distruttore
                 //DOMANDA: serve che stop_ sia atomico ? bisogna distruggere dento al mutex ? perche non è possibile che notifca arrivi a worker_loop si sveglia e controlla stop_ prima che sia effettivamente cambiato
+                //oss: stop atomico inutile, o serve mutex e quindi modifica stop dentro mutex quindi non serve sia atomico, o non serve niente basta il notify (come in threadpool di link di primisimo esempio visto) 
                 cv_.notify_one();
                 t_.join();
             }
