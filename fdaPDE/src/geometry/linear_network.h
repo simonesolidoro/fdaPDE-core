@@ -23,14 +23,14 @@ namespace fdapde {
   
 // template specialization for 1D meshes (bounded intervals)
 template <int LocalDim, int EmbedDim> class Triangulation;
-template <> class Triangulation<1, 2> {
+template <> class Triangulation<1, 2> : public TriangulationBase<1, 2, Triangulation<1, 2>> {
    public:
+    using Base = TriangulationBase<1, 2, Triangulation<1, 2>>;
     static constexpr int local_dim = 1;
     static constexpr int embed_dim = 2;
     static constexpr int n_nodes_per_cell = 2;
     static constexpr int n_neighbors_per_cell = Dynamic;
     static constexpr bool is_manifold = true;
-    using NodeType = Eigen::Matrix<double, 2, 1>;
     using LocationPolicy = TreeSearch<Triangulation<1, 2>>;
 
     struct CellType : public Segment<Triangulation<1, 2>> {
@@ -42,10 +42,10 @@ template <> class Triangulation<1, 2> {
         CellType() = default;
         CellType(int id, const Triangulation* mesh) : Segment<Triangulation<1, 2>>(id, mesh) { }
 
-        Eigen::Matrix<int, Dynamic, 1> neighbors() const {
-            const auto& v1 = mesh_->node_to_cells().at(mesh_->cells()(id_, 0));
-            const auto& v2 = mesh_->node_to_cells().at(mesh_->cells()(id_, 1));
-            Eigen::Matrix<int, Dynamic, 1> result(v1.size() + v2.size());
+        std::vector<int> neighbors() const {
+            const auto& v1 = mesh_->node_to_cells_.at(mesh_->cells()(id_, 0));
+            const auto& v2 = mesh_->node_to_cells_.at(mesh_->cells()(id_, 1));
+	    std::vector<int> result(v1.size() + v2.size());
             int i = 0;
             for (; i < v1.size(); ++i) result[i] = v1[i];
             for (; i < v1.size() + v2.size(); ++i) result[i] = v2[i];
@@ -56,64 +56,96 @@ template <> class Triangulation<1, 2> {
     Triangulation() = default;
     Triangulation(
       const Eigen::Matrix<double, Dynamic, Dynamic>& nodes, const Eigen::Matrix<int, Dynamic, Dynamic>& cells,
-      const Eigen::Matrix<int, Dynamic, Dynamic>& boundary) :
-        nodes_(nodes), cells_(cells), nodes_markers_(boundary) {
+      const Eigen::Matrix<int, Dynamic, Dynamic>& boundary, int flags = 0) :
+        Base(nodes, cells, boundary, flags) {
         // store number of nodes and number of elements
         n_nodes_ = nodes_.rows();
         n_cells_ = cells_.rows();
+        if (flags_ & cache_cells) {   // populate cache if cell caching is active
+            cell_cache_.reserve(n_cells_);
+            for (int i = 0; i < n_cells_; ++i) { cell_cache_.emplace_back(i, this); }
+        }
         // compute mesh limits
         range_.row(0) = nodes_.colwise().minCoeff();
         range_.row(1) = nodes_.colwise().maxCoeff();
-	neighbors_.resize(n_cells_, n_cells_);
-	// compute node to cells boundings
-	for (int i = 0; i < n_cells_; ++i) {
-	  node_to_cells_[cells_(i, 0)].push_back(i);
-	  node_to_cells_[cells_(i, 1)].push_back(i);
-	}
-	// recover adjacency matrix
-	Eigen::SparseMatrix<int> adjoint_neighbors;
-	std::vector<Eigen::Triplet<int>> triplet_list;
-	for (const auto& [node, edges] : node_to_cells_) {
-	  for (int i = 0; i < edges.size(); ++i) {
-            for (int j = i + 1; j < edges.size(); ++j) triplet_list.emplace_back(edges[j], edges[i], 1);
-	  }
-	}
-	adjoint_neighbors.resize(n_cells_, n_cells_);
-	adjoint_neighbors.setFromTriplets(triplet_list.begin(), triplet_list.end());
-	neighbors_ = adjoint_neighbors.selfadjointView<Eigen::Lower>();   // symmetrize neighboring relation
-    };
+        neighbors_.resize(n_cells_, n_cells_);
+        // compute node to cells boundings
+        for (int i = 0; i < n_cells_; ++i) {
+            node_to_cells_[cells_(i, 0)].push_back(i);
+            node_to_cells_[cells_(i, 1)].push_back(i);
+        }
+        // recover adjacency matrix
+        Eigen::SparseMatrix<int> adjoint_neighbors;
+        std::vector<Eigen::Triplet<int>> triplet_list;
+        for (const auto& [node, edges] : node_to_cells_) {
+            for (int i = 0; i < edges.size(); ++i) {
+                for (int j = i + 1; j < edges.size(); ++j) { triplet_list.emplace_back(edges[j], edges[i], 1); }
+            }
+        }
+        adjoint_neighbors.resize(n_cells_, n_cells_);
+        adjoint_neighbors.setFromTriplets(triplet_list.begin(), triplet_list.end());
+        neighbors_ = adjoint_neighbors.selfadjointView<Eigen::Lower>();   // symmetrize neighboring relation
+    }
 
     // getters
-    CellType cell(int id) const { return CellType(id, this); }
-    NodeType node(int id) const { return nodes_.row(id); }
-    bool is_node_on_boundary(int id) const { return nodes_markers_[id]; }
-    const Eigen::Matrix<double, Dynamic, Dynamic>& nodes() const { return nodes_; }
-    const Eigen::Matrix<int, Dynamic, Dynamic, Eigen::RowMajor>& cells() const { return cells_; }
     const Eigen::SparseMatrix<int>& neighbors() const { return neighbors_; }
-    const BinaryVector<Dynamic>& boundary() const { return nodes_markers_; }
-    int n_cells() const { return n_cells_; }
-    int n_nodes() const { return n_nodes_; }
-    Eigen::Matrix<double, 2, 1> range() const { return range_; }
-    const std::unordered_map<int, std::vector<int>>& node_to_cells() const { return node_to_cells_; }
-
-    // iterators support
-    class cell_iterator : public internals::index_iterator<cell_iterator, CellType> {
-        using Base = internals::index_iterator<cell_iterator, CellType>;
-        using Base::index_;
-        friend Base;
-        const Triangulation* mesh_;
-        cell_iterator& operator()(int i) {
-            Base::val_ = mesh_->cell(i);
-            return *this;
+    const CellType& cell(int id) const {
+        if (Base::flags_ & cache_cells) {   // cell caching enabled
+            return cell_cache_[id];
+        } else {
+            cell_ = CellType(id, this);
+            return cell_;
         }
-       public:
-        cell_iterator(int index, const Triangulation* mesh) : Base(index, 0, mesh->n_cells_), mesh_(mesh) {
-            if (index_ < mesh_->n_cells_) operator()(index_);
+    }
+    // boundary iterator
+    using boundary_iterator = Base::boundary_node_iterator;
+    BoundaryIterator<Triangulation<1, 2>> boundary_begin(int marker = BoundaryAll) const {
+        return BoundaryIterator<Triangulation<1, 2>>(0, this, marker);
+    }
+    BoundaryIterator<Triangulation<1, 2>> boundary_end(int marker = BoundaryAll) const {
+        return BoundaryIterator<Triangulation<1, 2>>(n_boundary_nodes(), this, marker);
+    }
+    std::pair<BoundaryIterator<Triangulation<1, 2>>, BoundaryIterator<Triangulation<1, 2>>>
+    boundary(int marker = BoundaryAll) const {
+        return std::make_pair(boundary_begin(marker), boundary_end(marker));
+    }
+    // set boundary markers
+    template <typename Lambda>
+    void mark_boundary(int marker, Lambda&& lambda)
+        requires(requires(Lambda lambda, typename Base::NodeType e) {
+            { lambda(e) } -> std::same_as<bool>;
+        }) {
+        fdapde_assert(marker >= 0);
+        nodes_markers_.resize(n_nodes_);
+        for (boundary_node_iterator it = boundary_nodes_begin(); it != boundary_nodes_end(); ++it) {
+            nodes_markers_[it->id()] = lambda(*it) ? marker : Unmarked;
         }
-    };
-    cell_iterator cells_begin() const { return cell_iterator(0, this); }
-    cell_iterator cells_end() const { return cell_iterator(n_cells_, this); }
-
+    }
+    template <int Rows, typename XprType> void mark_boundary(const BinMtxBase<Rows, 1, XprType>& mask) {
+        fdapde_assert(mask.rows() == n_nodes_);
+        nodes_markers_.resize(n_nodes_);
+        for (boundary_node_iterator it = boundary_nodes_begin(); it != boundary_nodes_end(); ++it) {
+            nodes_markers_[it->id()] = mask[it->id()] ? 1 : 0;
+        }
+    }
+    template <typename Iterator> void mark_boundary(Iterator first, Iterator last) {
+        fdapde_static_assert(
+          std::is_convertible_v<typename Iterator::value_type FDAPDE_COMMA int>, INVALID_ITERATOR_RANGE);
+        int n_markers = std::distance(first, last);
+	bool all_markers_positive = std::all_of(first, last, [](auto marker) { return marker >= 0; });
+        fdapde_assert(n_markers == n_nodes() && all_markers_positive);
+        nodes_markers_.resize(n_nodes_, Unmarked);
+        for (int i = 0; i < n_nodes_; ++i) { nodes_markers_[i] = *(first + i); }
+    }
+    // marks all boundary edges
+    void mark_boundary(int marker) {
+        fdapde_assert(marker >= 0);
+        nodes_markers_.resize(n_nodes_, Unmarked);
+        std::for_each(nodes_markers_.begin(), nodes_markers_.end(), [marker](int& marker_) { marker_ = marker; });
+    }
+    void clear_boundary_markers() {
+        std::for_each(nodes_markers_.begin(), nodes_markers_.end(), [](int& marker) { marker = Unmarked; });
+    }
     // point location
     template <int Rows, int Cols>
     std::conditional_t<Rows == Dynamic || Cols == Dynamic, Eigen::Matrix<int, Dynamic, 1>, int>
@@ -124,17 +156,19 @@ template <> class Triangulation<1, 2> {
         if (!location_policy_.has_value()) { location_policy_ = LocationPolicy(this); }
         return location_policy_->locate(p);
     }
+    template <typename Derived> Eigen::Matrix<int, Dynamic, 1> locate(const Eigen::Map<Derived>& p) const {
+        if (!location_policy_.has_value()) location_policy_ = LocationPolicy(this);
+        return location_policy_->locate(p);
+    }
     // the set of cells which have node id as vertex
     std::vector<int> node_patch(int id) const { return node_to_cells_.at(id); }
    protected:
-    Eigen::Matrix<double, Dynamic, Dynamic> nodes_;                    // physical coordinates of mesh's vertices
-    Eigen::Matrix<int, Dynamic, Dynamic, Eigen::RowMajor> cells_ {};   // nodes composing each cell
-    Eigen::SparseMatrix<int> neighbors_ {};            // ids of faces adjacent to a given face (-1 if no adjacent face)
-    BinaryVector<Dynamic> nodes_markers_ {};           // j-th element is 1 \iff node j is on boundary
-    std::unordered_map<int, std::vector<int>> node_to_cells_;   // for each node, the ids of cells sharing it
-    Eigen::Matrix<double, 2, 1> range_ {};                      // mesh bounding box (min and max coordinates)
-    int n_nodes_ = 0, n_cells_ = 0;
+    Eigen::SparseMatrix<int> neighbors_ {};   // ids of faces adjacent to a given face (-1 if no adjacent face)
+    std::unordered_map<int, std::vector<int>> node_to_cells_ {};   // for each node, the ids of cells sharing it
     mutable std::optional<LocationPolicy> location_policy_ {};
+    // cell caching
+    std::vector<CellType> cell_cache_;
+    mutable CellType cell_;   // used in case cell caching is off
 };
 
 }   // namespace fdapde

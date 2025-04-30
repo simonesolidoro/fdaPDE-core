@@ -21,7 +21,7 @@
 
 namespace fdapde {
 
-// implementation of the Broyden–Fletcher–Goldfarb–Shanno algorithm for unconstrained nonlinear optimization
+// implementation of Broyden–Fletcher–Goldfarb–Shanno algorithm for unconstrained nonlinear optimization
 template <int N, typename... Args> class BFGS {
    private:
     using vector_t =

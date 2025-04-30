@@ -25,16 +25,17 @@ namespace fdapde {
 template <int LocalDim, int EmbedDim> class Triangulation;
 template <> class Triangulation<1, 1> : public TriangulationBase<1, 1, Triangulation<1, 1>> {
    public:
+    static constexpr int n_neighbors_per_cell = 2;
     using Base = TriangulationBase<1, 1, Triangulation<1, 1>>;
     using Base::cells_;       // N \times 2 matrix of nodes identifiers of each segment
     using Base::n_cells_;     // N: number of segments
     using Base::n_nodes_;     // number of nodes (N + 1)
-    using Base::neighbors_;   // N \times 2 matrix of neighboring cells identifiers
     using Base::nodes_;       // physical coordinates of nodes
 
     Triangulation() = default;
-    Triangulation(const Eigen::Matrix<double, Dynamic, 1>& nodes) : Base() {
+    Triangulation(const Eigen::Matrix<double, Dynamic, 1>& nodes, int flags = 0) : Base() {
         fdapde_assert(nodes.rows() > 1 && nodes.cols() == 1);
+	Base::flags_ = flags;
         nodes_ = nodes;
         // store number of nodes and elements
         n_nodes_ = nodes_.rows();
@@ -67,6 +68,7 @@ template <> class Triangulation<1, 1> : public TriangulationBase<1, 1, Triangula
     static Triangulation<1, 1> UnitInterval(int n_nodes) { return Triangulation<1, 1>::Interval(0.0, 1.0, n_nodes); }
 
     // getters
+    const Eigen::Matrix<int, Dynamic, Dynamic, Eigen::RowMajor>& neighbors() const { return neighbors_; }
     const typename Base::CellType& cell(int id) const {
         if (Base::flags_ & cache_cells) {   // cell caching enabled
             return cell_cache_[id];
@@ -141,6 +143,7 @@ template <> class Triangulation<1, 1> : public TriangulationBase<1, 1, Triangula
         }
         return -1;
     }
+    Eigen::Matrix<int, Dynamic, Dynamic, Eigen::RowMajor> neighbors_ {};   // adjacent cells ids (-1: no adjacent cell)
     // cell caching
     std::vector<typename Base::CellType> cell_cache_;
     mutable typename Base::CellType cell_;   // used in case cell caching is off

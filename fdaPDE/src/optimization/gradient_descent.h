@@ -21,6 +21,7 @@
 
 namespace fdapde {
 
+// implementation of Gradient Descent algorithm for unconstrained nonlinear optimization
 template <int N, typename... Args> class GradientDescent {
    private:
     using vector_t = std::conditional_t<N == Dynamic, Eigen::Matrix<double, Dynamic, 1>, Eigen::Matrix<double, N, 1>>;

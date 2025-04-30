@@ -21,7 +21,7 @@
 
 namespace fdapde {
 
-// implementation of the newton method for unconstrained nonlinear optimization
+// implementation of Newton-Rapson algorithm for unconstrained nonlinear optimization
 template <int N, typename... Args> class Newton {
    private:
     using vector_t = std::conditional_t<N == Dynamic, Eigen::Matrix<double, Dynamic, 1>, Eigen::Matrix<double, N, 1>>;
@@ -57,9 +57,9 @@ template <int N, typename... Args> class Newton {
         callbacks_ = other.callbacks_;
         return *this;
     }
-  template <typename ObjectiveT, typename... Functor>
+    template <typename ObjectiveT, typename... Functor>
         requires(sizeof...(Functor) < 2) && ((requires(Functor f, double value) { f(value); }) && ...)
-  vector_t optimize(ObjectiveT& objective, const vector_t& x0, Functor&&... func) {
+    vector_t optimize(ObjectiveT& objective, const vector_t& x0, Functor&&... func) {
         fdapde_static_assert(
           std::is_same<decltype(std::declval<ObjectiveT>().operator()(vector_t())) FDAPDE_COMMA double>::value,
           INVALID_CALL_TO_OPTIMIZE__OBJECTIVE_FUNCTOR_NOT_ACCEPTING_VECTORTYPE);
