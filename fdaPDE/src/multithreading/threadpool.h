@@ -31,7 +31,7 @@ namespace fdapde{
         public:
             class Worker{
                 private: 
-                    fdapde::Threadpool* ptr_threadpool_;
+                    //fdapde::Threadpool* ptr_threadpool_; per far accedere worker a metodi di threadpool e poter fare steal job ma problemi con distruttori segmentation fault
                     fdapde::Synchro_queue<job,fdapde::relax_nowait> sync_queue_;
                     std::thread t_;
                     bool stop_ = false;
@@ -40,7 +40,7 @@ namespace fdapde{
                     int count_job_ = 0;
                 public:
                     // costruttore con numero elementi di coda
-                    Worker(int n,fdapde::Threadpool* p_t):ptr_threadpool_(p_t),sync_queue_(n),t_(&Worker::worker_loop,this){};
+                    Worker(int n):sync_queue_(n),t_(&Worker::worker_loop,this){};
                     
                     ~Worker(){
                         //while(!sync_queue_.empty()){}; //per aspettare che worker finisca i job in coda. PB: a volte empty() chiamato prima di push_back() di metodo send_task di threadpool
@@ -64,6 +64,7 @@ namespace fdapde{
                     }
                     // tre woorker_loop: uno con semplice yields, uno con mutex e cv, uno con steal
                     // oss: se non worker_loop con mutex va tolto: mutex, cv, notifica(), lock(),  uso in metodi send ecc...
+                     //mutex
                     void worker_loop(){
                         while(!stop_){
                             //TODO: capire come mettere a dormire se coda vuota, nel frattempo messo yields()
@@ -81,6 +82,7 @@ namespace fdapde{
                             }                            
                         }
                     };
+                    
                     /*  //Yiels
                     void worker_loop(){
                         while(!stop_){
@@ -106,10 +108,11 @@ namespace fdapde{
                                     (j.value())(); //esegue funzioni con 0 parametri e void. per non void si dovra fare wrap e associare a promise. per parametri lamda wrap che li cattura cosi no param  
                             }
                             else{ //steal
-                                steal_from_most_busy_and_do();  
+                                //steal_from_most_busy_and_do();  
                             }                                 
                         }
-                    };*/
+                    };
+                    */
                     //oss: top sarebbe combinare steal e mutex ma come ?
                     
                     //lettura non affidabile però è sufficente per dare una aprossimazione utile a implementare  steal e send_task 
@@ -135,14 +138,16 @@ namespace fdapde{
                         return  sync_queue_.pop_back();
                     };
 
+                    /* ancora da capire come far accedere worker a threadpool, con puntatori il problema è segmentation fault durante distruzione
                     //per rubare job da back a chi è piu impegnato ed eseguirlo
                     void steal_from_most_busy_and_do(){
-                        int most_busy = ptr_threadpool_->indx_most_busy();
-                        std::optional<job> j = ptr_threadpool_->threadpool_[most_busy]->pop_back();
-                        if(j){
-                            (j.value())();
-                        }
+                            int most_busy = indx_most_busy();
+                            std::optional<job> j = threadpool_[most_busy]->pop_back();
+                            if(j){
+                                (j.value())();
+                            }
                     }
+                    */
 
 
             /* sostituito da count_job_
@@ -168,10 +173,8 @@ namespace fdapde{
             //n = size code, k = numero worker
             Threadpool(int n, int k):n_worker_(k){
                 threadpool_.reserve(k);
-                fdapde::Threadpool* p = this;
                 for(int i=0; i<k; i++){
-                    threadpool_.emplace_back(std::make_shared<Worker> (n,p));
-                    //count_task_.push_back(0);
+                    threadpool_.emplace_back(std::make_shared<Worker> (n));
                 }
             };
 
