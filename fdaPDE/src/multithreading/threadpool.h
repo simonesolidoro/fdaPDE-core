@@ -19,9 +19,8 @@
 #include "header_check.h"
 
 namespace fdapde{
-    template<typename T,typename... Args>
     class Threadpool{
-        using job = std::function<T(Args... args)>;
+        using job = std::function<void()>;
         //usato per send_task_round (che è equivalente a usare coutn_task senza decremento)
         struct indx_worker{
             int indx_ = 0;
@@ -32,6 +31,7 @@ namespace fdapde{
         public:
             class Worker{
                 private: 
+                    fdapde::Threadpool* ptr_threadpool_;
                     fdapde::Synchro_queue<job,fdapde::relax_nowait> sync_queue_;
                     std::thread t_;
                     bool stop_ = false;
@@ -40,7 +40,7 @@ namespace fdapde{
                     int count_job_ = 0;
                 public:
                     // costruttore con numero elementi di coda
-                    Worker(int n):sync_queue_(n),t_(&Worker::worker_loop,this){};
+                    Worker(int n,fdapde::Threadpool* p_t):ptr_threadpool_(p_t),sync_queue_(n),t_(&Worker::worker_loop,this){};
                     
                     ~Worker(){
                         //while(!sync_queue_.empty()){}; //per aspettare che worker finisca i job in coda. PB: a volte empty() chiamato prima di push_back() di metodo send_task di threadpool
@@ -97,6 +97,9 @@ namespace fdapde{
                     /*  //STEAL
                     void worker_loop(){
                         while(!stop_){
+                            if(count_job_ == 0){
+                                std::this_thread::yield();
+                            }
                             if(!sync_queue_.empty()){
                                 std::optional<job> j = pop_front();
                                 if(j)//esegue se non è nullopt
@@ -134,8 +137,8 @@ namespace fdapde{
 
                     //per rubare job da back a chi è piu impegnato ed eseguirlo
                     void steal_from_most_busy_and_do(){
-                        int most_busy = indx_most_busy();
-                        std::optional<job> j = threadpool_[most_busy]->pop_back();
+                        int most_busy = ptr_threadpool_->indx_most_busy();
+                        std::optional<job> j = ptr_threadpool_->threadpool_[most_busy]->pop_back();
                         if(j){
                             (j.value())();
                         }
@@ -165,8 +168,9 @@ namespace fdapde{
             //n = size code, k = numero worker
             Threadpool(int n, int k):n_worker_(k){
                 threadpool_.reserve(k);
+                fdapde::Threadpool* p = this;
                 for(int i=0; i<k; i++){
-                    threadpool_.emplace_back(std::make_shared<Worker> (n));
+                    threadpool_.emplace_back(std::make_shared<Worker> (n,p));
                     //count_task_.push_back(0);
                 }
             };
