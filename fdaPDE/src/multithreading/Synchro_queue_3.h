@@ -264,6 +264,7 @@ namespace fdapde{
             ~Synchro_queue(){
                 active_ = false;
                 for(elem<T,hold_nowait> & e : queue_){
+                    std::lock_guard<std::mutex> loc(e.m_el_); //add lock mutex per avere notifica coerente
                     e.cv_ready_to_pop_.notify_all();
                     e.cv_ready_to_push_.notify_all();
                 } 
@@ -433,10 +434,13 @@ namespace fdapde{
                 empty_queue_ = false;
             }
             ~Synchro_queue(){ 
+                std::lock_guard<std::mutex> loc(m_);
                 active_ = false;
                 cv_can_pop_.notify_all();
                 cv_can_push_.notify_all();  
                 for(elem<T,hold_wait> & e : queue_){
+                    std::lock_guard<std::mutex> loc_el(e.m_el_);
+                    active_ = false; //TODO: dubbio: ripetuto perchè non certo che modifica in mutex globale garantisca visione coerente in mutex singoli elementi 
                     e.cv_ready_to_pop_.notify_all();
                     e.cv_ready_to_push_.notify_all();
                 } 
