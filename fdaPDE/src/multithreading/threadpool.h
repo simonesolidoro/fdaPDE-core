@@ -182,11 +182,12 @@ namespace fdapde{
                     };
 
                     //calcolo elementi in coda (non affidabile ma tanto solo indicativo)
-                    int count_el (){ //OSS: problema che se h == t rida coda vuota ma magari coda piena. ci pensiamo poi a come risolvere
+                    int count_el (){ //TODO: problema che se h == t rida coda vuota ma magari coda piena (molto grave perche canditato migliore (cioe quello che si crede sia il piu libero), in realta è il peggiore). ci pensiamo poi a come risolvere
                         int t = sync_queue_.get_tail();
                         int h = sync_queue_.get_head();
+                        int size_queue = sync_queue_.get_size();
                         int tmp;
-                        (h>t)? (tmp= h-t):(tmp= t-h);
+                        (h>t)? (tmp= h-t):(tmp= size_queue-(t-h)); // se h<t allora t-h sono spazi vuoti
                         return tmp;
                     };
             };
@@ -212,7 +213,7 @@ namespace fdapde{
                 }
                 return worker_indx;
             };
-
+            // indice di worker con piu job in coda, sara utile per steal job
             int indx_most_busy(){
                 int worker_indx = 0;
                 int max_elem= threadpool_[0]->count_el(); //numero elementi in primo worker 
