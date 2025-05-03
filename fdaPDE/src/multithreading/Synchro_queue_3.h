@@ -131,10 +131,9 @@ namespace fdapde{
                 tail_ = 0;
             }
         
-            // wrap of function size() of vector thrade-safe
-            int size() const {
-                std::lock_guard<std::mutex> loc(m_);
-                return queue_.size();
+            
+            int get_size() const {
+                return size_;
             }
         
             // svuota queue_
@@ -285,9 +284,8 @@ namespace fdapde{
             }
 
             // wrap of function size() of vector thrade-safe
-            int size() const {
-                std::lock_guard<std::mutex> loc(m_);
-                return queue_.size();
+            int get_size() const {
+                return size_;
             }
 
             // svuota queue_
@@ -459,10 +457,9 @@ namespace fdapde{
                 empty_queue_ = true;
             }
 
-            // wrap of function size() of vector thrade-safe
-            int size() const {
-                std::lock_guard<std::mutex> loc(m_);
-                return queue_.size();
+            // 
+            int get_size() const {
+                return size_;
             }
 
             // svuota queue_
