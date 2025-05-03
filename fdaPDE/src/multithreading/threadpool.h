@@ -62,6 +62,8 @@ namespace fdapde{
                     void notifica(){
                         cv_.notify_one();
                     }
+                    // tre woorker_loop: uno con semplice yields, uno con mutex e cv, uno con steal
+                    // oss: se non worker_loop con mutex va tolto: mutex, cv, notifica(), lock(),  uso in metodi send ecc...
                     void worker_loop(){
                         while(!stop_){
                             //TODO: capire come mettere a dormire se coda vuota, nel frattempo messo yields()
@@ -76,13 +78,36 @@ namespace fdapde{
                             std::optional<job> j = pop_front();
                             if(j){//esegue se non è nullopt
                                 (j.value())(); //esegue funzioni con 0 parametri e void. per non void si dovra fare wrap e associare a promise. per parametri lamda wrap che li cattura cosi no param  
-                            }
-                            /*
-                            else{
-                                std::this_thread::yield(); //da controllo a OS, possibile che sospenda l'esecuzione del thread a favore di altro, (usato per mettere una pezza a mancanza condion varibale che fa wait se coda empty)
-                            } */                             
+                            }                            
                         }
                     };
+                    /*  //Yiels
+                    void worker_loop(){
+                        while(!stop_){
+                            std::optional<job> j = pop_front();
+                            if(j){//esegue se non è nullopt
+                                (j.value())(); //esegue funzioni con 0 parametri e void. per non void si dovra fare wrap e associare a promise. per parametri lamda wrap che li cattura cosi no param  
+                            }
+                            else{
+                                std::this_thread::yield(); //da controllo a OS, possibile che sospenda l'esecuzione del thread a favore di altro, (usato per mettere una pezza a mancanza condion varibale che fa wait se coda empty)
+                            }                             
+                        }
+                    };
+                    */
+                    /*  //STEAL
+                    void worker_loop(){
+                        while(!stop_){
+                            if(!sync_queue_.empty()){
+                                std::optional<job> j = pop_front();
+                                if(j)//esegue se non è nullopt
+                                    (j.value())(); //esegue funzioni con 0 parametri e void. per non void si dovra fare wrap e associare a promise. per parametri lamda wrap che li cattura cosi no param  
+                            }
+                            else{ //steal
+                                steal_from_most_busy_and_do();  
+                            }                                 
+                        }
+                    };*/
+                    //oss: top sarebbe combinare steal e mutex ma come ?
                     
                     //lettura non affidabile però è sufficente per dare una aprossimazione utile a implementare  steal e send_task 
                     int get_count_job() const{
@@ -107,6 +132,15 @@ namespace fdapde{
                         return  sync_queue_.pop_back();
                     };
 
+                    //per rubare job da back a chi è piu impegnato ed eseguirlo
+                    void steal_from_most_busy_and_do(){
+                        int most_busy = indx_most_busy();
+                        std::optional<job> j = threadpool_[most_busy]->pop_back();
+                        if(j){
+                            (j.value())();
+                        }
+                    }
+
 
             /* sostituito da count_job_
                     //calcolo elementi in coda (non affidabile ma tanto solo indicativo)
@@ -125,7 +159,6 @@ namespace fdapde{
             };
         private:
             std::vector<std::shared_ptr<Worker>> threadpool_; //vettore di putatori perche non movable e copiable synchro_queue per via di mutex
-            //std::vector<int> count_task_; //TODO: probabimente meglio togliere da qua e associare ad ogni worker il suo contatore cosi che potra decrementarlo in worker_loop. OSS: lettura di contatore non sara affidabile perche nel mentre che leggi potrebbe cambiare (es leggo il primo che ha 10 job ora che vado a leggere ultimo magari primo ha finto, però se cosi fosse i job sarebbero piu veloci di scorrere un vettore e confrontare due valori e quindi che senso ha parallelizzarli)
             int n_worker_;
             indx_worker indxw_; 
         public:
