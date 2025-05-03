@@ -84,6 +84,7 @@ namespace fdapde{
                         }
                     };
                     
+                    //lettura non affidabile però è sufficente per dare una aprossimazione utile a implementare  steal e send_task 
                     int get_count_job() const{
                         return count_job_;
                     };
