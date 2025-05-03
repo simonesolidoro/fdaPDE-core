@@ -138,8 +138,8 @@ namespace fdapde{
                     }
                     //per poter bloccare il mutex di Worker m_ in threadpool
                     std::unique_lock<std::mutex> get_loc(){
-                    std::unique_lock<std::mutex> loc(m_);
-                    return loc;          
+                        std::unique_lock<std::mutex> loc(m_);
+                        return loc;          
                     }
                     //per poter notificare da threadpool
                     void notifica(){
@@ -200,18 +200,34 @@ namespace fdapde{
             };
 
             //ridà indice di worker piu libero (lettura di elmenti in sync_queue di worker fatta con metodo count_el non affidabile ma è abbastanza per avere un idea)
-            int indx_freer(){
+            int indx_most_free(){
                 int worker_indx = 0;
                 int min_elem= threadpool_[0]->count_el(); //numero elementi in primo worker 
                 for (int j=1; j<n_worker_; j++){
-                    if(threadpool_[j]->count_el() < min_elem ) 
+                    int current_el = threadpool_[j]->count_el();
+                    if(current_el < min_elem ){ 
                         worker_indx = j;
+                        min_elem = current_el;
+                    }
                 }
                 return worker_indx;
             };
+
+            int indx_most_busy(){
+                int worker_indx = 0;
+                int max_elem= threadpool_[0]->count_el(); //numero elementi in primo worker 
+                for (int j=1; j<n_worker_; j++){
+                    int current_el = threadpool_[j]->count_el();
+                    if(current_el > max_elem ){
+                        worker_indx = j;
+                        max_elem = current_el;
+                    }
+                }
+                return worker_indx;
+            }
             //send con indx_freer criterio
             bool send_task(job j){
-                int indx_worker = indx_freer();
+                int indx_worker = indx_most_free();
                 std::unique_lock<std::mutex> loc(threadpool_[indx_worker]->get_loc());
                 bool flag = threadpool_[indx_worker]->push_back(j);
                 threadpool_[indx_worker]->notifica();
