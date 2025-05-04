@@ -138,7 +138,6 @@ namespace fdapde{
             template<typename F, typename... Args>
             requires (!std::is_same_v<std::invoke_result_t<F, Args...>, void>)
             auto send_task(F&& f,Args... args) -> std::future<decltype(f(args...))>{
-
                 //wrap di funzione in un task e poi in lamda in modo da ricondursi a firma void()
                 using return_type = decltype(f(args...));
                 int indx_worker = indx_most_free();
@@ -146,7 +145,12 @@ namespace fdapde{
                 std::future<return_type> fut = ptr_task->get_future();
                 job j = [ptr_task](){(*ptr_task)();};
 
-                threadpool_[indx_worker]->push_back(j);
+                bool flag_invio_riuscito = threadpool_[indx_worker]->push_back(j);
+                //perche con versione relax non ho certezza push riesca (in caso coda piena nemmeno con hold a meno di usare push_or_wait)
+                while(!flag_invio_riuscito){
+                    flag_invio_riuscito = threadpool_[indx_worker]->push_back(j);
+                } 
+                
                 return fut;
             };
 
@@ -163,16 +167,55 @@ namespace fdapde{
                 std::future<return_type> fut = ptr_task->get_future();
                 job j = [ptr_task](){(*ptr_task)();};
 
-                threadpool_[indx_worker]->push_back(j);
+                bool flag_invio_riuscito = threadpool_[indx_worker]->push_back(j);
+                //perche con versione relax non ho certezza push riesca (in caso coda piena nemmeno con hold a meno di usare push_or_wait)
+                while(!flag_invio_riuscito){
+                    flag_invio_riuscito = threadpool_[indx_worker]->push_back(j);
+                } 
+                
                 return fut;
             };
             //send a giro usando struct indxw 
-            bool send_task_round(job j){
-                if(threadpool_[indxw_.indx_]->push_back(j)){
-                    indxw_.next(n_worker_);
-                    return true;
-                }
-                return false;
+            //se F(Args) non void
+            template<typename F, typename... Args>
+            requires (!std::is_same_v<std::invoke_result_t<F, Args...>, void>)
+            auto send_task_round(F&& f,Args... args) -> std::future<decltype(f(args...))>{
+                //wrap di funzione in un task e poi in lamda in modo da ricondursi a firma void()
+                using return_type = decltype(f(args...));
+                std::shared_ptr<std::packaged_task<return_type()>> ptr_task = std::make_shared<std::packaged_task<return_type()>> ([fun = std::forward<F>(f), ...args_catturati = std::forward<Args>(args) ]()mutable{return fun(args_catturati...);});
+                std::future<return_type> fut = ptr_task->get_future();
+                job j = [ptr_task](){(*ptr_task)();};
+
+                bool flag_invio_riuscito = threadpool_[indxw_.indx_]->push_back(j);
+                //perche con versione relax non ho certezza push riesca (in caso coda piena nemmeno con hold a meno di usare push_or_wait)
+                while(!flag_invio_riuscito){
+                    flag_invio_riuscito = threadpool_[indxw_.indx_]->push_back(j);
+                } 
+                indxw_.next(n_worker_);
+                
+                return fut;
+
+            };
+            //se F(Args) void
+            template<typename F, typename... Args>
+            requires std::is_same_v<std::invoke_result_t<F, Args...>, void>
+            std::future<bool> send_task_round(F&& f,Args... args){
+                //wrap di funzione in un task e poi in lamda in modo da ricondursi a firma void()
+                using return_type = bool;
+                std::shared_ptr<std::packaged_task<return_type()>> ptr_task = std::make_shared<std::packaged_task<return_type()>> ([fun = std::forward<F>(f), ...args_catturati = std::forward<Args>(args) ]()mutable{fun(args_catturati...);
+                return true;});
+                std::future<return_type> fut = ptr_task->get_future();
+                job j = [ptr_task](){(*ptr_task)();};
+
+                bool flag_invio_riuscito = threadpool_[indxw_.indx_]->push_back(j);
+                //perche con versione relax non ho certezza push riesca (in caso coda piena nemmeno con hold a meno di usare push_or_wait)
+                while(!flag_invio_riuscito){
+                    flag_invio_riuscito = threadpool_[indxw_.indx_]->push_back(j);
+                } 
+                indxw_.next(n_worker_);
+                
+                return fut;
+
             };
     };
 }
