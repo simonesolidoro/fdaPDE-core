@@ -58,7 +58,7 @@ namespace fdapde{
                     }
 
                     void wait (Threadpool& t){
-                        std::unique_lock<std::mutex> loc(m_);
+                        std::unique_lock<std::mutex> loc(m_); //OSS: empty() gia sincronizzato con push grazie a mtex dentro Synchro_queue, mutex in synchro_queue_count serve solo per avere cv che mand a dormire. get_count_job_all() invece non sincronizzato (diversi thread vedono diverso quindi magari ce stato push e count++ ma in thread che fa il check non lo vede) però pazienza meglio di niente 
                         cv_.wait(loc,[&](){return !sync_queue_.empty() || t.get_count_job_all()>0 || stop_;});
                         //loc.unlock(); //superfluo out of scope loc si distrugge e fa unlock mutex
                     }
