@@ -149,21 +149,6 @@ namespace fdapde{
                     }
                     */
 
-
-            /* sostituito da count_job_
-                    //calcolo elementi in coda (non affidabile ma tanto solo indicativo)
-                    //TODO: meglio spostare questa funzzione come membro di Synchro_queue direttamente
-                    int count_el (){ //TODO: problema che se h == t rida coda vuota ma magari coda piena (molto grave perche canditato migliore (cioe quello che si crede sia il piu libero), in realta è il peggiore). ci pensiamo poi a come risolvere
-                                     //OSS: anche rintroducendo empty_queue_ non c'è certezza che corretta lettura senza il mutex, se non troviamo soluzione ultima spiaggia mettere metodo in synchro_queue con mutex
-                                     //soluzione alternativa a metodo count_el di worker_queue è contatore esterno in threadpool agiornato ogni volta che si fa push e pop di job
-                        int t = sync_queue_.get_tail();
-                        int h = sync_queue_.get_head();
-                        int size_queue = sync_queue_.get_size();
-                        int tmp;
-                        (h>t)? (tmp= h-t):(tmp= size_queue-(t-h)); // se h<t allora t-h sono spazi vuoti
-                        return tmp;
-                    };
-            */
             };
         private:
             std::vector<std::shared_ptr<Worker>> threadpool_; //vettore di putatori perche non movable e copiable synchro_queue per via di mutex

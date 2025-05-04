@@ -29,7 +29,7 @@ namespace fdapde{
             };
         };
         public:
-            //OSS: mettere count_job (contatore non sincronizzato, utile solo per avere aprox di elementi in ogni coda) direttamente dentro synchro_queue, se si decide di implementare cosi, altrimenti aggiunto ++/-- in ogni push e pop per niente
+            //OSS: mettere count_job (contatore non sincronizzato, utile solo per avere aprox di elementi in ogni coda) direttamente dentro synchro_queue se si decide di implementare cosi la theradpool. (non fatto subito perche se non usato count_job viene aggiunto ++/-- in ogni push e pop per niente)
             class Sync_queue_count{
                 private: 
                     fdapde::Synchro_queue<job,fdapde::relax_nowait> sync_queue_;
