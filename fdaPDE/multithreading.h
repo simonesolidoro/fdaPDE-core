@@ -40,7 +40,8 @@
 #include "src/multithreading/Synchro_queue_3.h"
 //#include "src/multithreading/threadpool.h"
 //#include "src/multithreading/threadpool_yield.h"
-#include "src/multithreading/threadpool_steal.h"
+//#include "src/multithreading/threadpool_steal.h"
+#include "src/multithreading/threadpool_template_send.h"
 // clang-format on
 
 #endif
