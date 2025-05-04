@@ -62,7 +62,7 @@ namespace fdapde{
                         return count_job_;
                     };
 
-                    //wrap di funzioni per pop e push. //OSS: se count_el non si sistema aggiungere modifica a contatori di numero job in coda direttamente in questi wrap di push e pop
+                    //wrap di funzioni per pop e push. 
                     bool push_front(job fun){
                         if(sync_queue_.push_front(fun)){
                             count_job_ ++;
