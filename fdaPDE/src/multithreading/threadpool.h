@@ -127,7 +127,7 @@ namespace fdapde{
                     };
                     bool push_back(job fun){
                         count_job_ ++;
-                        return  sync_queue_.push_front(fun);
+                        return  sync_queue_.push_back(fun);
                     };
                     std::optional<job> pop_front(){
                         count_job_ --;
