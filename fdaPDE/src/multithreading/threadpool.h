@@ -39,13 +39,13 @@ namespace fdapde{
                     bool start_ = false;
                     std::mutex m_;
                     std::condition_variable cv_; 
-                    int n_worker_ = 0; //size() di workers_
                     int indx_; //indice di se stesso in vettore di workers_
                 public:
                     // costruttore con numero elementi di coda
-                    Worker(int n, std::shared_ptr<std::vector<std::shared_ptr<Worker>>> ws, int idx):workers_(ws),sync_queue_(n),t_(&Worker::worker_loop,this),indx_(idx){
-                        n_worker_ = ws->size();
-                    };
+                    Worker(int n, int idx):sync_queue_(n),t_(&Worker::worker_loop,this),indx_(idx){};
+                    void set_workers_(std::shared_ptr<std::vector<std::shared_ptr<Worker>>> ws){
+                        workers_ = ws;
+                    }
 
                     //per poter bloccare il mutex di Worker m_ in threadpool
                     std::unique_lock<std::mutex> get_loc(){
@@ -213,10 +213,12 @@ namespace fdapde{
             Threadpool(int n, int k):n_worker_(k){
                 workers_->reserve(k);
                 for(int i=0; i<k; i++){
-                    workers_->emplace_back(std::make_shared<Worker> (n,workers_,i));
+                    workers_->emplace_back(std::make_shared<Worker> (n,i));
                 }
+
                 for(int i=0; i<k; i++){
                     std::unique_lock<std::mutex> loc((*workers_)[i]->get_loc());
+                    (*workers_)[i]->set_workers_(workers_);
                     (*workers_)[i]->set_start(true);
                     (*workers_)[i]->notifica();
                 }

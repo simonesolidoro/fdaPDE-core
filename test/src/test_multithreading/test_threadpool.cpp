@@ -15,7 +15,10 @@
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 #include<fdaPDE/multithreading.h>
-
+void printnum(){
+    //std::cout<<std::this_thread::get_id()<<std::endl;
+    std::this_thread::sleep_for(std::chrono::microseconds(10));
+}
 bool fun(){
     std::cout<<"fun da thread_id: "<<std::this_thread::get_id()<<std::endl;
     return true;
@@ -37,7 +40,7 @@ int main(){
 {/*void function, trasformate in bool fittizie coai che con future si aspetta esecuzione*/
     
     using job = std::function<bool()>;
-    fdapde::Threadpool tp(16,4);
+    fdapde::Threadpool tp(16,2);
     job j1 = fun;
     job j2 = fun;
     job j3 = fun;
@@ -61,8 +64,10 @@ int main(){
     //std::this_thread::sleep_for(std::chrono::seconds(3));
    
 }
+
 {/*se funzione che richiede parametri wrap in una lambda che cattura parametri cosi che lambda sia return_type() senza parametri*/
     //OSS: cosi facendo inutile template argoment Args... in worker e in threadpool tanto tutti i job sarebbero senza parametri
+
     fdapde::Threadpool tp(5,4);
     int n = 10000;
 
@@ -92,6 +97,20 @@ int main(){
     fut4.get();
     
 
+}
+{
+    using job = std::function<void()>;
+    fdapde::Threadpool tp(16,4);
+    std::vector<job> jobs;
+    int n_jobs = 64;
+    for(int i = 0; i< n_jobs; i++){
+        jobs.push_back(printnum);
+    }
+    for (int i = 0; i<n_jobs; i++){
+        tp.send_task(jobs[i]);
+    }
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(1000)); //per aspettare esecuzione di tutti 
 }
     return 0;
 }

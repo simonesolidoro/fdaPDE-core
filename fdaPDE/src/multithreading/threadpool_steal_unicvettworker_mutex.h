@@ -31,6 +31,7 @@ namespace fdapde{
         public:
             class Worker{
                 private: 
+                    //NOOOOOOOOOOOOOOOOOO passata copia non reference con reference ancora segmentation fault :(
                     std::vector<std::shared_ptr<Worker>> workers_; //per far accedere worker a metodi di threadpool e poter fare steal job ma problemi con distruttori segmentation fault
                     fdapde::Synchro_queue<job,fdapde::relax_nowait> sync_queue_;
                     std::thread t_;
@@ -74,7 +75,8 @@ namespace fdapde{
                             }
                             else{ //steal
                                 steal_from_most_busy_and_do();  
-                            }                                 
+                            } 
+                            std::cout<<count_job_<<"da thread:"<<std::this_thread::get_id()<<std::endl;  //per debug                               
                         }
                     };
                     

@@ -31,6 +31,9 @@ namespace fdapde{
         public:
             class Worker{
                 private: 
+                //CAUSA SEGMENTATION FAULT: PASSAGGIO DI REFERENCE A TUTTA THREADPOOL. PERCHE DIVENTA INVALIDA APPENA CHIAMATO DISTRUTTORE. SOLUZIONE: PASSARE REF A VETTORE DI WORKER CHE DIVENTA INVALIDO SOLO DOPO ESECUZIONE CORPO DISTRUTTORE.
+                //!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+                //CORREZIONE IN threadpool_steal_unicvettworker_mutex.h QUINDI QUI NON HO VOGLIA TANTO QUESTO .h NON SERVE
                     fdapde::Threadpool& threadpool_; //per far accedere worker a metodi di threadpool e poter fare steal job ma problemi con distruttori segmentation fault
                     fdapde::Synchro_queue<job,fdapde::relax_nowait> sync_queue_;
                     std::thread t_;

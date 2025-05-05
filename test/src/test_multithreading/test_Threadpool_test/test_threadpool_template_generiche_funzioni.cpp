@@ -15,7 +15,13 @@
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 #include<fdaPDE/multithreading.h>
-
+struct A{
+    int a;
+};
+A incrementaA(A& aa){
+    aa.a++;
+    return aa;
+}
 bool fun(){
     std::cout<<"fun da thread_id: "<<std::this_thread::get_id()<<std::endl;
     //std::this_thread::sleep_for(std::chrono::milliseconds(10));
@@ -35,7 +41,8 @@ bool count (int n){
     return true;
 };
 int main(){
-{/*void function, trasformate in bool fittizie coai che con future si aspetta esecuzione*/
+/*versione senza optional di future (threadpool_sen_template.h)
+{//void function, trasformate in bool fittizie coai che con future si aspetta esecuzione
     
     using job = std::function<bool()>;
     fdapde::Threadpool tp(16,4);
@@ -59,6 +66,37 @@ int main(){
     fut4.get();
     
 
+}
+*/
+{//void function, trasformate in bool fittizie coai che con future si aspetta esecuzione
+    
+    using job = std::function<bool()>;
+    fdapde::Threadpool tp(16,4);
+    job j1 = fun;
+    job j2 = fun;
+    job j3 = fun;
+    job j4 = fun;
+    job j5 = fun;
+    
+    auto fut1 = tp.send_task(j1);
+    auto fut2 = tp.send_task(j2);
+    auto fut3 = tp.send_task(j3);
+    auto fut4 = tp.send_task(j4);
+    auto fut5 = tp.send_task(j5);
+
+
+    if(fut5){fut5.value().get();} 
+    if(fut4){fut4.value().get();} 
+    if(fut3){fut3.value().get();} 
+    if(fut2){fut2.value().get();} 
+    if(fut1){fut1.value().get();}
+}
+{
+    fdapde::Threadpool tp(16,4);
+    A aa;
+    aa.a=10;
+    auto f= tp.send_task(incrementaA,std::ref(aa));
+    std::cout<<"A.a = "<<f.value().get().a<<std::endl;   
 }
     return 0;
 }
