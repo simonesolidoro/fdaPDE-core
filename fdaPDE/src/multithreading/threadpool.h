@@ -45,7 +45,6 @@ namespace fdapde{
                     ~Worker(){
                         std::unique_lock<std::mutex> loc(m_);
                         stop_ = true; //PROBLEMA: chiamato distruttore prima che job effettivamente finiti. SOLUZIONE: usare future associato a task in main cosi che future.get() garantisce fine di task prima di chiamata distruttore
-                        t_.join();
                     }
                     //per poter bloccare il mutex di Worker m_ in threadpool
                     std::unique_lock<std::mutex> get_loc(){
@@ -58,6 +57,9 @@ namespace fdapde{
                     }
                     void set_stop(bool s){
                         stop_ = s;
+                    }
+                    void join_thread(){
+                        t_.join();
                     }
 
                     void worker_loop(){
@@ -100,8 +102,6 @@ namespace fdapde{
                     
                     //per rubare job da back a chi è piu impegnato ed eseguirlo
                     void steal_from_most_busy_and_do(){//PROBLEMA: SEMBRA IMPOSSIBILE VERIFICARE CHE DISTRUTTORE DI THREADPOOL NON SIA STATO CHIAMATO SENZA ACCEDERE A threadpool_ OSS: anche solo per tentare di bloccare mutex di Threadpool: std::unique_lock<std::mutex> loc(threadpool_.get_lock()) si deve accedere e si fa segmentation fault
-                            std::unique_lock<std::mutex> loc(m_); //non funziona
-                            if(stop_ == true) return;
                             int most_busy = threadpool_.indx_most_busy();
                             std::optional<job> j = (threadpool_.get_worker(most_busy))->pop_back();
                             if(j){
@@ -128,13 +128,13 @@ namespace fdapde{
                 }
             };
             ~Threadpool(){
-                std::unique_lock<std::mutex> loc(m_);
-                //cosi in steal_ prima cosa sara bloccare il mutex su singolo worker e se distruttore gia chiamato metodo ritorna ed evita accesso a Threadpool distrutta
+                //facciamo terminare tutti worker_loop cosi che nessun worker acceda a worker distrutti o a threadpool (perche quando il resto del distruttore di threadpool verra chiamato, cioe finito il corpo di questo distruttore, tutti i worker avranno terminato worker_loop grazie a join())
                 for(int j = 0; j<n_worker_; j++){
-                    std::unique_lock<std::mutex> loc(threadpool_[j]->get_loc());
                     threadpool_[j]->set_stop(true);
                 }
-                stop_ = true; // non serve basta che threadpool faccia blocco di mutex prima di distruggere 
+                for(int j = 0; j<n_worker_; j++){
+                    threadpool_[j]->join_thread();
+                }
             }
 
             std::shared_ptr<Worker> get_worker(int indx){
