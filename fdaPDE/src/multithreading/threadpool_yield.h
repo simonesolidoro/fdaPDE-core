@@ -31,52 +31,33 @@ namespace fdapde{
         public:
             class Worker{
                 private: 
-                    fdapde::Threadpool& threadpool_; //per far accedere worker a metodi di threadpool e poter fare steal job ma problemi con distruttori segmentation fault
+                    //fdapde::Threadpool* ptr_threadpool_; per far accedere worker a metodi di threadpool e poter fare steal job ma problemi con distruttori segmentation fault
                     fdapde::Synchro_queue<job,fdapde::relax_nowait> sync_queue_;
                     std::thread t_;
                     bool stop_ = false;
-                    std::mutex m_;
-                    std::condition_variable cv_; 
                     int count_job_ = 0;
                 public:
                     // costruttore con numero elementi di coda
-                    Worker(int n, fdapde::Threadpool& tp):threadpool_(tp),sync_queue_(n),t_(&Worker::worker_loop,this){};
+                    Worker(int n):sync_queue_(n),t_(&Worker::worker_loop,this){};
                     
-                    ~Worker(){
-                        std::unique_lock<std::mutex> loc(m_);
-                        stop_ = true; //PROBLEMA: chiamato distruttore prima che job effettivamente finiti. SOLUZIONE: usare future associato a task in main cosi che future.get() garantisce fine di task prima di chiamata distruttore
-                    }
-                    //per poter bloccare il mutex di Worker m_ in threadpool
-                    std::unique_lock<std::mutex> get_loc(){
-                        std::unique_lock<std::mutex> loc(m_);
-                        return loc;          
-                    }
-                    //per poter notificare da threadpool
-                    void notifica(){
-                        cv_.notify_one();
-                    }
-                    void set_stop(bool s){
-                        stop_ = s;
-                    }
-                    void join_thread(){
+                    ~Worker(){//no mutex perche non dormono su cv i worker_loop quindi anche se cambio di stop arriva dopo male che va worker_loop fa un iterazione di while extra ma non ce deadlock
+                        stop_ = true;  
                         t_.join();
                     }
 
                     void worker_loop(){
                         while(!stop_){
-                            if(!sync_queue_.empty()){
-                                std::optional<job> j = pop_front();
-                                if(j)//esegue se non è nullopt
-                                    (j.value())(); //esegue funzioni con 0 parametri e void. per non void si dovra fare wrap e associare a promise. per parametri lamda wrap che li cattura cosi no param  
+                            std::optional<job> j = pop_front();
+                            if(j){//esegue se non è nullopt
+                                (j.value())(); //esegue funzioni con 0 parametri e void. per non void si dovra fare wrap e associare a promise. per parametri lamda wrap che li cattura cosi no param  
                             }
-                            else{ //steal
-                                //steal_from_most_busy_and_do();  
-                            }                                 
+                            else{
+                                std::this_thread::yield(); //da controllo a OS, possibile che sospenda l'esecuzione del thread a favore di altro, (usato per mettere una pezza a mancanza condion varibale che fa wait se coda empty)
+                            }                             
                         }
                     };
-                    
-                    
-                    //lettura non affidabile però è sufficente per dare una aprossimazione utile a implementare  steal e send_task 
+
+                   //lettura non affidabile però è sufficente per dare una aprossimazione utile a implementare  steal e send_task 
                     int get_count_job() const{
                         return count_job_;
                     };
@@ -112,61 +93,20 @@ namespace fdapde{
                         return j;
                     };
 
-                    
-                    //per rubare job da back a chi è piu impegnato ed eseguirlo
-                    void steal_from_most_busy_and_do(){//PROBLEMA: SEMBRA IMPOSSIBILE VERIFICARE CHE DISTRUTTORE DI THREADPOOL NON SIA STATO CHIAMATO SENZA ACCEDERE A threadpool_ OSS: anche solo per tentare di bloccare mutex di Threadpool: std::unique_lock<std::mutex> loc(threadpool_.get_lock()) si deve accedere e si fa segmentation fault
-                            std::unique_lock<std::mutex> loc(threadpool_.get_lock()); //cosi si risolve segmentation fault, messo lock di mutex in fine ditruttore garantisce che tutti i worker_loop siano terminati prima della fine del corpo del distruttore (e quindi della distruzione dei worker). pero rende lo steal sequenziale :(
-                            int most_busy = threadpool_.indx_most_busy();
-                            std::optional<job> j = (threadpool_.get_worker(most_busy))->pop_back();
-                            loc.unlock();
-                            if(j){
-                                (j.value())();
-                            }
-                    }
-                    
-
-<<<<<<< HEAD:fdaPDE/src/multithreading/threadpool_steal_unico_vettore_di__worker.h
-
-=======
->>>>>>> develop:fdaPDE/src/multithreading/threadpool_mutex.h
             };
         private:
             std::vector<std::shared_ptr<Worker>> threadpool_; //vettore di putatori perche non movable e copiable synchro_queue per via di mutex
             int n_worker_;
             indx_worker indxw_; 
-            std::mutex m_; //usato per far si che indx_most_busy ridia -1 se chiamato distruttore di threadpool, cosi si evita che thread di worker diano segmentation faukt perche provano ad accedere a worker distrutto durante steal_job
-            bool stop_ = false;
         public:
-            friend class Worker;
             //n = size code, k = numero worker
             Threadpool(int n, int k):n_worker_(k){
                 threadpool_.reserve(k);
                 for(int i=0; i<k; i++){
-                    threadpool_.emplace_back(std::make_shared<Worker> (n,*this));
+                    threadpool_.emplace_back(std::make_shared<Worker> (n));
                 }
             };
-            ~Threadpool(){
-                //facciamo terminare tutti worker_loop cosi che nessun worker acceda a worker distrutti o a threadpool (perche quando il resto del distruttore di threadpool verra chiamato, cioe finito il corpo di questo distruttore, tutti i worker avranno terminato worker_loop grazie a join())
-                for(int j = 0; j<n_worker_; j++){
-                    threadpool_[j]->set_stop(true);
-                }
-                for(int j = 0; j<n_worker_; j++){
-                    threadpool_[j]->join_thread();
-                }
-                std::unique_lock<std::mutex> loc(m_);
-            }
 
-            std::shared_ptr<Worker> get_worker(int indx){
-                return threadpool_[indx];
-            }
-
-            std::unique_lock<std::mutex> get_lock(){
-                std::unique_lock<std::mutex> loc(m_);
-                return loc;
-            }
-            bool get_stop(){
-                return stop_;
-            }
             //ridà indice di worker piu libero (lettura di elmenti in sync_queue di worker fatta con metodo count_el non affidabile ma è abbastanza per avere un idea)
             int indx_most_free(){
                 int worker_indx = 0;
@@ -196,16 +136,11 @@ namespace fdapde{
             //send con indx_freer criterio
             bool send_task(job j){
                 int indx_worker = indx_most_free();
-                bool flag = threadpool_[indx_worker]->push_back(j);
-                if(flag){
-                    return true;
-                }
-                return false;
+                return threadpool_[indx_worker]->push_back(j);
             };
             //send a giro usando struct indxw 
             bool send_task_round(job j){
-                bool flag = threadpool_[indxw_.indx_]->push_back(j);
-                if(flag){
+                if(threadpool_[indxw_.indx_]->push_back(j)){
                     indxw_.next(n_worker_);
                     return true;
                 }
