@@ -31,7 +31,7 @@ namespace fdapde{
         public:
             class Worker{
                 private: 
-                    std::vector<std::shared_ptr<Worker>>& workers_; //per far accedere worker a metodi di threadpool e poter fare steal job ma problemi con distruttori segmentation fault
+                    std::shared_ptr<std::vector<std::shared_ptr<Worker>>> workers_; //per far accedere worker a metodi di threadpool e poter fare steal job ma problemi con distruttori segmentation fault
                     fdapde::Synchro_queue<job,fdapde::relax_nowait> sync_queue_;
                     std::thread t_;
                     int count_job_ = 0;
@@ -42,8 +42,8 @@ namespace fdapde{
                     int n_worker_ = 0; //size() di workers_
                 public:
                     // costruttore con numero elementi di coda
-                    Worker(int n, std::vector<std::shared_ptr<Worker>> ws):workers_(ws),sync_queue_(n),t_(&Worker::worker_loop,this){
-                        n_worker_ = ws.size();
+                    Worker(int n, std::shared_ptr<std::vector<std::shared_ptr<Worker>>> ws):workers_(ws),sync_queue_(n),t_(&Worker::worker_loop,this){
+                        n_worker_ = ws->size();
                     };
 
                     //per poter bloccare il mutex di Worker m_ in threadpool
@@ -75,7 +75,7 @@ namespace fdapde{
                         loc_start.unlock();
                         while(!stop_){
                             std::unique_lock<std::mutex> loc(m_); 
-                            cv_.wait(loc,[&](){return !sync_queue_.empty() || stop_ || get_count_job_all()>0;}); //threadpool_.get_count_job_all()>0 || //segmentation fault dovuto a: threadpool_.get_count_job_all()>0 da capire perche 
+                            cv_.wait(loc,[&](){return !sync_queue_.empty() || stop_ ;}); //threadpool_.get_count_job_all()>0 || //segmentation fault dovuto a: threadpool_.get_count_job_all()>0 da capire perche 
                             loc.unlock();
                             if(stop_){return;}
                             if(!sync_queue_.empty()){
@@ -84,7 +84,7 @@ namespace fdapde{
                                     (j.value())(); //esegue funzioni con 0 parametri e void. per non void si dovra fare wrap e associare a promise. per parametri lamda wrap che li cattura cosi no param  
                             }
                             else{ //steal
-                                steal_from_most_busy_and_do();  
+                                //steal_from_most_busy_and_do();  
                             } 
                             //std::cout<<count_job_<<"da thread:"<<std::this_thread::get_id()<<std::endl;  //per debug                               
                         }
@@ -94,7 +94,7 @@ namespace fdapde{
                     void steal_from_most_busy_and_do(){//PROBLEMA: SEMBRA IMPOSSIBILE VERIFICARE CHE DISTRUTTORE DI THREADPOOL NON SIA STATO CHIAMATO SENZA ACCEDERE A threadpool_ OSS: anche solo per tentare di bloccare mutex di Threadpool: std::unique_lock<std::mutex> loc(threadpool_.get_lock()) si deve accedere e si fa segmentation fault
                         int most_busy = indx_most_busy();
                         //if(most_busy<0){return;} //significa che thread piu indaffarato ha 0 job in coda (tutte code vuote)  e quindi return
-                        std::optional<job> j = workers_[most_busy]->pop_back();
+                        std::optional<job> j = (*workers_)[most_busy]->pop_back();
                         if(j){
                             (j.value())();
                         }
@@ -102,20 +102,20 @@ namespace fdapde{
                     
                     //copie di quelli in threadpool
                     int get_count_job_all(){
-                        int n_worker = workers_.size();
+                        int n_worker = workers_->size();
                         int count = 0;
                         for(int i=0; i<n_worker; i++){
-                            count += workers_[i]->get_count_job();
+                            count += (*workers_)[i]->get_count_job();
                         }
                         return count;
                     }
                     // indice di worker con piu job in coda, sara utile per steal job
                     int indx_most_busy(){
-                        int n_worker = workers_.size(); // perche quando inizializza primi worker che partono a fare worker_loop magari size di workers_ non ancora n_worker_
+                        int n_worker = workers_->size(); // perche quando inizializza primi worker che partono a fare worker_loop magari size di workers_ non ancora n_worker_
                         int worker_indx = 0;
-                        int max_elem= workers_[0]->get_count_job(); //numero elementi in primo worker 
+                        int max_elem= (*workers_)[0]->get_count_job(); //numero elementi in primo worker 
                         for (int j=1; j<n_worker; j++){
-                            int current_el = workers_[j]->get_count_job();
+                            int current_el = (*workers_)[j]->get_count_job();
                             if(current_el > max_elem ){
                                 worker_indx = j;
                                 max_elem = current_el;
@@ -158,32 +158,32 @@ namespace fdapde{
 
             };
         private://TODO: cambiare nome threadpoool_ in workers_
-            std::vector<std::shared_ptr<Worker>> workers_; //vettore di putatori perche non movable e copiable synchro_queue per via di mutex
+            std::shared_ptr<std::vector<std::shared_ptr<Worker>>> workers_; //vettore di putatori perche non movable e copiable synchro_queue per via di mutex
             int n_worker_;
             indx_worker indxw_; 
         public:
             //n = size code, k = numero worker
             Threadpool(int n, int k):n_worker_(k){
-                workers_.reserve(k);
+                workers_->reserve(k);
                 for(int i=0; i<k; i++){
-                    workers_.emplace_back(std::make_shared<Worker> (n,std::ref(workers_)));
+                    workers_->emplace_back(std::make_shared<Worker> (n,workers_));
                 }
                 for(int i=0; i<k; i++){
-                    std::unique_lock<std::mutex> loc(workers_[i]->get_loc());
-                    workers_[i]->set_start(true);
-                    workers_[i]->notifica();
+                    std::unique_lock<std::mutex> loc((*workers_)[i]->get_loc());
+                    (*workers_)[i]->set_start(true);
+                    (*workers_)[i]->notifica();
                 }
 
             };
             ~Threadpool(){
                 //facciamo terminare tutti worker_loop cosi che nessun worker acceda a worker distrutti o a threadpool (perche quando il resto del distruttore di threadpool verra chiamato, cioe finito il corpo di questo distruttore, tutti i worker avranno terminato worker_loop grazie a join())
                 for(int j = 0; j<n_worker_; j++){
-                    std::unique_lock<std::mutex> loc(workers_[j]->get_loc());
-                    workers_[j]->set_stop(true);
-                    workers_[j]->notifica();
+                    std::unique_lock<std::mutex> loc((*workers_)[j]->get_loc());
+                    (*workers_)[j]->set_stop(true);
+                    (*workers_)[j]->notifica();
                 }
                 for(int j = 0; j<n_worker_; j++){
-                    workers_[j]->join_thread();
+                    (*workers_)[j]->join_thread();
                 }
             }
 
@@ -191,14 +191,14 @@ namespace fdapde{
             int get_count_job_all(){
                 int count = 0;
                 for(int i=0; i<n_worker_; i++){
-                    count += workers_[i]->get_count_job();
+                    count += (*workers_)[i]->get_count_job();
                 }
                 return count;
             }
             //notifica a tutti i cv_ dei worker
             void notifica_tutti(){
                 for(int i=0; i<n_worker_; i++){
-                    workers_[i]->notifica();
+                    (*workers_)[i]->notifica();
                 }
             }
             //per acquisire tutti i mutex dei worker
@@ -206,7 +206,7 @@ namespace fdapde{
                 std::vector<std::unique_lock<std::mutex>> vett_lock;
                 vett_lock.reserve(n_worker_);
                 for(int i=0; i<n_worker_; i++){
-                    std::unique_lock<std::mutex> loc_w(workers_[i]->get_loc());
+                    std::unique_lock<std::mutex> loc_w((*workers_)[i]->get_loc());
                     vett_lock.push_back(std::move(loc_w));
                 }
                 return vett_lock;
@@ -220,9 +220,9 @@ namespace fdapde{
             //ridà indice di worker piu libero (lettura di elmenti in sync_queue di worker fatta con metodo count_el non affidabile ma è abbastanza per avere un idea)
             int indx_most_free(){
                 int worker_indx = 0;
-                int min_elem= workers_[0]->get_count_job(); //numero elementi in primo worker 
+                int min_elem= (*workers_)[0]->get_count_job(); //numero elementi in primo worker 
                 for (int j=1; j<n_worker_; j++){
-                    int current_el = workers_[j]->get_count_job();
+                    int current_el = (*workers_)[j]->get_count_job();
                     if(current_el < min_elem ){ 
                         worker_indx = j;
                         min_elem = current_el;
@@ -234,9 +234,9 @@ namespace fdapde{
             // indice di worker con piu job in coda, sara utile per steal job
             int indx_most_busy(){
                 int worker_indx = 0;
-                int max_elem= workers_[0]->get_count_job(); //numero elementi in primo worker 
+                int max_elem= (*workers_)[0]->get_count_job(); //numero elementi in primo worker 
                 for (int j=1; j<n_worker_; j++){
-                    int current_el = workers_[j]->get_count_job();
+                    int current_el = (*workers_)[j]->get_count_job();
                     if(current_el > max_elem ){
                         worker_indx = j;
                         max_elem = current_el;
@@ -249,8 +249,8 @@ namespace fdapde{
             /*lock solo di a chi manda e notifica a tutti (ma sara sincronizzata solo worker che riceve il push)
             bool send_task(job j){
                 int indx_worker = indx_most_free();
-                std::unique_lock<std::mutex> loc(workers_[indx_worker]->get_lock());
-                bool flag = workers_[indx_worker]->push_back(j);
+                std::unique_lock<std::mutex> loc((*workers_)[indx_worker]->get_lock());
+                bool flag = (*workers_)[indx_worker]->push_back(j);
                 notifica_tutti();
                 loc.unlock();
                 if(flag){
@@ -272,7 +272,7 @@ namespace fdapde{
 
                 int indx_worker = indx_most_free();
                 std::vector<std::unique_lock<std::mutex>> vett_locks(lock_tutti());
-                bool flag = workers_[indx_worker]->push_back(j);
+                bool flag = (*workers_)[indx_worker]->push_back(j);
                 notifica_tutti(); // problema: push e notifica sono sincronizati solo in thread su cui viene fatto push perche mutex che poi leggera è lo stesso bloccato in push.
                                 //POSSIBILE SOLUZIONE: fare lock_all() e poi unlock_all() ma cosi ogni send blocca worker_loop di chi ancora non ha superato la cv_.wait(), pero sarebbe sincronizzata la lettura dei count_job ++. 
                 unlock_tutti(std::ref(vett_locks));
@@ -295,7 +295,7 @@ namespace fdapde{
 
                 int indx_worker = indx_most_free();
                 std::vector<std::unique_lock<std::mutex>> vett_locks(lock_tutti());
-                bool flag = workers_[indx_worker]->push_back(j);
+                bool flag = (*workers_)[indx_worker]->push_back(j);
                 notifica_tutti(); // problema: push e notifica sono sincronizati solo in thread su cui viene fatto push perche mutex che poi leggera è lo stesso bloccato in push.
                                 //POSSIBILE SOLUZIONE: fare lock_all() e poi unlock_all() ma cosi ogni send blocca worker_loop di chi ancora non ha superato la cv_.wait(), pero sarebbe sincronizzata la lettura dei count_job ++. 
                 unlock_tutti(std::ref(vett_locks));
@@ -309,8 +309,8 @@ namespace fdapde{
             //TODO: -versione che blocca tutti i mutex dei worker (migliore se send in single thread)
             //      -rendere template per ricevere generiche funzioni
             bool send_task_round(job j){
-                std::unique_lock<std::mutex> loc(workers_[indxw_.indx_]->get_loc());
-                bool flag = workers_[indxw_.indx_]->push_back(j);
+                std::unique_lock<std::mutex> loc((*workers_)[indxw_.indx_]->get_loc());
+                bool flag = (*workers_)[indxw_.indx_]->push_back(j);
                 notifica_tutti(); //sincronizzata solo worker a cui si fa il push ma meglio che niente
                 loc.unlock();
                 if(flag){
