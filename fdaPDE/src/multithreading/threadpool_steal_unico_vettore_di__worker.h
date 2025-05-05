@@ -115,10 +115,8 @@ namespace fdapde{
                     
                     //per rubare job da back a chi è piu impegnato ed eseguirlo
                     void steal_from_most_busy_and_do(){//PROBLEMA: SEMBRA IMPOSSIBILE VERIFICARE CHE DISTRUTTORE DI THREADPOOL NON SIA STATO CHIAMATO SENZA ACCEDERE A threadpool_ OSS: anche solo per tentare di bloccare mutex di Threadpool: std::unique_lock<std::mutex> loc(threadpool_.get_lock()) si deve accedere e si fa segmentation fault
-                            std::unique_lock<std::mutex> loc(threadpool_.get_lock()); //cosi si risolve segmentation fault, messo lock di mutex in fine ditruttore garantisce che tutti i worker_loop siano terminati prima della fine del corpo del distruttore (e quindi della distruzione dei worker). pero rende lo steal sequenziale :(
                             int most_busy = threadpool_.indx_most_busy();
                             std::optional<job> j = (threadpool_.get_worker(most_busy))->pop_back();
-                            loc.unlock();
                             if(j){
                                 (j.value())();
                             }
@@ -149,7 +147,6 @@ namespace fdapde{
                 for(int j = 0; j<n_worker_; j++){
                     threadpool_[j]->join_thread();
                 }
-                std::unique_lock<std::mutex> loc(m_);
             }
 
             std::shared_ptr<Worker> get_worker(int indx){
