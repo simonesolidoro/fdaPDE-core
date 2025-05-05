@@ -40,9 +40,10 @@ namespace fdapde{
                     std::mutex m_;
                     std::condition_variable cv_; 
                     int n_worker_ = 0; //size() di workers_
+                    int indx_; //indice di se stesso in vettore di workers_
                 public:
                     // costruttore con numero elementi di coda
-                    Worker(int n, std::shared_ptr<std::vector<std::shared_ptr<Worker>>> ws):workers_(ws),sync_queue_(n),t_(&Worker::worker_loop,this){
+                    Worker(int n, std::shared_ptr<std::vector<std::shared_ptr<Worker>>> ws, int idx):workers_(ws),sync_queue_(n),t_(&Worker::worker_loop,this),indx_(idx){
                         n_worker_ = ws->size();
                     };
 
@@ -75,7 +76,7 @@ namespace fdapde{
                         loc_start.unlock();
                         while(!stop_){
                             std::unique_lock<std::mutex> loc(m_); 
-                            cv_.wait(loc,[&](){return !sync_queue_.empty() || stop_ ;}); //threadpool_.get_count_job_all()>0 || //segmentation fault dovuto a: threadpool_.get_count_job_all()>0 da capire perche 
+                            cv_.wait(loc,[&](){return !sync_queue_.empty() || stop_ || get_count_job_all_w() ;}); //threadpool_.get_count_job_all()>0 || //segmentation fault dovuto a: threadpool_.get_count_job_all()>0 da capire perche 
                             loc.unlock();
                             if(stop_){return;}
                             if(!sync_queue_.empty()){
@@ -84,7 +85,7 @@ namespace fdapde{
                                     (j.value())(); //esegue funzioni con 0 parametri e void. per non void si dovra fare wrap e associare a promise. per parametri lamda wrap che li cattura cosi no param  
                             }
                             else{ //steal
-                                //steal_from_most_busy_and_do();  
+                                steal_from_most_busy_and_do();  
                             } 
                             //std::cout<<count_job_<<"da thread:"<<std::this_thread::get_id()<<std::endl;  //per debug                               
                         }
@@ -101,10 +102,24 @@ namespace fdapde{
                     }   
                     
                     //copie di quelli in threadpool
-                    int get_count_job_all(){
+                    int get_count_job_all_w(){
                         int n_worker = workers_->size();
                         int count = 0;
-                        for(int i=0; i<n_worker; i++){
+                        if(indx_ == 0){
+                            for(int i=1; i<n_worker; i++){
+                                count += (*workers_)[i]->get_count_job();
+                            }    
+                        }
+                        if(indx_ == n_worker-1){
+                            for(int i=0; i<n_worker-1; i++){
+                                count += (*workers_)[i]->get_count_job();
+                            }
+                        }
+
+                        for(int i=indx_+1; i<n_worker; i++){
+                            count += (*workers_)[i]->get_count_job();
+                        }
+                        for(int i=indx_-1; i>=0; i++){
                             count += (*workers_)[i]->get_count_job();
                         }
                         return count;
@@ -112,9 +127,41 @@ namespace fdapde{
                     // indice di worker con piu job in coda, sara utile per steal job
                     int indx_most_busy(){
                         int n_worker = workers_->size(); // perche quando inizializza primi worker che partono a fare worker_loop magari size di workers_ non ancora n_worker_
+                        if(indx_ == 0){
+                            int worker_indx = 1;
+                            int max_elem= (*workers_)[1]->get_count_job(); //numero elementi in primo worker 
+                                for (int j=2; j<n_worker; j++){
+                                    int current_el = (*workers_)[j]->get_count_job();
+                                    if(current_el > max_elem ){
+                                        worker_indx = j;
+                                        max_elem = current_el;
+                                    }
+                                }
+                            return worker_indx;
+                        }
+                        if(indx_ == n_worker-1){
+                            int worker_indx = 0;
+                            int max_elem= (*workers_)[0]->get_count_job(); //numero elementi in primo worker 
+                                for (int j=1; j<n_worker-1; j++){
+                                    int current_el = (*workers_)[j]->get_count_job();
+                                    if(current_el > max_elem ){
+                                        worker_indx = j;
+                                        max_elem = current_el;
+                                    }
+                                }
+                            return worker_indx;
+                        }
                         int worker_indx = 0;
-                        int max_elem= (*workers_)[0]->get_count_job(); //numero elementi in primo worker 
-                        for (int j=1; j<n_worker; j++){
+                        int max_elem= (*workers_)[0]->get_count_job();
+
+                        for (int j=indx_+1; j<n_worker; j++){
+                            int current_el = (*workers_)[j]->get_count_job();
+                            if(current_el > max_elem ){
+                                worker_indx = j;
+                                max_elem = current_el;
+                            }
+                        }
+                        for (int j=indx_-1; j>=0; j++){
                             int current_el = (*workers_)[j]->get_count_job();
                             if(current_el > max_elem ){
                                 worker_indx = j;
@@ -166,7 +213,7 @@ namespace fdapde{
             Threadpool(int n, int k):n_worker_(k){
                 workers_->reserve(k);
                 for(int i=0; i<k; i++){
-                    workers_->emplace_back(std::make_shared<Worker> (n,workers_));
+                    workers_->emplace_back(std::make_shared<Worker> (n,workers_,i));
                 }
                 for(int i=0; i<k; i++){
                     std::unique_lock<std::mutex> loc((*workers_)[i]->get_loc());
