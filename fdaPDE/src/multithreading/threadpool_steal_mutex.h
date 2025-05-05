@@ -226,7 +226,7 @@ namespace fdapde{
             };*/
                //versione che blocca tutti i mutex
             bool send_task(job j){
-                std::cout<<"send "<<std::endl;
+                //std::cout<<"send "<<std::endl;
                 int indx_worker = indx_most_free();
                 std::vector<std::unique_lock<std::mutex>> vett_locks(lock_tutti());
                 bool flag = sync_queues_[indx_worker]->push_back(j);
