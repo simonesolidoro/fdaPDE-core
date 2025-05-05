@@ -70,7 +70,7 @@ namespace fdapde{
                                     (j.value())(); //esegue funzioni con 0 parametri e void. per non void si dovra fare wrap e associare a promise. per parametri lamda wrap che li cattura cosi no param  
                             }
                             else{ //steal
-                                //steal_from_most_busy_and_do();  
+                                steal_from_most_busy_and_do();  
                             }                                 
                         }
                     };
