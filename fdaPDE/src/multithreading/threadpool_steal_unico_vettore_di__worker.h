@@ -125,10 +125,6 @@ namespace fdapde{
                     }
                     
 
-<<<<<<< HEAD:fdaPDE/src/multithreading/threadpool_steal_unico_vettore_di__worker.h
-
-=======
->>>>>>> develop:fdaPDE/src/multithreading/threadpool_mutex.h
             };
         private:
             std::vector<std::shared_ptr<Worker>> threadpool_; //vettore di putatori perche non movable e copiable synchro_queue per via di mutex
@@ -142,7 +138,7 @@ namespace fdapde{
             Threadpool(int n, int k):n_worker_(k){
                 threadpool_.reserve(k);
                 for(int i=0; i<k; i++){
-                    threadpool_.emplace_back(std::make_shared<Worker> (n,*this));
+                    threadpool_.emplace_back(std::make_shared<Worker> (n,std::ref(*this)));
                 }
             };
             ~Threadpool(){
