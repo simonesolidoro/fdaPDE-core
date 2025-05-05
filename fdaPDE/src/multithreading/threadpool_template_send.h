@@ -147,6 +147,8 @@ namespace fdapde{
 
                 bool flag_invio_riuscito = threadpool_[indx_worker]->push_back(j);
                 //perche con versione relax non ho certezza push riesca (in caso coda piena nemmeno con hold a meno di usare push_or_wait)
+                //è un problema qui perche send restituisce un future, in altre versioni restituisce un bool quindi se push non va a buon fine pace. qui invece  voglio il future 
+                //TODO: alternativa è ritornare un std::optional<std::future<return_type>>
                 while(!flag_invio_riuscito){
                     flag_invio_riuscito = threadpool_[indx_worker]->push_back(j);
                 } 
