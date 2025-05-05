@@ -43,6 +43,7 @@ namespace fdapde{
                     Worker(int n, fdapde::Threadpool& tp):threadpool_(tp),sync_queue_(n),t_(&Worker::worker_loop,this){};
                     
                     ~Worker(){
+                        std::unique_lock<std::mutex> loc(m_);
                         stop_ = true; //PROBLEMA: chiamato distruttore prima che job effettivamente finiti. SOLUZIONE: usare future associato a task in main cosi che future.get() garantisce fine di task prima di chiamata distruttore
                         t_.join();
                     }
@@ -54,6 +55,9 @@ namespace fdapde{
                     //per poter notificare da threadpool
                     void notifica(){
                         cv_.notify_one();
+                    }
+                    void set_stop(bool s){
+                        stop_ = s;
                     }
 
                     void worker_loop(){
@@ -95,9 +99,9 @@ namespace fdapde{
 
                     
                     //per rubare job da back a chi è piu impegnato ed eseguirlo
-                    void steal_from_most_busy_and_do(){
-                            std::unique_lock<std::mutex> loc(threadpool_.get_lock()); //mutex per evitare che si acceda a worker che sono staiti distrutti (segmentation fault), pero cosi facendo lo steal è sequenziale perche mutex bloccato è di threadpool 
-                            if(threadpool_.get_stop() == true) return;
+                    void steal_from_most_busy_and_do(){//PROBLEMA: SEMBRA IMPOSSIBILE VERIFICARE CHE DISTRUTTORE DI THREADPOOL NON SIA STATO CHIAMATO SENZA ACCEDERE A threadpool_ OSS: anche solo per tentare di bloccare mutex di Threadpool: std::unique_lock<std::mutex> loc(threadpool_.get_lock()) si deve accedere e si fa segmentation fault
+                            std::unique_lock<std::mutex> loc(m_); //non funziona
+                            if(stop_ == true) return;
                             int most_busy = threadpool_.indx_most_busy();
                             std::optional<job> j = (threadpool_.get_worker(most_busy))->pop_back();
                             if(j){
@@ -115,6 +119,7 @@ namespace fdapde{
             std::mutex m_; //usato per far si che indx_most_busy ridia -1 se chiamato distruttore di threadpool, cosi si evita che thread di worker diano segmentation faukt perche provano ad accedere a worker distrutto durante steal_job
             bool stop_ = false;
         public:
+            friend class Worker;
             //n = size code, k = numero worker
             Threadpool(int n, int k):n_worker_(k){
                 threadpool_.reserve(k);
@@ -124,6 +129,11 @@ namespace fdapde{
             };
             ~Threadpool(){
                 std::unique_lock<std::mutex> loc(m_);
+                //cosi in steal_ prima cosa sara bloccare il mutex su singolo worker e se distruttore gia chiamato metodo ritorna ed evita accesso a Threadpool distrutta
+                for(int j = 0; j<n_worker_; j++){
+                    std::unique_lock<std::mutex> loc(threadpool_[j]->get_loc());
+                    threadpool_[j]->set_stop(true);
+                }
                 stop_ = true; // non serve basta che threadpool faccia blocco di mutex prima di distruggere 
             }
 
@@ -167,10 +177,7 @@ namespace fdapde{
             //send con indx_freer criterio
             bool send_task(job j){
                 int indx_worker = indx_most_free();
-                std::unique_lock<std::mutex> loc(threadpool_[indx_worker]->get_loc());
                 bool flag = threadpool_[indx_worker]->push_back(j);
-                threadpool_[indx_worker]->notifica();
-                loc.unlock();
                 if(flag){
                     return true;
                 }
@@ -178,10 +185,7 @@ namespace fdapde{
             };
             //send a giro usando struct indxw 
             bool send_task_round(job j){
-                std::unique_lock<std::mutex> loc(threadpool_[indxw_.indx_]->get_loc());
                 bool flag = threadpool_[indxw_.indx_]->push_back(j);
-                threadpool_[indxw_.indx_]->notifica();
-                loc.unlock();
                 if(flag){
                     indxw_.next(n_worker_);
                     return true;
