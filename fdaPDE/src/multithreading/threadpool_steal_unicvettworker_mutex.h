@@ -38,14 +38,13 @@ namespace fdapde{
                     bool stop_ = false;
                     std::mutex m_;
                     std::condition_variable cv_; 
+                    int n_worker_ = 0; //size() di workers_
                 public:
                     // costruttore con numero elementi di coda
-                    Worker(int n, std::vector<std::shared_ptr<Worker>> tp):workers_(tp),sync_queue_(n),t_(&Worker::worker_loop,this){};
-                    /*
-                    ~Worker(){
-                        std::unique_lock<std::mutex> loc(m_);
-                        stop_ = true; //PROBLEMA: chiamato distruttore prima che job effettivamente finiti. SOLUZIONE: usare future associato a task in main cosi che future.get() garantisce fine di task prima di chiamata distruttore
-                    }*/
+                    Worker(int n, std::vector<std::shared_ptr<Worker>> ws):workers_(ws),sync_queue_(n),t_(&Worker::worker_loop,this){
+                        n_worker_ = ws.size();
+                    };
+
                     //per poter bloccare il mutex di Worker m_ in threadpool
                     std::unique_lock<std::mutex> get_loc(){
                         std::unique_lock<std::mutex> loc(m_);
@@ -85,9 +84,8 @@ namespace fdapde{
                         return count_job_;
                     };
                     
-                    //copie di quelli in threadpool, unica differenza calcolo di n_worker. (TODO: possibile passarlo membro dati di singoli worker) 
+                    //copie di quelli in threadpool
                     int get_count_job_all(){
-                        int n_worker_ = workers_.size();
                         int count = 0;
                         for(int i=0; i<n_worker_; i++){
                             count += workers_[i]->get_count_job();
@@ -96,7 +94,6 @@ namespace fdapde{
                     }
                     // indice di worker con piu job in coda, sara utile per steal job
                     int indx_most_busy(){
-                        int n_worker_ = workers_.size();
                         int worker_indx = 0;
                         int max_elem= workers_[0]->get_count_job(); //numero elementi in primo worker 
                         for (int j=1; j<n_worker_; j++){
@@ -176,6 +173,7 @@ namespace fdapde{
                 }
             }
 
+            //non usato perche spostao in worker, però magari poi utile quindi tenuto
             int get_count_job_all(){
                 int count = 0;
                 for(int i=0; i<n_worker_; i++){
@@ -217,6 +215,7 @@ namespace fdapde{
                 }
                 return worker_indx;
             };
+            //spostato in worker, ma tenuto anche qui magari poi sarà utile
             // indice di worker con piu job in coda, sara utile per steal job
             int indx_most_busy(){
                 int worker_indx = 0;
