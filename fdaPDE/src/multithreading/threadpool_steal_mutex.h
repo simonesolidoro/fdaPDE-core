@@ -22,6 +22,7 @@ namespace fdapde{
     class Threadpool{
         using job = std::function<void()>;
         //usato per send_task_round (che è equivalente a usare coutn_task senza decremento)
+        //OSS: se piu thread inviano job da valutare necessita di rendere threadsafe
         struct indx_worker{
             int indx_ = 0;
             void next(int n_worker){
@@ -157,6 +158,23 @@ namespace fdapde{
                     sync_queues_[i]->notifica();
                 }
             }
+            //per acquisire tutti i mutex dei worker
+            std::vector<std::unique_lock<std::mutex>> lock_tutti(){
+                std::vector<std::unique_lock<std::mutex>> vett_lock;
+                vett_lock.reserve(n_worker_);
+                for(int i=0; i<n_worker_; i++){
+                    std::unique_lock<std::mutex> loc_w(sync_queues_[i]->get_lock());
+                    vett_lock.push_back(std::move(loc_w));
+                }
+                return vett_lock;
+            }
+            //per rilasciare tutti i mutex dei worker
+            void unlock_tutti(std::vector<std::unique_lock<std::mutex>>& vett_lock){
+                for(int i=0; i<n_worker_; i++){
+                    vett_lock[i].unlock();
+                }
+            }
+
             int get_count_job_all(){
                 int count = 0;
                 for(int i=0; i<n_worker_; i++){
@@ -192,18 +210,35 @@ namespace fdapde{
                 return worker_indx;
             }
             //send con indx_freer criterio
+            /* versione che blocca solo mutex di a chi invia 
             bool send_task(job j){
                 std::cout<<"send "<<std::endl;
                 int indx_worker = indx_most_free();
                 std::unique_lock<std::mutex> loc(sync_queues_[indx_worker]->get_lock());
                 bool flag = sync_queues_[indx_worker]->push_back(j);
                 notifica_tutti(); // problema: push e notifica sono sincronizati solo in thread su cui viene fatto push perche mutex che poi leggera è lo stesso bloccato in push.
+                                  //POSSIBILE SOLUZIONE: fare lock_all() e poi unlock_all() ma cosi ogni send blocca worker_loop di chi ancora non ha superato la cv_.wait(), pero sarebbe sincronizzata la lettura dei count_job ++. 
                 loc.unlock();
                 if(flag){
                     return true;
                 }
                 return false;                
+            };*/
+               //versione che blocca tutti i mutex
+            bool send_task(job j){
+                std::cout<<"send "<<std::endl;
+                int indx_worker = indx_most_free();
+                std::vector<std::unique_lock<std::mutex>> vett_locks(lock_tutti());
+                bool flag = sync_queues_[indx_worker]->push_back(j);
+                notifica_tutti(); // problema: push e notifica sono sincronizati solo in thread su cui viene fatto push perche mutex che poi leggera è lo stesso bloccato in push.
+                                  //POSSIBILE SOLUZIONE: fare lock_all() e poi unlock_all() ma cosi ogni send blocca worker_loop di chi ancora non ha superato la cv_.wait(), pero sarebbe sincronizzata la lettura dei count_job ++. 
+                unlock_tutti(std::ref(vett_locks));
+                if(flag){
+                    return true;
+                }
+                return false;                
             };
+            //TODO: versione con blocco di tutti i mutex
             //send a giro usando struct indxw 
             bool send_task_round(job j){
                 std::unique_lock<std::mutex> loc(sync_queues_[indxw_.indx_]->get_lock());
