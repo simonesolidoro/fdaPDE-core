@@ -75,6 +75,8 @@ namespace fdapde{
                             std::unique_lock<std::mutex> loc(m_);
                             cv_.wait(loc,[this](){return !sync_queue_.empty() || stop_;});
                             loc.unlock();
+                            if(stop_ == true){return;} //per evitare che finisca iterazione quando coda vuota ma svegliato per segnale di stop e quindi pop di nullopt
+                            //std::cout<<std::this_thread::get_id()<<"sta facendo workerloop"<<std::endl; //per debug
                             //OSS: cosi facendo durante un push da threadpool non possono avvenire pop (sequenziale :( ), ma rimane che durante un pop possono essere fatti dei push. si perde a meta il vantaggio di avere synchro_queue parzialmente non bloking, ma non del tutto
                             std::optional<job> j = pop_front();
                             if(j){//esegue se non è nullopt
