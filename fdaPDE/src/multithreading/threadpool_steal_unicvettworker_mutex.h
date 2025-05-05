@@ -85,6 +85,7 @@ namespace fdapde{
                         return count_job_;
                     };
                     
+                    //copie di quelli in threadpool, unica differenza calcolo di n_worker. (TODO: possibile passarlo membro dati di singoli worker) 
                     int get_count_job_all(){
                         int n_worker_ = workers_.size();
                         int count = 0;
@@ -155,10 +156,7 @@ namespace fdapde{
             std::vector<std::shared_ptr<Worker>> workers_; //vettore di putatori perche non movable e copiable synchro_queue per via di mutex
             int n_worker_;
             indx_worker indxw_; 
-            std::mutex m_; //usato per far si che indx_most_busy ridia -1 se chiamato distruttore di threadpool, cosi si evita che thread di worker diano segmentation faukt perche provano ad accedere a worker distrutto durante steal_job
-            //bool stop_ = false;
         public:
-            //friend class Worker; //per evitare getter(es get_worker), non so cosa sia meglio
             //n = size code, k = numero worker
             Threadpool(int n, int k):n_worker_(k){
                 workers_.reserve(k);
@@ -176,15 +174,6 @@ namespace fdapde{
                 for(int j = 0; j<n_worker_; j++){
                     workers_[j]->join_thread();
                 }
-            }
-
-            std::shared_ptr<Worker> get_worker(int indx){
-                return workers_[indx];
-            }
-
-            std::unique_lock<std::mutex> get_lock(){
-                std::unique_lock<std::mutex> loc(m_);
-                return loc;
             }
 
             int get_count_job_all(){
