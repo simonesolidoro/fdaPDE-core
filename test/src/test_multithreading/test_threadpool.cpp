@@ -37,7 +37,7 @@ int main(){
 {/*void function, trasformate in bool fittizie coai che con future si aspetta esecuzione*/
     
     using job = std::function<bool()>;
-    fdapde::Threadpool<bool> tp(16,4);
+    fdapde::Threadpool tp(16,4);
     job j1 = fun;
     job j2 = fun;
     job j3 = fun;
@@ -63,7 +63,7 @@ int main(){
 }
 {/*se funzione che richiede parametri wrap in una lambda che cattura parametri cosi che lambda sia return_type() senza parametri*/
     //OSS: cosi facendo inutile template argoment Args... in worker e in threadpool tanto tutti i job sarebbero senza parametri
-    fdapde::Threadpool<bool> tp(5,4);
+    fdapde::Threadpool tp(5,4);
     int n = 10000;
 
     auto ptr_task1 = std::make_shared<std::packaged_task<bool(int)>> (count);
