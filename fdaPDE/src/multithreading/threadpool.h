@@ -31,11 +31,12 @@ namespace fdapde{
         public:
             class Worker{
                 private: 
-                    std::vector<std::shared_ptr<Worker>> workers_; //per far accedere worker a metodi di threadpool e poter fare steal job ma problemi con distruttori segmentation fault
+                    std::vector<std::shared_ptr<Worker>>& workers_; //per far accedere worker a metodi di threadpool e poter fare steal job ma problemi con distruttori segmentation fault
                     fdapde::Synchro_queue<job,fdapde::relax_nowait> sync_queue_;
                     std::thread t_;
                     int count_job_ = 0;
                     bool stop_ = false;
+                    bool start_ = false;
                     std::mutex m_;
                     std::condition_variable cv_; 
                     int n_worker_ = 0; //size() di workers_
@@ -57,14 +58,24 @@ namespace fdapde{
                     void set_stop(bool s){
                         stop_ = s;
                     }
+                    void set_start(bool s){
+                        start_ = s;
+                    }
                     void join_thread(){
                         t_.join();
                     }
+                    //lettura non affidabile però è sufficente per dare una aprossimazione utile a implementare  steal e send_task 
+                    int get_count_job() const{
+                        return count_job_;
+                    };
 
                     void worker_loop(){
+                        std::unique_lock<std::mutex> loc_start(m_);
+                        cv_.wait(loc_start,[this](){return start_;});
+                        loc_start.unlock();
                         while(!stop_){
                             std::unique_lock<std::mutex> loc(m_); 
-                            cv_.wait(loc,[&](){return !sync_queue_.empty() || get_count_job_all()>0 || stop_;}); //threadpool_.get_count_job_all()>0 || //segmentation fault dovuto a: threadpool_.get_count_job_all()>0 da capire perche 
+                            cv_.wait(loc,[&](){return !sync_queue_.empty() || stop_ || get_count_job_all()>0;}); //threadpool_.get_count_job_all()>0 || //segmentation fault dovuto a: threadpool_.get_count_job_all()>0 da capire perche 
                             loc.unlock();
                             if(stop_){return;}
                             if(!sync_queue_.empty()){
@@ -78,32 +89,39 @@ namespace fdapde{
                             //std::cout<<count_job_<<"da thread:"<<std::this_thread::get_id()<<std::endl;  //per debug                               
                         }
                     };
-                    
-                    
-                    //lettura non affidabile però è sufficente per dare una aprossimazione utile a implementare  steal e send_task 
-                    int get_count_job() const{
-                        return count_job_;
-                    };
+                               
+                    //per rubare job da back a chi è piu impegnato ed eseguirlo
+                    void steal_from_most_busy_and_do(){//PROBLEMA: SEMBRA IMPOSSIBILE VERIFICARE CHE DISTRUTTORE DI THREADPOOL NON SIA STATO CHIAMATO SENZA ACCEDERE A threadpool_ OSS: anche solo per tentare di bloccare mutex di Threadpool: std::unique_lock<std::mutex> loc(threadpool_.get_lock()) si deve accedere e si fa segmentation fault
+                        int most_busy = indx_most_busy();
+                        //if(most_busy<0){return;} //significa che thread piu indaffarato ha 0 job in coda (tutte code vuote)  e quindi return
+                        std::optional<job> j = workers_[most_busy]->pop_back();
+                        if(j){
+                            (j.value())();
+                        }
+                    }   
                     
                     //copie di quelli in threadpool
                     int get_count_job_all(){
+                        int n_worker = workers_.size();
                         int count = 0;
-                        for(int i=0; i<n_worker_; i++){
+                        for(int i=0; i<n_worker; i++){
                             count += workers_[i]->get_count_job();
                         }
                         return count;
                     }
                     // indice di worker con piu job in coda, sara utile per steal job
                     int indx_most_busy(){
+                        int n_worker = workers_.size(); // perche quando inizializza primi worker che partono a fare worker_loop magari size di workers_ non ancora n_worker_
                         int worker_indx = 0;
                         int max_elem= workers_[0]->get_count_job(); //numero elementi in primo worker 
-                        for (int j=1; j<n_worker_; j++){
+                        for (int j=1; j<n_worker; j++){
                             int current_el = workers_[j]->get_count_job();
                             if(current_el > max_elem ){
                                 worker_indx = j;
                                 max_elem = current_el;
                             }
                         }
+                        //if(max_elem == 0){return -1;} //per evitare di fare poi pop se non c'è elemento 
                         return worker_indx;
                     }
 
@@ -136,18 +154,7 @@ namespace fdapde{
                             count_job_ --;
                         }
                         return j;
-                    };
-
-                    
-                    //per rubare job da back a chi è piu impegnato ed eseguirlo
-                    void steal_from_most_busy_and_do(){//PROBLEMA: SEMBRA IMPOSSIBILE VERIFICARE CHE DISTRUTTORE DI THREADPOOL NON SIA STATO CHIAMATO SENZA ACCEDERE A threadpool_ OSS: anche solo per tentare di bloccare mutex di Threadpool: std::unique_lock<std::mutex> loc(threadpool_.get_lock()) si deve accedere e si fa segmentation fault
-                            int most_busy = indx_most_busy();
-                            std::optional<job> j = workers_[most_busy]->pop_back();
-                            if(j){
-                                (j.value())();
-                            }
-                    }
-                    
+                    };                    
 
             };
         private://TODO: cambiare nome threadpoool_ in workers_
@@ -161,6 +168,12 @@ namespace fdapde{
                 for(int i=0; i<k; i++){
                     workers_.emplace_back(std::make_shared<Worker> (n,std::ref(workers_)));
                 }
+                for(int i=0; i<k; i++){
+                    std::unique_lock<std::mutex> loc(workers_[i]->get_loc());
+                    workers_[i]->set_start(true);
+                    workers_[i]->notifica();
+                }
+
             };
             ~Threadpool(){
                 //facciamo terminare tutti worker_loop cosi che nessun worker acceda a worker distrutti o a threadpool (perche quando il resto del distruttore di threadpool verra chiamato, cioe finito il corpo di questo distruttore, tutti i worker avranno terminato worker_loop grazie a join())
@@ -182,6 +195,7 @@ namespace fdapde{
                 }
                 return count;
             }
+            //notifica a tutti i cv_ dei worker
             void notifica_tutti(){
                 for(int i=0; i<n_worker_; i++){
                     workers_[i]->notifica();
@@ -231,6 +245,7 @@ namespace fdapde{
                 return worker_indx;
             }
             //send con indx_freer criterio
+            //TODO: - rendere template versione che blocca solo il mutex del worker a cui invia e poi notifica a tutti
             /*lock solo di a chi manda e notifica a tutti (ma sara sincronizzata solo worker che riceve il push)
             bool send_task(job j){
                 int indx_worker = indx_most_free();
@@ -291,6 +306,8 @@ namespace fdapde{
             };
 
             //send a giro usando struct indxw 
+            //TODO: -versione che blocca tutti i mutex dei worker (migliore se send in single thread)
+            //      -rendere template per ricevere generiche funzioni
             bool send_task_round(job j){
                 std::unique_lock<std::mutex> loc(workers_[indxw_.indx_]->get_loc());
                 bool flag = workers_[indxw_.indx_]->push_back(j);
