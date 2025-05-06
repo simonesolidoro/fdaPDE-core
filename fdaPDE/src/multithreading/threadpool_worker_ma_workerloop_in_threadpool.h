@@ -149,10 +149,12 @@ namespace fdapde{
                         if(j){//esegue se non è nullopt
                             count_job_[i]--;
                             (j.value())(); //esegue funzioni con 0 parametri e void. per non void si dovra fare wrap e associare a promise. per parametri lamda wrap che li cattura cosi no param  
+                            std::cout<<"thread: "<<std::this_thread::get_id()<<" ha eseguito"<<std::endl;
                         }
+                        //else{std::cout<<"thread: "<<std::this_thread::get_id()<<"nullopt"<<std::endl;}
                     }
                     else{ //steal
-                        //steal_from_most_busy_and_do();  
+                        steal_from_most_busy_and_do();  
                     }                             
                 }
             };
@@ -163,7 +165,9 @@ namespace fdapde{
                     if(j){
                         count_job_[most_busy]--;
                         (j.value())();
+                        std::cout<<"thread: "<<std::this_thread::get_id()<<" ha eseguito"<<std::endl;
                     }
+                    else{std::cout<<"thread: "<<std::this_thread::get_id()<<"nullopt"<<std::endl;}
                 }
             }
             /* versione con contatore in worker
@@ -291,6 +295,21 @@ namespace fdapde{
                     indxw_.next(n_worker_);
                     return true;
                 }
+                return false;
+            };
+
+            //per debug di steal job
+            bool send_al_worker_n(job j,int n,int & push_count){
+                std::unique_lock<std::mutex> loc(workers_[n]->get_loc());
+                bool flag = workers_[n]->push_back(j);
+                notifica_tutti(); //sincronizzata solo worker a cui si fa il push ma meglio che niente
+                loc.unlock();
+                if(flag){
+                    count_job_[indxw_.indx_]++;
+                    push_count++;
+                    return true;
+                }
+                std::cout<<"thread: "<<std::this_thread::get_id()<<"non push"<<std::endl;
                 return false;
             };
     };
