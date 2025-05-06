@@ -40,7 +40,7 @@ namespace fdapde{
                     std::condition_variable cv_; 
                     int n_worker_ = 0; //size() di workers_
                 public:
-                    friend class Threadpool;
+                    friend class Threadpool; //TODO: classi friend quindi inutili tuti i getter ecc.. ripulire codice. lasciare magari wrap di alcune funzioni per chiarezza in uso in threadpool(es workers_[i]->notifica() al posto di workers_[i]->cv_.notify_one())
                     // costruttore con numero elementi di coda
                     //inizializza thread con funzione membro worker_loop di Threadpoool cosi che accessibili altre code senza passaggio di puntatore/reference a threadpool in worker che causava segmentation fault  
                     Worker(int n, void (Threadpool::*worker_loop)(int),Threadpool* T, int idx):indx_(idx),sync_queue_(n),t_(worker_loop,T,idx){};
@@ -112,8 +112,8 @@ namespace fdapde{
             std::vector<int> count_job_;
             int n_worker_;
             indx_worker indxw_; 
-            std::mutex m_threadpool_;
-            bool active_ = true;
+            //std::mutex m_threadpool_; //non serve per ora
+            //bool active_ = true;
         public:
             friend class Worker; //poi togliere tuti get e sostituire con accesso diretto
             //n = size code, k = numero worker
@@ -126,12 +126,12 @@ namespace fdapde{
                 }
             };
             ~Threadpool(){
-                std::unique_lock<std::mutex> loc_t(m_threadpool_);
-                active_= false;
+                //std::unique_lock<std::mutex> loc_t(m_threadpool_);
+                //active_= false;
                 //facciamo terminare tutti worker_loop cosi che nessun worker acceda a worker distrutti o a threadpool (perche quando il resto del distruttore di threadpool verra chiamato, cioe finito il corpo di questo distruttore, tutti i worker avranno terminato worker_loop grazie a join())
                 for(int j = 0; j<n_worker_; j++){
                     std::unique_lock<std::mutex> loc(workers_[j]->get_loc());
-                    workers_[j]->set_stop(true);
+                    workers_[j]->set_stop(true); //in mutex perche se ce cv che dorme notifica e aggiornamnto stop devono essere sincronizzati
                     workers_[j]->notifica();
                 }
                 for(int j = 0; j<n_worker_; j++){
@@ -211,6 +211,7 @@ namespace fdapde{
                 }
             }
             //ridà indice di worker piu libero (lettura di elmenti in sync_queue di worker fatta con metodo count_el non affidabile ma è abbastanza per avere un idea)
+            /*versione con contatore in worker
             int indx_most_free(){
                 int worker_indx = 0;
                 int min_elem= workers_[0]->get_count_job(); //numero elementi in primo worker 
@@ -223,6 +224,20 @@ namespace fdapde{
                 }
                 return worker_indx;
             };
+            */
+            int indx_most_free(){
+                int worker_indx = 0;
+                int min_elem= count_job_[0]; //numero elementi in primo worker 
+                for (int j=1; j<n_worker_; j++){
+                    int current_el = count_job_[j];
+                    if(current_el < min_elem ){ 
+                        worker_indx = j;
+                        min_elem = current_el;
+                    }
+                }
+                return worker_indx;
+            };
+
             //spostato in worker, ma tenuto anche qui magari poi sarà utile
             // indice di worker con piu job in coda, sara utile per steal job
             /*versione con contatore in worker
