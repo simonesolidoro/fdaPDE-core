@@ -109,7 +109,8 @@ namespace fdapde{
             };
         private://TODO: cambiare nome threadpoool_ in workers_
             std::vector<std::shared_ptr<Worker>> workers_; //vettore di putatori perche non movable e copiable synchro_queue per via di mutex
-            std::vector<int> count_job_;
+            std::vector<int> count_job_; //oss: sarebbe meglio atomic int ma non e movable e quindi non si puo fare vector<atomic<>>. 
+            std::vector<bool> state_worker_; //false coda vuota. //basterebbe count_job_ != 0 ma cosi aggiornato dopo chiamata a empty() da capire se ne vale la pena
             int n_worker_;
             indx_worker indxw_; 
             //std::mutex m_threadpool_; //non serve per ora
@@ -120,9 +121,11 @@ namespace fdapde{
             Threadpool(int n, int k):n_worker_(k){
                 workers_.reserve(k);
                 count_job_.reserve(k);
+                state_worker_.reserve(k);
                 for(int i=0; i<k; i++){
                     workers_.emplace_back(std::make_shared<Worker> (n,&Threadpool::worker_loop,this,i));
                     count_job_.push_back(0);
+                    state_worker_.push_back(false);
                 }
             };
             ~Threadpool(){
@@ -142,11 +145,13 @@ namespace fdapde{
             void worker_loop(int i){
                 while(!workers_[i]->stop_){
                     std::unique_lock<std::mutex> loc(workers_[i]->m_); //OSS: empty() gia sincronizzato con push grazie a mtex dentro Synchro_queue, mutex in synchro_queue_count serve solo per avere cv che mand a dormire. get_count_job_all() invece non sincronizzato (diversi thread vedono diverso quindi magari ce stato push e count++ ma in thread che fa il check non lo vede) però pazienza meglio di niente 
+                    std::cout<<"mutexInWorkerloop, get count all job: "<<get_count_all_job()<<std::endl;
                     workers_[i]->cv_.wait(loc,[&](){return !workers_[i]->sync_queue_.empty() || workers_[i]->stop_ || get_count_all_job()>0;});
                     loc.unlock();
                     if(workers_[i]->stop_){return;}
                     if(!workers_[i]->sync_queue_.empty()){
                         std::optional<job> j = workers_[i]->pop_front();
+                        state_worker_[i] = true; //coda non vuota (forse si se cera solo un job che e stato pop ora)
                         if(j){//esegue se non è nullopt
                             count_job_[i]--;
                             (j.value())(); //esegue funzioni con 0 parametri e void. per non void si dovra fare wrap e associare a promise. per parametri lamda wrap che li cattura cosi no param  
@@ -155,7 +160,9 @@ namespace fdapde{
                         //else{std::cout<<"thread: "<<std::this_thread::get_id()<<"nullopt"<<std::endl;}
                     }
                     else{ //steal
-                        steal_from_most_busy_and_do();  
+                        state_worker_[i] = false; //coda vuota
+                        steal_from_most_busy_and_do(); 
+                        //randomo_steal_and_do(); 
                     }                             
                 }
             };
@@ -166,24 +173,44 @@ namespace fdapde{
                     if(j){
                         count_job_[most_busy]--;
                         (j.value())();
-                        std::cout<<"thread: "<<std::this_thread::get_id()<<" ha eseguito"<<std::endl;
+                        std::cout<<"thread: "<<std::this_thread::get_id()<<" ha rubato"<<std::endl;
                     }
-                    else{std::cout<<"thread: "<<std::this_thread::get_id()<<"nullopt"<<std::endl;}
+                    else{std::cout<<"thread: "<<std::this_thread::get_id()<<"nulloptRubato"<<std::endl;}
                 }
             }
-            /* versione con contatore in worker
-            int get_count_job_all(){
-                std::unique_lock<std::mutex> loc(m_threadpool_);
-                if(active_){
-                    int count = 0;
-                    for(int i=0; i<n_worker_; i++){
-                        count += workers_[i]->get_count_job();
+
+            /* // per steal random tra chi ha code non vuote
+            std::vector<int> indxs_of_non_empty_queue(){
+                std::vector<int> ret;
+                for(int i = 0; i<n_worker_; i++){
+                    if(count_job_[i] != 0){
+                        ret.push_back(i);
                     }
-                    return count;
                 }
-                return 0;
+                return ret;
+            }
+            int random_indx(int size){
+                std::random_device rd;
+                std::mt19937 gen(rd());
+                std::uniform_int_distribution<> distrib(0,size-1);
+                return distrib(gen);
+            }
+            void randomo_steal_and_do(){
+                std::vector<int> indxs = indxs_of_non_empty_queue();
+                int size = indxs.size();
+                if(size == 0){ return;}
+                int indx = indxs[random_indx(size-1)];
+                std::optional<job> j = workers_[indx]->pop_back();
+                if(j){
+                    count_job_[indx]--;
+                    (j.value())();
+                    std::cout<<"thread: "<<std::this_thread::get_id()<<" ha eseguito"<<std::endl;
+                }
+                else{std::cout<<"thread: "<<std::this_thread::get_id()<<"nullopt"<<std::endl;}
+                
             }
             */
+            
             int get_count_all_job(){
                 int somma = 0;
                 for (auto x: count_job_)
@@ -192,7 +219,7 @@ namespace fdapde{
             }
             void notifica_tutti(){
                 for(int i=0; i<n_worker_; i++){
-                    workers_[i]->notifica();
+                    workers_[i]->cv_.notify_one();
                 }
             }
             //per acquisire tutti i mutex dei worker
@@ -200,7 +227,7 @@ namespace fdapde{
                 std::vector<std::unique_lock<std::mutex>> vett_lock;
                 vett_lock.reserve(n_worker_);
                 for(int i=0; i<n_worker_; i++){
-                    std::unique_lock<std::mutex> loc_w(workers_[i]->get_loc());
+                    std::unique_lock<std::mutex> loc_w(workers_[i]->m_);
                     vett_lock.push_back(std::move(loc_w));
                 }
                 return vett_lock;
@@ -211,21 +238,7 @@ namespace fdapde{
                     vett_lock[i].unlock();
                 }
             }
-            //ridà indice di worker piu libero (lettura di elmenti in sync_queue di worker fatta con metodo count_el non affidabile ma è abbastanza per avere un idea)
-            /*versione con contatore in worker
-            int indx_most_free(){
-                int worker_indx = 0;
-                int min_elem= workers_[0]->get_count_job(); //numero elementi in primo worker 
-                for (int j=1; j<n_worker_; j++){
-                    int current_el = workers_[j]->get_count_job();
-                    if(current_el < min_elem ){ 
-                        worker_indx = j;
-                        min_elem = current_el;
-                    }
-                }
-                return worker_indx;
-            };
-            */
+
             int indx_most_free(){
                 int worker_indx = 0;
                 int min_elem= count_job_[0]; //numero elementi in primo worker 
@@ -239,26 +252,6 @@ namespace fdapde{
                 return worker_indx;
             };
 
-            //spostato in worker, ma tenuto anche qui magari poi sarà utile
-            // indice di worker con piu job in coda, sara utile per steal job
-            /*versione con contatore in worker
-            int indx_most_busy(){
-                std::unique_lock<std::mutex> loc(m_threadpool_);
-                if(active_){
-                    int worker_indx = 0;
-                    int max_elem= workers_[0]->get_count_job(); //numero elementi in primo worker 
-                    for (int j=1; j<n_worker_; j++){
-                        int current_el = workers_[j]->get_count_job();
-                        if(current_el > max_elem ){
-                            worker_indx = j;
-                            max_elem = current_el;
-                        }
-                    }
-                    return worker_indx;
-                }
-                return -1;
-            }
-            */
             int indx_most_busy(){
                 int worker_indx = 0;
                 int max_elem= count_job_[0]; //numero elementi in primo worker 
@@ -269,6 +262,7 @@ namespace fdapde{
                         max_elem = current_el;
                     }
                 }
+                if(max_elem == 0){return -1;}
                 return worker_indx;
             }
 
@@ -382,12 +376,12 @@ namespace fdapde{
 
             //per debug di steal job
             bool send_al_worker_n(job j,int n,int & push_count){
-                std::unique_lock<std::mutex> loc(workers_[n]->get_loc());
+                std::vector<std::unique_lock<std::mutex>> vett_locks(lock_tutti());
                 bool flag = workers_[n]->push_back(j);
-                notifica_tutti(); //sincronizzata solo worker a cui si fa il push ma meglio che niente
-                loc.unlock();
+                notifica_tutti(); 
                 if(flag){
-                    count_job_[indxw_.indx_]++;
+                    count_job_[n]++;
+                    unlock_tutti(std::ref(vett_locks));
                     push_count++;
                     return true;
                 }
