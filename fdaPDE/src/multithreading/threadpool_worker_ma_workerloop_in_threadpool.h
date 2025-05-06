@@ -54,11 +54,13 @@ namespace fdapde{
                     void notifica(){
                         cv_.notify_one();
                     }
+                    /*messo wait direttamente in worker_loop grazie a dichiarazione friend possibile accedere a cv_
                     void wait (Threadpool* T){
                         std::unique_lock<std::mutex> loc(m_); //OSS: empty() gia sincronizzato con push grazie a mtex dentro Synchro_queue, mutex in synchro_queue_count serve solo per avere cv che mand a dormire. get_count_job_all() invece non sincronizzato (diversi thread vedono diverso quindi magari ce stato push e count++ ma in thread che fa il check non lo vede) però pazienza meglio di niente 
                         cv_.wait(loc,[&](){return !sync_queue_.empty() || stop_ || T->get_count_job_all();});
                         //loc.unlock(); //superfluo out of scope loc si distrugge e fa unlock mutex
                     }
+                    */
                     void set_stop(bool s){
                         stop_ = s;
                     }
@@ -107,6 +109,7 @@ namespace fdapde{
             };
         private://TODO: cambiare nome threadpoool_ in workers_
             std::vector<std::shared_ptr<Worker>> workers_; //vettore di putatori perche non movable e copiable synchro_queue per via di mutex
+            std::vector<int> count_job_;
             int n_worker_;
             indx_worker indxw_; 
             std::mutex m_threadpool_;
@@ -116,8 +119,10 @@ namespace fdapde{
             //n = size code, k = numero worker
             Threadpool(int n, int k):n_worker_(k){
                 workers_.reserve(k);
+                count_job_.reserve(k);
                 for(int i=0; i<k; i++){
                     workers_.emplace_back(std::make_shared<Worker> (n,&Threadpool::worker_loop,this,i));
+                    count_job_.push_back(0);
                 }
             };
             ~Threadpool(){
@@ -137,12 +142,14 @@ namespace fdapde{
             void worker_loop(int i){
                 while(!workers_[i]->stop_){
                     std::unique_lock<std::mutex> loc(workers_[i]->m_); //OSS: empty() gia sincronizzato con push grazie a mtex dentro Synchro_queue, mutex in synchro_queue_count serve solo per avere cv che mand a dormire. get_count_job_all() invece non sincronizzato (diversi thread vedono diverso quindi magari ce stato push e count++ ma in thread che fa il check non lo vede) però pazienza meglio di niente 
-                    workers_[i]->cv_.wait(loc,[&](){return !workers_[i]->sync_queue_.empty() || workers_[i]->stop_ || get_count_job_all()>0;});
+                    workers_[i]->cv_.wait(loc,[&](){return !workers_[i]->sync_queue_.empty() || workers_[i]->stop_ || get_count_all_job()>0;});
                     if(workers_[i]->stop_){return;}
                     if(!workers_[i]->sync_queue_.empty()){
                         std::optional<job> j = workers_[i]->pop_front();
-                        if(j)//esegue se non è nullopt
+                        if(j){//esegue se non è nullopt
+                            count_job_[i]--;
                             (j.value())(); //esegue funzioni con 0 parametri e void. per non void si dovra fare wrap e associare a promise. per parametri lamda wrap che li cattura cosi no param  
+                        }
                     }
                     else{ //steal
                         //steal_from_most_busy_and_do();  
@@ -154,11 +161,12 @@ namespace fdapde{
                 if(most_busy != -1){
                     std::optional<job> j = workers_[most_busy]->pop_back();
                     if(j){
+                        count_job_[most_busy]--;
                         (j.value())();
                     }
                 }
             }
-
+            /* versione con contatore in worker
             int get_count_job_all(){
                 std::unique_lock<std::mutex> loc(m_threadpool_);
                 if(active_){
@@ -169,6 +177,13 @@ namespace fdapde{
                     return count;
                 }
                 return 0;
+            }
+            */
+            int get_count_all_job(){
+                int somma = 0;
+                for (auto x: count_job_)
+                    somma += x;
+                return somma;
             }
             void notifica_tutti(){
                 for(int i=0; i<n_worker_; i++){
@@ -206,6 +221,7 @@ namespace fdapde{
             };
             //spostato in worker, ma tenuto anche qui magari poi sarà utile
             // indice di worker con piu job in coda, sara utile per steal job
+            /*versione con contatore in worker
             int indx_most_busy(){
                 std::unique_lock<std::mutex> loc(m_threadpool_);
                 if(active_){
@@ -222,6 +238,20 @@ namespace fdapde{
                 }
                 return -1;
             }
+            */
+            int indx_most_busy(){
+                int worker_indx = 0;
+                int max_elem= count_job_[0]; //numero elementi in primo worker 
+                for (int j=1; j<n_worker_; j++){
+                    int current_el = count_job_[j];
+                    if(current_el > max_elem ){
+                        worker_indx = j;
+                        max_elem = current_el;
+                    }
+                }
+                return worker_indx;
+            }
+
             //send con indx_freer criterio
             /*lock solo di a chi manda e notifica a tutti (ma sara sincronizzata solo worker che riceve il push)
             bool send_task(job j){
@@ -245,6 +275,7 @@ namespace fdapde{
                                 //POSSIBILE SOLUZIONE: fare lock_all() e poi unlock_all() ma cosi ogni send blocca worker_loop di chi ancora non ha superato la cv_.wait(), pero sarebbe sincronizzata la lettura dei count_job ++. 
                 unlock_tutti(std::ref(vett_locks));
                 if(flag){
+                    count_job_[indx_worker]++;
                     return true;
                 }
                 return false;                
@@ -256,6 +287,7 @@ namespace fdapde{
                 notifica_tutti(); //sincronizzata solo worker a cui si fa il push ma meglio che niente
                 loc.unlock();
                 if(flag){
+                    count_job_[indxw_.indx_]++;
                     indxw_.next(n_worker_);
                     return true;
                 }
