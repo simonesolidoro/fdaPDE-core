@@ -114,12 +114,14 @@ namespace fdapde{
             std::vector<bool> state_worker_; //false coda vuota. //basterebbe count_job_ != 0 ma cosi aggiornato dopo chiamata a empty() da capire se ne vale la pena
             int n_worker_;
             indx_worker indxw_; 
-            //std::mutex m_threadpool_; //non serve per ora
-            //bool active_ = true;
+            std::mutex m_threadpool_; 
+            std::condition_variable cv_threadpool_;
+            bool active_ = true;
         public:
             friend class Worker; //poi togliere tuti get e sostituire con accesso diretto
             //n = size code, k = numero worker
             Threadpool(int n, int k):n_worker_(k){
+                std::unique_lock<std::mutex> loc(m_threadpool_);
                 workers_.reserve(k);
                 state_worker_.reserve(k);
                 for(int i=0; i<k; i++){
@@ -127,6 +129,8 @@ namespace fdapde{
                     count_job_.emplace_back(0);
                     state_worker_.push_back(false);
                 }
+                active_ = true;
+                cv_threadpool_.notify_all();
             };
             ~Threadpool(){
                 //std::unique_lock<std::mutex> loc_t(m_threadpool_);
@@ -143,6 +147,10 @@ namespace fdapde{
             }
 
             void worker_loop(int i){
+                //per assicurare che thread partano a fare worker_loop solo dopo che tutti siano stati inizializzati
+                std::unique_lock<std::mutex> loc_t(m_threadpool_);
+                cv_threadpool_.wait(loc_t,[this](){return active_;});
+                loc_t.unlock();
                 while(!workers_[i]->stop_){
                     std::unique_lock<std::mutex> loc(workers_[i]->m_); //OSS: empty() gia sincronizzato con push grazie a mtex dentro Synchro_queue, mutex in synchro_queue_count serve solo per avere cv che mand a dormire. get_count_job_all() invece non sincronizzato (diversi thread vedono diverso quindi magari ce stato push e count++ ma in thread che fa il check non lo vede) però pazienza meglio di niente 
                     //std::cout<<"mutexInWorkerloop, get count all job: "<<get_count_all_job()<<std::endl;
