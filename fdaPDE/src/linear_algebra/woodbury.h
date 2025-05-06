@@ -51,13 +51,15 @@ template <typename SparseSolver_> struct Woodbury {
 };
 
 // solves linear system (A + U*C^{-1}*V)x = b using woodbury formula. For repated applications, use Woodbury class
-template <typename SparseSolver, typename MatrixType, typename RhsType>
-RhsType woodbury_system_solve(
-  const SparseSolver& invA, const MatrixType& U, const MatrixType& invC, const MatrixType& V,
+template <typename SparseSolver, typename MatrixU, typename MatrixC, typename MatrixV, typename RhsType>
+Eigen::Matrix<double, Dynamic, Dynamic> woodbury_system_solve(
+  const SparseSolver& invA, const MatrixU& U, const MatrixC& invC, const MatrixV& V,
   const Eigen::MatrixBase<RhsType>& b) {
     fdapde_static_assert(
-      internals::is_eigen_dense_xpr_v<MatrixType> && internals::is_eigen_dense_xpr_v<RhsType>,
+      internals::is_eigen_dense_xpr_v<MatrixU> && internals::is_eigen_dense_xpr_v<MatrixC> &&
+      internals::is_eigen_dense_xpr_v<MatrixV> && internals::is_eigen_dense_xpr_v<RhsType>,
       THIS_METHOD_IS_ONLY_FOR_DENSE_EIGEN_MATRICES);
+    using MatrixType = Eigen::Matrix<double, Dynamic, Dynamic>;
     MatrixType y = invA.solve(b);   // y = A^{-1}b
     MatrixType Y = invA.solve(U);   // Y = A^{-1}U. Heavy step of the method. solver is more efficient for small q
     MatrixType G = invC + V * Y;    // compute dense matrix G = C^{-1} + V*A^{-1}*U = C^{-1} + V*y

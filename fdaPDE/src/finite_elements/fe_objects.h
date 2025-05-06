@@ -624,6 +624,35 @@ class FeFunction :
         return coeff_.dot(a.assemble() * coeff_);
     }
     double h1_norm() const { return std::sqrt(h1_squared_norm()); }
+    // specialized integration routine for fe functions on cell range
+    template <Triangulation>
+    double integrate_on(CellIterator<Triangulation> begin, CellIterator<Triangulation> end) const {
+        fdapde_static_assert(FeSpace::n_components == 1, THIS_METHOD_IS_FOR_SCALAR_FINITE_ELEMENT_FUNCTIONS_ONLY);
+        using FeType = typename FeSpace::FeType;
+        using Quadrature = typename FeType::template cell_quadrature_t<FeSpace::local_dim>;
+        using Iterator = CellIterator<Triangulation>;
+        constexpr int n_quadrature_nodes = Quadrature::order;
+
+        Quadrature quadrature {};
+        Eigen::Map<const Eigen::Matrix<double, n_quadrature_nodes, Triangulation::local_dim, Eigen::RowMajor>>
+          ref_quad_nodes(quadrature_.nodes.data());
+        double integral = 0;
+        for (Iterator it = begin; it != end; ++it) {
+            double partial = 0;
+            typename DofHandlerType::CellType cell = fe_space_->dof_handler().cell(it->id());
+            Eigen::Matrix<int, Dynamic, 1> active_dofs = cell.dofs();
+	    // integral approximation on cell (skip point location)
+            for (int q_k = 0; q_k < n_quadrature_nodes; ++q_k) {
+                for (int i = 0, n = fe_space_->n_shape_functions(); i < n; ++i) {
+                    partial +=
+                      coeff_[active_dofs[i]] * fe_space_->eval_shape_value(i, ref_quad_nodes.row(q_k).transpose());
+                }
+                partial *= quadrature.weights[q_k];
+            }
+            integral += partial * it->measure();
+        }
+        return integral;
+    }
 
     // getters
     const Eigen::Matrix<double, Dynamic, 1>& coeff() const { return coeff_; }

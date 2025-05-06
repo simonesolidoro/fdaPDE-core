@@ -51,6 +51,8 @@ struct finite_element_tag { };
 #include "src/finite_elements/fe_space.h"
 // weak forms
 #include "src/finite_elements/fe_objects.h"
+// tensor product spaces
+#include "src/tp_space.h"
 
 // clang-format on
 

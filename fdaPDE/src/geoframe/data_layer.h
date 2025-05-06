@@ -445,7 +445,7 @@ template <typename DataLayer> struct random_access_row_view {
 
         iterator() = default;
         iterator(int index, random_access_row_view* filter) : index_(index), filter_(filter), val_() {
-            if (index_ != filter_->rows()) { val_ = filter_->operator()(index); }
+            if (index_ != filter_->rows()) { val_ = filter_->operator[](index); }
             index_++;
         }
         reference operator*() { return val_; }
@@ -453,7 +453,7 @@ template <typename DataLayer> struct random_access_row_view {
         pointer_t operator->() { return std::addressof(val_); }
         const pointer_t operator->() const { return std::addressof(val_); }
         iterator& operator++() {
-            if (index_ != filter_->rows()) { [[likely]] val_ = filter_->operator()(index_); }
+            if (index_ != filter_->rows()) { [[likely]] val_ = filter_->operator[](index_); }
             index_++;
             return *this;
         }
