@@ -335,7 +335,16 @@ namespace fdapde{
             };
 
             //send a giro usando struct indxw 
-            bool send_task_round(job j){
+            //se F(Args) non void
+            template<typename F, typename... Args>
+            requires (!std::is_same_v<std::invoke_result_t<F, Args...>, void>)
+            auto send_task_round(F&& f,Args... args) -> std::optional<std::future<decltype(f(args...))>>{
+                //wrap 
+                using return_type = decltype(f(args...));
+                std::shared_ptr<std::packaged_task<return_type()>> ptr_task = std::make_shared<std::packaged_task<return_type()>> ([fun = std::forward<F>(f), ...args_catturati = std::forward<Args>(args) ]()mutable{return fun(args_catturati...);});
+                std::future<return_type> fut = ptr_task->get_future();
+                job j = [ptr_task](){(*ptr_task)();};
+            
                 std::unique_lock<std::mutex> loc(workers_[indxw_.indx_]->get_loc());
                 bool flag = workers_[indxw_.indx_]->push_back(j);
                 notifica_tutti(); //sincronizzata solo worker a cui si fa il push ma meglio che niente
@@ -343,9 +352,32 @@ namespace fdapde{
                 if(flag){
                     count_job_[indxw_.indx_]++;
                     indxw_.next(n_worker_);
-                    return true;
+                    return fut;
                 }
-                return false;
+                return std::nullopt;
+            };
+            //se F(Args) void --> wrap in bool() cosi che sara possibile usare future.get() per aspettare che funione venga eseguita prima di mandare out of scope la threadpool
+            template<typename F, typename... Args>
+            requires std::is_same_v<std::invoke_result_t<F, Args...>, void>
+            std::optional<std::future<bool>> send_task_round(F&& f,Args... args){
+
+                //wrap di funzione in un task e poi in lamda in modo da ricondursi a firma void()
+                using return_type = bool;
+                std::shared_ptr<std::packaged_task<return_type()>> ptr_task = std::make_shared<std::packaged_task<return_type()>> ([fun = std::forward<F>(f), ...args_catturati = std::forward<Args>(args) ]()mutable{fun(args_catturati...);
+                return true;});
+                std::future<return_type> fut = ptr_task->get_future();
+                job j = [ptr_task](){(*ptr_task)();};
+
+                std::unique_lock<std::mutex> loc(workers_[indxw_.indx_]->get_loc());
+                bool flag = workers_[indxw_.indx_]->push_back(j);
+                notifica_tutti(); //sincronizzata solo worker a cui si fa il push ma meglio che niente
+                loc.unlock();
+                if(flag){
+                    count_job_[indxw_.indx_]++;
+                    indxw_.next(n_worker_);
+                    return fut;
+                }
+                return std::nullopt;
             };
 
             //per debug di steal job
