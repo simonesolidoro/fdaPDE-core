@@ -109,7 +109,8 @@ namespace fdapde{
             };
         private://TODO: cambiare nome threadpoool_ in workers_
             std::vector<std::shared_ptr<Worker>> workers_; //vettore di putatori perche non movable e copiable synchro_queue per via di mutex
-            std::vector<int> count_job_; //oss: sarebbe meglio atomic int ma non e movable e quindi non si puo fare vector<atomic<>>. 
+            std::deque<std::atomic<int>> count_job_; //oss: sarebbe meglio atomic int ma non e movable e quindi non si puo fare vector<atomic<>>.-> deque si perche non rialloca non serve sia mouvable 
+            //OSS: avere atomic int non evita cache corruption (lettura rimane non affidabile senza memory_order o mutex) ma scrittura sicura (prima possibile 100 push e count era 77, ora se 100 push count 100. problema rimane che alcuni thread potrebbero vederlo non aggiornato)
             std::vector<bool> state_worker_; //false coda vuota. //basterebbe count_job_ != 0 ma cosi aggiornato dopo chiamata a empty() da capire se ne vale la pena
             int n_worker_;
             indx_worker indxw_; 
@@ -120,11 +121,10 @@ namespace fdapde{
             //n = size code, k = numero worker
             Threadpool(int n, int k):n_worker_(k){
                 workers_.reserve(k);
-                count_job_.reserve(k);
                 state_worker_.reserve(k);
                 for(int i=0; i<k; i++){
                     workers_.emplace_back(std::make_shared<Worker> (n,&Threadpool::worker_loop,this,i));
-                    count_job_.push_back(0);
+                    count_job_.emplace_back(0);
                     state_worker_.push_back(false);
                 }
             };
@@ -145,7 +145,7 @@ namespace fdapde{
             void worker_loop(int i){
                 while(!workers_[i]->stop_){
                     std::unique_lock<std::mutex> loc(workers_[i]->m_); //OSS: empty() gia sincronizzato con push grazie a mtex dentro Synchro_queue, mutex in synchro_queue_count serve solo per avere cv che mand a dormire. get_count_job_all() invece non sincronizzato (diversi thread vedono diverso quindi magari ce stato push e count++ ma in thread che fa il check non lo vede) però pazienza meglio di niente 
-                    std::cout<<"mutexInWorkerloop, get count all job: "<<get_count_all_job()<<std::endl;
+                    //std::cout<<"mutexInWorkerloop, get count all job: "<<get_count_all_job()<<std::endl;
                     workers_[i]->cv_.wait(loc,[&](){return !workers_[i]->sync_queue_.empty() || workers_[i]->stop_ || get_count_all_job()>0;});
                     loc.unlock();
                     if(workers_[i]->stop_){return;}
@@ -155,7 +155,7 @@ namespace fdapde{
                         if(j){//esegue se non è nullopt
                             count_job_[i]--;
                             (j.value())(); //esegue funzioni con 0 parametri e void. per non void si dovra fare wrap e associare a promise. per parametri lamda wrap che li cattura cosi no param  
-                            std::cout<<"thread: "<<std::this_thread::get_id()<<" ha eseguito"<<std::endl;
+                            //std::cout<<"thread: "<<std::this_thread::get_id()<<" ha eseguito"<<std::endl;
                         }
                         //else{std::cout<<"thread: "<<std::this_thread::get_id()<<"nullopt"<<std::endl;}
                     }
@@ -173,9 +173,9 @@ namespace fdapde{
                     if(j){
                         count_job_[most_busy]--;
                         (j.value())();
-                        std::cout<<"thread: "<<std::this_thread::get_id()<<" ha rubato"<<std::endl;
+                        //std::cout<<"thread: "<<std::this_thread::get_id()<<" ha rubato"<<std::endl;
                     }
-                    else{std::cout<<"thread: "<<std::this_thread::get_id()<<"nulloptRubato"<<std::endl;}
+                    //else{std::cout<<"thread: "<<std::this_thread::get_id()<<"nulloptRubato"<<std::endl;}
                 }
             }
 
@@ -213,8 +213,8 @@ namespace fdapde{
             
             int get_count_all_job(){
                 int somma = 0;
-                for (auto x: count_job_)
-                    somma += x;
+                for (int i = 0; i<n_worker_; i++)
+                    somma += count_job_[i].load();
                 return somma;
             }
             void notifica_tutti(){
@@ -241,9 +241,9 @@ namespace fdapde{
 
             int indx_most_free(){
                 int worker_indx = 0;
-                int min_elem= count_job_[0]; //numero elementi in primo worker 
+                int min_elem= count_job_[0].load(); //numero elementi in primo worker 
                 for (int j=1; j<n_worker_; j++){
-                    int current_el = count_job_[j];
+                    int current_el = count_job_[j].load();
                     if(current_el < min_elem ){ 
                         worker_indx = j;
                         min_elem = current_el;
@@ -254,9 +254,9 @@ namespace fdapde{
 
             int indx_most_busy(){
                 int worker_indx = 0;
-                int max_elem= count_job_[0]; //numero elementi in primo worker 
+                int max_elem= count_job_[0].load(); //numero elementi in primo worker 
                 for (int j=1; j<n_worker_; j++){
-                    int current_el = count_job_[j];
+                    int current_el = count_job_[j].load();
                     if(current_el > max_elem ){
                         worker_indx = j;
                         max_elem = current_el;
