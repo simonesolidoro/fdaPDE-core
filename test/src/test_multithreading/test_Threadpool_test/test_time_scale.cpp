@@ -27,17 +27,22 @@ void contafino(int n){
     for (int j = 0; j<n; j++){
         a++;
         a--;
+        a++;
+        a--;
     }
+    std::this_thread::sleep_for(std::chrono::milliseconds(1));
+
 }
 
 int main(){
 {//contare senza incremento variabile comune
     int n_thread= 8;
-    fdapde::Threadpool tp(16,n_thread);
+    int n_job = 100;
+    fdapde::Threadpool tp(n_job,n_thread);
     int n= 100000;
     std::atomic<int> a = 0;
 
-    int n_job = 100;
+    
 
     std::vector<std::function<void(int)>> jobs;
     std::vector<std::optional<std::future<bool>>> futs;
