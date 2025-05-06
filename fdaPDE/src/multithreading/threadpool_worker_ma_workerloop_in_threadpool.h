@@ -143,6 +143,7 @@ namespace fdapde{
                 while(!workers_[i]->stop_){
                     std::unique_lock<std::mutex> loc(workers_[i]->m_); //OSS: empty() gia sincronizzato con push grazie a mtex dentro Synchro_queue, mutex in synchro_queue_count serve solo per avere cv che mand a dormire. get_count_job_all() invece non sincronizzato (diversi thread vedono diverso quindi magari ce stato push e count++ ma in thread che fa il check non lo vede) però pazienza meglio di niente 
                     workers_[i]->cv_.wait(loc,[&](){return !workers_[i]->sync_queue_.empty() || workers_[i]->stop_ || get_count_all_job()>0;});
+                    loc.unlock();
                     if(workers_[i]->stop_){return;}
                     if(!workers_[i]->sync_queue_.empty()){
                         std::optional<job> j = workers_[i]->pop_front();
@@ -286,7 +287,16 @@ namespace fdapde{
             };
             */
            //lock di tutti i mutex cosi notifica a tutti sara sincronizzata lettura di count++, OSSERVAZIONE: se un solo thread che send_job questa è migliore di altra versione che blocca solo un mutex. se piu thread forse meglio altra perche in questa invio job è sequenziale su tutti i worker
-           bool send_task(job j){
+            //se F(Args) non void
+            template<typename F, typename... Args>
+            requires (!std::is_same_v<std::invoke_result_t<F, Args...>, void>)
+            auto send_task(F&& f,Args... args) -> std::optional<std::future<decltype(f(args...))>>{
+                //wrap 
+                using return_type = decltype(f(args...));
+                std::shared_ptr<std::packaged_task<return_type()>> ptr_task = std::make_shared<std::packaged_task<return_type()>> ([fun = std::forward<F>(f), ...args_catturati = std::forward<Args>(args) ]()mutable{return fun(args_catturati...);});
+                std::future<return_type> fut = ptr_task->get_future();
+                job j = [ptr_task](){(*ptr_task)();};
+
                 int indx_worker = indx_most_free();
                 std::vector<std::unique_lock<std::mutex>> vett_locks(lock_tutti());
                 bool flag = workers_[indx_worker]->push_back(j);
@@ -295,10 +305,35 @@ namespace fdapde{
                 unlock_tutti(std::ref(vett_locks));
                 if(flag){
                     count_job_[indx_worker]++;
-                    return true;
+                    return fut;
                 }
-                return false;                
+                return std::nullopt;  //OSSERVAZIONE:return optional e non future cosi possibilita di fallire per push e non è necessario fare while(). spostato check se push e quindi send a buon fine fuori da threadpool perche usando hold queue per esempio non puo fallire il push e quindi ci sarebbe un while inutile              
             };
+            //se F(Args) void --> wrap in bool() cosi che sara possibile usare future.get() per aspettare che funione venga eseguita prima di mandare out of scope la threadpool
+            template<typename F, typename... Args>
+            requires std::is_same_v<std::invoke_result_t<F, Args...>, void>
+            std::optional<std::future<bool>> send_task(F&& f,Args... args){
+
+                //wrap di funzione in un task e poi in lamda in modo da ricondursi a firma void()
+                using return_type = bool;
+                std::shared_ptr<std::packaged_task<return_type()>> ptr_task = std::make_shared<std::packaged_task<return_type()>> ([fun = std::forward<F>(f), ...args_catturati = std::forward<Args>(args) ]()mutable{fun(args_catturati...);
+                return true;});
+                std::future<return_type> fut = ptr_task->get_future();
+                job j = [ptr_task](){(*ptr_task)();};
+
+                int indx_worker = indx_most_free();
+                std::vector<std::unique_lock<std::mutex>> vett_locks(lock_tutti());
+                bool flag = workers_[indx_worker]->push_back(j);
+                notifica_tutti(); // problema: push e notifica sono sincronizati solo in thread su cui viene fatto push perche mutex che poi leggera è lo stesso bloccato in push.
+                                //POSSIBILE SOLUZIONE: fare lock_all() e poi unlock_all() ma cosi ogni send blocca worker_loop di chi ancora non ha superato la cv_.wait(), pero sarebbe sincronizzata la lettura dei count_job ++. 
+                unlock_tutti(std::ref(vett_locks));
+                if(flag){
+                    count_job_[indx_worker]++;
+                    return fut;
+                }
+                return std::nullopt;  //OSSERVAZIONE:return optional e non future cosi possibilita di fallire per push e non è necessario fare while(). spostato check se push e quindi send a buon fine fuori da threadpool perche usando hold queue per esempio non puo fallire il push e quindi ci sarebbe un while inutile              
+            };
+
             //send a giro usando struct indxw 
             bool send_task_round(job j){
                 std::unique_lock<std::mutex> loc(workers_[indxw_.indx_]->get_loc());

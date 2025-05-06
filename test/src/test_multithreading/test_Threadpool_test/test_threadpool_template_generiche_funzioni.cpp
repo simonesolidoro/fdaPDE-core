@@ -22,6 +22,10 @@ A incrementaA(A& aa){
     aa.a++;
     return aa;
 }
+void printnum(){
+    //std::cout<<std::this_thread::get_id()<<std::endl;
+    std::this_thread::sleep_for(std::chrono::microseconds(1000000));
+}
 bool fun(){
     std::cout<<"fun da thread_id: "<<std::this_thread::get_id()<<std::endl;
     //std::this_thread::sleep_for(std::chrono::milliseconds(10));
@@ -97,6 +101,25 @@ int main(){
     aa.a=10;
     auto f= tp.send_task(incrementaA,std::ref(aa));
     std::cout<<"A.a = "<<f.value().get().a<<std::endl;   
+}
+{
+    using job = std::function<void()>;
+    fdapde::Threadpool tp(16,4);
+    std::vector<std::optional<std::future<bool>>> futs;
+    std::vector<job> jobs;
+    int n_jobs = 64;
+    for(int i = 0; i< n_jobs; i++){
+        jobs.push_back(printnum);
+    }
+    for (int i = 0; i<n_jobs; i++){
+        futs.push_back(std::move(tp.send_task(jobs[i])));
+    }
+    for (int i = 0; i<n_jobs; i++){
+        futs[i].value().get();
+    }
+
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(1000)); //per aspettare esecuzione di tutti 
 }
     return 0;
 }
