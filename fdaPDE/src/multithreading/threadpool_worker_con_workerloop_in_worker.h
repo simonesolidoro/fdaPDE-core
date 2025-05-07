@@ -274,13 +274,10 @@ namespace fdapde{
                 bool flag = workers_[indx_worker]->push_back(j);
                 notifica_tutti(); // problema: push e notifica sono sincronizati solo in thread su cui viene fatto push perche mutex che poi leggera è lo stesso bloccato in push.
                                 //POSSIBILE SOLUZIONE: fare lock_all() e poi unlock_all() ma cosi ogni send blocca worker_loop di chi ancora non ha superato la cv_.wait(), pero sarebbe sincronizzata la lettura dei count_job ++. 
-            
+                unlock_tutti(std::ref(vett_locks));
                 if(flag){
-                    workers_[indx_worker]->count_job_++;
-                    unlock_tutti(std::ref(vett_locks));
                     return fut;
                 }
-                unlock_tutti(std::ref(vett_locks));
                 return std::nullopt;  //OSSERVAZIONE:return optional e non future cosi possibilita di fallire per push e non è necessario fare while(). spostato check se push e quindi send a buon fine fuori da threadpool perche usando hold queue per esempio non puo fallire il push e quindi ci sarebbe un while inutile              
             };
             //se F(Args) void --> wrap in bool() cosi che sara possibile usare future.get() per aspettare che funione venga eseguita prima di mandare out of scope la threadpool
@@ -300,12 +297,10 @@ namespace fdapde{
                 bool flag = workers_[indx_worker]->push_back(j);
                 notifica_tutti(); // problema: push e notifica sono sincronizati solo in thread su cui viene fatto push perche mutex che poi leggera è lo stesso bloccato in push.
                                 //POSSIBILE SOLUZIONE: fare lock_all() e poi unlock_all() ma cosi ogni send blocca worker_loop di chi ancora non ha superato la cv_.wait(), pero sarebbe sincronizzata la lettura dei count_job ++. 
+                unlock_tutti(std::ref(vett_locks));
                 if(flag){
-                    workers_[indx_worker]->count_job_++;
-                    unlock_tutti(std::ref(vett_locks));
                     return fut;
                 }
-                unlock_tutti(std::ref(vett_locks));
                 return std::nullopt;  //OSSERVAZIONE:return optional e non future cosi possibilita di fallire per push e non è necessario fare while(). spostato check se push e quindi send a buon fine fuori da threadpool perche usando hold queue per esempio non puo fallire il push e quindi ci sarebbe un while inutile              
             };
 
@@ -323,13 +318,11 @@ namespace fdapde{
                 std::unique_lock<std::mutex> loc(workers_[indxw_.indx_]->get_loc());
                 bool flag = workers_[indxw_.indx_]->push_back(j);
                 notifica_tutti(); //sincronizzata solo worker a cui si fa il push ma meglio che niente
+                loc.unlock();
                 if(flag){
-                    workers_[indxw_.indx_]->count_job_++;
-                    loc.unlock();
                     indxw_.next(n_worker_);
                     return fut;
                 }
-                loc.unlock();
                 return std::nullopt;
             };
             //se F(Args) void --> wrap in bool() cosi che sara possibile usare future.get() per aspettare che funione venga eseguita prima di mandare out of scope la threadpool
@@ -347,13 +340,11 @@ namespace fdapde{
                 std::unique_lock<std::mutex> loc(workers_[indxw_.indx_]->get_loc());
                 bool flag = workers_[indxw_.indx_]->push_back(j);
                 notifica_tutti(); //sincronizzata solo worker a cui si fa il push ma meglio che niente
+                loc.unlock();
                 if(flag){
-                    workers_[indxw_.indx_]->count_job_++;
-                    loc.unlock();
                     indxw_.next(n_worker_);
                     return fut;
                 }
-                loc.unlock();
                 return std::nullopt;
             };
 
@@ -362,9 +353,8 @@ namespace fdapde{
                 std::vector<std::unique_lock<std::mutex>> vett_locks(lock_tutti());
                 bool flag = workers_[n]->push_back(j);
                 notifica_tutti(); 
+                unlock_tutti(std::ref(vett_locks));
                 if(flag){
-                    workers_[n]->count_job_++;
-                    unlock_tutti(std::ref(vett_locks));
                     push_count++;
                     return true;
                 }
