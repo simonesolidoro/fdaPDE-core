@@ -38,13 +38,16 @@
 
 
 #include "src/multithreading/deque.h"
+//#include "src/multithreading/Synchro_queue_2.h"
+//#include "src/multithreading/Synchro_queue_wait_2.h"
 #include "src/multithreading/Synchro_queue_3.h"
 //#include "src/multithreading/threadpool_mutex.h"
 //#include "src/multithreading/threadpool_yield.h"
 //#include "src/multithreading/threadpool_steal.h"
 //#include "src/multithreading/threadpool_template_send.h"
 //#include "src/multithreading/threadpool_steal_mutex.h"
-#include "src/multithreading/threadpool_worker_ma_workerloop_in_threadpool.h"
+//#include "src/multithreading/threadpool_worker_ma_workerloop_in_threadpool.h"
+#include "src/multithreading/threadpool_worker_con_workerloop_in_worker.h"
 // clang-format on
 
 #endif
