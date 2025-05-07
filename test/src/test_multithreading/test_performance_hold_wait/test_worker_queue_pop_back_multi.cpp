@@ -43,7 +43,7 @@ int main(int argc, char** argv){
 
     //popolo
     for (int i=0; i<size_coda; i++){
-        q2.push_front(el);
+        q2.push_back(el);
     }
     std::vector<std::thread> thread_pool2;
     auto start2 = std::chrono::high_resolution_clock::now();

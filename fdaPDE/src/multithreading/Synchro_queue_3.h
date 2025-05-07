@@ -371,7 +371,7 @@ namespace fdapde{
                 if(t<0) return std::nullopt;
 
                 std::unique_lock<std::mutex> loc_el(queue_[t].m_el_);
-                queue_[t].cv_ready_to_pop_.wait(loc_el,[this,t](){return !queue_[t].state_ || !active_;}); //TODO: possiile non passare a lambda tutto this e h ma solo queue_[t]
+                queue_[t].cv_ready_to_pop_.wait(loc_el,[this,t](){return !queue_[t].state_ || !this->active_;}); //TODO: possiile non passare a lambda tutto this e h ma solo queue_[t]
                 if(!active_) return std::nullopt;
                 // sostituisce in posto che viene liberato il valore di defaul di value_type
                 value_type ret = pop_fb_pop<T,hold_nowait>(queue_[t]);
@@ -659,7 +659,7 @@ namespace fdapde{
                 if(t<0) return std::nullopt;
 
                 std::unique_lock<std::mutex> loc_el(queue_[t].m_el_);
-                queue_[t].cv_ready_to_pop_.wait(loc_el,[this,t](){return !queue_[t].state_ || !active_;});
+                queue_[t].cv_ready_to_pop_.wait(loc_el,[this,t](){return !queue_[t].state_ || !this->active_;});
                 if(!active_) return std::nullopt;
                 // sostituisce in posto che viene liberato il valore di defaul di value_type
                 value_type ret = pop_fb_pop<T,hold_wait>(queue_[t]);

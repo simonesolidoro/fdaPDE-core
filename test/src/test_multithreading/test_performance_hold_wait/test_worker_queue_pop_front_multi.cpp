@@ -32,11 +32,11 @@ int main(int argc, char** argv){
     int n_thread = std::stoi(argv[2]);
     int n_singolo= size_coda / n_thread;
 
-    fdapde::Synchro_queue<value,fdapde::hold_nowait> q1(size_coda);
+    fdapde::Synchro_queue<value,fdapde::hold_wait> q1(size_coda);
     value el = "ciao";
 //pop_front() multithreading
 
-    fdapde::Synchro_queue<value,fdapde::hold_nowait> q2(size_coda);
+    fdapde::Synchro_queue<value,fdapde::hold_wait> q2(size_coda);
 
     //popolo
     for (int i=0; i<size_coda; i++){

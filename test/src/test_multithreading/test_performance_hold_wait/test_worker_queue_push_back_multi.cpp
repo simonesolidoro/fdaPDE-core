@@ -34,11 +34,11 @@ int main(int argc, char** argv){
     int n_thread = std::stoi(argv[2]);
     int n_singolo= size_coda / n_thread;
 
-    fdapde::Synchro_queue<value,fdapde::hold_nowait> q1(size_coda);
+    fdapde::Synchro_queue<value,fdapde::hold_wait> q1(size_coda);
     value el = "ciao";
 
     //push_back() multithreading
-    fdapde::Synchro_queue<value,fdapde::hold_nowait> q(size_coda);
+    fdapde::Synchro_queue<value,fdapde::hold_wait> q(size_coda);
     std::vector<std::thread> thread_pool;
     auto start = std::chrono::high_resolution_clock::now();  
     //worker_queue push_back parallelo
