@@ -30,7 +30,7 @@ void contafino(int n){
         a++;
         a--;
     }
-    std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    //std::this_thread::sleep_for(std::chrono::milliseconds(1));
 
 }
 
@@ -112,6 +112,8 @@ int main(){
     std::cout<<"a: "<<a<<std::endl;
 }
 */
+    int T = std::thread::hardware_concurrency();
+    std::cout<<"hardware thread supportati: "<<T<<std::endl;
     return 0;
 }
 

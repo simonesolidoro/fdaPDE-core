@@ -16,9 +16,14 @@
 
 #include<fdaPDE/multithreading.h>
 void printnum(){
-    //std::cout<<std::this_thread::get_id()<<std::endl;
-    std::this_thread::sleep_for(std::chrono::microseconds(100));
+    std::cout<<std::this_thread::get_id()<<std::endl;
+    std::this_thread::sleep_for(std::chrono::microseconds(1000));
 }
+void printnum2(){
+    std::cout<<std::this_thread::get_id()<<std::endl;
+    std::this_thread::sleep_for(std::chrono::microseconds(2000));
+}
+
 bool fun(){
     std::cout<<"fun da thread_id: "<<std::this_thread::get_id()<<std::endl;
     return true;
@@ -40,18 +45,23 @@ int main(){
 
 {
     using job = std::function<void()>;
-    fdapde::Threadpool tp(16,4);
+    fdapde::Threadpool tp(64,4);
     std::vector<job> jobs;
     int push_count = 0;
     int n_jobs = 64;
     for(int i = 0; i< n_jobs; i++){
-        jobs.push_back(printnum);
+        if(i%2 == 0)
+            jobs.push_back(printnum);
+        else
+            jobs.push_back(printnum2);
     }
     for (int i = 0; i<n_jobs; i++){
-        tp.send_al_worker_n(jobs[i],0,push_count);
+        //tp.send_al_worker_n(jobs[i],0,push_count);
+        tp.send_task(printnum);
     }
+    
 
-    std::this_thread::sleep_for(std::chrono::milliseconds(10000)); //per aspettare esecuzione di tutti 
+    std::this_thread::sleep_for(std::chrono::milliseconds(1000)); //per aspettare esecuzione di tutti 
     std::cout<<push_count<<std::endl;
 }
     return 0;

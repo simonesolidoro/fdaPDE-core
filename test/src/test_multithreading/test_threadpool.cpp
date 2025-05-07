@@ -17,7 +17,7 @@
 #include<fdaPDE/multithreading.h>
 void printnum(){
     //std::cout<<std::this_thread::get_id()<<std::endl;
-    std::this_thread::sleep_for(std::chrono::microseconds(10));
+    std::this_thread::sleep_for(std::chrono::microseconds(1000000));
 }
 bool fun(){
     std::cout<<"fun da thread_id: "<<std::this_thread::get_id()<<std::endl;
