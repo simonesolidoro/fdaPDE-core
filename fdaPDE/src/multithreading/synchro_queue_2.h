@@ -340,8 +340,7 @@ namespace fdapde{
                 }
                 int h = head_; //index dove inserira elemento
                 head_ = (head_ == size_-1)? (0) : (head_ + 1); //head_++
-                empty_queue_ = false; //magari gia false quindi ridondante,ma evita if(empty_queue_) {empty_queue_ = false;} non so quale piu efficiente 
-
+                empty_queue_ = false; //magari gia false quindi ridondante,ma evita if(empty_queue_) {empty_queue_ = false;} non so quale piu efficiente  
                 loc.unlock();
 
                 std::unique_lock<std::mutex> loc_el(queue_[h].m_el_);

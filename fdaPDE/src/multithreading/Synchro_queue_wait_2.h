@@ -789,8 +789,8 @@ namespace fdapde{
                 value_type ret = std::move(queue_[t].v_.value());
                 queue_[t].v_ = std::nullopt;
                 queue_[t].state_ = true;
-                queue_[t].cv_ready_to_push_.notify_one();
                 queue_[t].count_pop_ --;
+                queue_[t].cv_ready_to_push_.notify_one();
                 loc_el.unlock();
                 return ret;
             }
