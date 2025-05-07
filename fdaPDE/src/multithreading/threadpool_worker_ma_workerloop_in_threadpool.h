@@ -122,6 +122,7 @@ namespace fdapde{
             //n = size code, k = numero worker
             Threadpool(int n, int k):n_worker_(k){
                 std::unique_lock<std::mutex> loc(m_threadpool_);
+                //if(k> std::thread::hardware_concurrency()){std::cout<<"thread richiesti > thread supportati: "<<std::thread::hardware_concurrency()<<std::endl; }
                 workers_.reserve(k);
                 state_worker_.reserve(k);
                 for(int i=0; i<k; i++){
@@ -135,6 +136,10 @@ namespace fdapde{
             ~Threadpool(){
                 //std::unique_lock<std::mutex> loc_t(m_threadpool_);
                 //active_= false;
+                //loc_t.unlock();
+                for(int j = 0; j<n_worker_; j++){
+                    workers_[j]->sync_queue_.clear(); //svuotiamo tutte le code 
+                }
                 //facciamo terminare tutti worker_loop cosi che nessun worker acceda a worker distrutti o a threadpool (perche quando il resto del distruttore di threadpool verra chiamato, cioe finito il corpo di questo distruttore, tutti i worker avranno terminato worker_loop grazie a join())
                 for(int j = 0; j<n_worker_; j++){
                     std::unique_lock<std::mutex> loc(workers_[j]->get_loc());
@@ -169,12 +174,12 @@ namespace fdapde{
                     }
                     else{ //steal
                         state_worker_[i] = false; //coda vuota
-                        steal_from_most_busy_and_do(); 
-                        //randomo_steal_and_do(); 
+                        //steal_from_most_busy_and_do(); 
+                        randomo_steal_and_do(i); 
                     }                             
                 }
             };
-            void steal_from_most_busy_and_do(){
+            void steal_from_most_busy_and_do(){ 
                 int most_busy = indx_most_busy();
                 if(most_busy != -1){
                     std::optional<job> j = workers_[most_busy]->pop_back();
@@ -187,37 +192,38 @@ namespace fdapde{
                 }
             }
 
-            /* // per steal random tra chi ha code non vuote
-            std::vector<int> indxs_of_non_empty_queue(){
-                std::vector<int> ret;
-                for(int i = 0; i<n_worker_; i++){
-                    if(count_job_[i] != 0){
-                        ret.push_back(i);
-                    }
-                }
-                return ret;
-            }
+             // per steal random tra chi ha code non vuote
+             //da segmentation fault per ora tolto da capire perche
             int random_indx(int size){
                 std::random_device rd;
                 std::mt19937 gen(rd());
                 std::uniform_int_distribution<> distrib(0,size-1);
                 return distrib(gen);
+                //return 0; //per capire segmenattion fault 
             }
-            void randomo_steal_and_do(){
-                std::vector<int> indxs = indxs_of_non_empty_queue();
+            void randomo_steal_and_do(int i){
+                std::vector<int> indxs;
+                for(int k = 0; k<n_worker_; k++){
+                    //momemntaneo if per evitare se stessi.  poi da fare piu efficente
+                    if(k != i){
+                        if(count_job_[k].load() != 0){
+                            indxs.push_back(k);
+                        }
+                    }
+                }
                 int size = indxs.size();
                 if(size == 0){ return;}
-                int indx = indxs[random_indx(size-1)];
+                int indx = indxs[random_indx(size)];
                 std::optional<job> j = workers_[indx]->pop_back();
                 if(j){
                     count_job_[indx]--;
                     (j.value())();
-                    std::cout<<"thread: "<<std::this_thread::get_id()<<" ha eseguito"<<std::endl;
+                    //std::cout<<"thread: "<<std::this_thread::get_id()<<" ha eseguito"<<std::endl;
                 }
-                else{std::cout<<"thread: "<<std::this_thread::get_id()<<"nullopt"<<std::endl;}
+                //else{std::cout<<"thread: "<<std::this_thread::get_id()<<"nullopt"<<std::endl;}
                 
             }
-            */
+            
             
             int get_count_all_job(){
                 int somma = 0;

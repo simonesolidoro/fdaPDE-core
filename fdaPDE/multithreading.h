@@ -29,6 +29,7 @@
 #include<concepts>
 #include<list>
 #include<future>
+#include<random>
 
 // per debug e test momentaneo
 #include<iostream>
