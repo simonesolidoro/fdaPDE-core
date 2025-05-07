@@ -64,9 +64,9 @@ namespace fdapde{
 
                     void worker_loop(){
                         //per assicurare che thread partano a fare worker_loop solo dopo che tutti siano stati inizializzati
-                        std::unique_lock<std::mutex> loc_t(T_.m_threadpool_);
-                        T_.cv_threadpool_.wait(loc_t,[this](){return T_.active_;});
-                        loc_t.unlock();
+                        T_.m_threadpool_.lock_shared();
+                        T_.cv_threadpool_.wait(T_.m_threadpool_,[this](){return T_.active_;});
+                        T_.m_threadpool_.unlock_shared();
                         while(!stop_){
                             std::unique_lock<std::mutex> loc(m_); 
                             cv_.wait(loc,[&](){return !sync_queue_.empty() || T_.get_count_job_all()>0 || stop_;}); //threadpool_.get_count_job_all()>0 || //segmentation fault dovuto a: threadpool_.get_count_job_all()>0 da capire perche 
@@ -160,14 +160,15 @@ namespace fdapde{
             std::vector<std::shared_ptr<Worker>> workers_; //vettore di putatori perche non movable e copiable synchro_queue per via di mutex
             int n_worker_;
             indx_worker indxw_; 
-            std::mutex m_threadpool_; 
-            std::condition_variable cv_threadpool_;
+            std::shared_mutex m_threadpool_; 
+            std::condition_variable_any cv_threadpool_;
             bool active_ = true;
         public:
             friend class Worker;
             //n = size code, k = numero worker
             Threadpool(int n, int k):n_worker_(k){
-                std::unique_lock<std::mutex> loc(m_threadpool_);
+                std::unique_lock<std::shared_mutex> loc(m_threadpool_,std::defer_lock);
+                loc.lock(); //lock per scrittura
                 workers_.reserve(k);
                 for(int i=0; i<k; i++){
                     workers_.emplace_back(std::make_shared<Worker> (n,std::ref(*this)));
