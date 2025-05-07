@@ -34,7 +34,6 @@ namespace fdapde{
                     int indx_; 
                     fdapde::Synchro_queue<job,fdapde::relax_nowait> sync_queue_;
                     std::thread t_;
-                    int count_job_ = 0;
                     bool stop_ = false;
                     std::mutex m_;
                     std::condition_variable cv_; 
@@ -45,6 +44,7 @@ namespace fdapde{
                     //inizializza thread con funzione membro worker_loop di Threadpoool cosi che accessibili altre code senza passaggio di puntatore/reference a threadpool in worker che causava segmentation fault  
                     Worker(int n, void (Threadpool::*worker_loop)(int),Threadpool* T, int idx):indx_(idx),sync_queue_(n),t_(worker_loop,T,idx){};
 
+                    //  TUTTI WRAP "INUTILI" BASTA FATTO CHE SIA FRIEND PER ACCESSO DIRETTO, FORSE PIU LEGGIBILE USARLI PERO.
                     //per poter bloccare il mutex di Worker m_ in threadpool
                     std::unique_lock<std::mutex> get_loc(){
                         std::unique_lock<std::mutex> loc(m_);
@@ -54,56 +54,28 @@ namespace fdapde{
                     void notifica(){
                         cv_.notify_one();
                     }
-                    /*messo wait direttamente in worker_loop grazie a dichiarazione friend possibile accedere a cv_
-                    void wait (Threadpool* T){
-                        std::unique_lock<std::mutex> loc(m_); //OSS: empty() gia sincronizzato con push grazie a mtex dentro Synchro_queue, mutex in synchro_queue_count serve solo per avere cv che mand a dormire. get_count_job_all() invece non sincronizzato (diversi thread vedono diverso quindi magari ce stato push e count++ ma in thread che fa il check non lo vede) però pazienza meglio di niente 
-                        cv_.wait(loc,[&](){return !sync_queue_.empty() || stop_ || T->get_count_job_all();});
-                        //loc.unlock(); //superfluo out of scope loc si distrugge e fa unlock mutex
-                    }
-                    */
+
                     void set_stop(bool s){
                         stop_ = s;
                     }
                     void join_thread(){
                         t_.join();
                     }
-                    
-                    
-                    //lettura non affidabile però è sufficente per dare una aprossimazione utile a implementare  steal e send_task 
-                    int get_count_job() const{
-                        return count_job_;
-                    };
-                    
-
+                
                     //wrap di funzioni per pop e push. 
                     bool push_front(job fun){
-                        if(sync_queue_.push_front(fun)){
-                            count_job_ ++;
-                            return true;
-                        }
-                        return false;
+                        return sync_queue_.push_front(fun);
                     };
                     bool push_back(job fun){
                         //std::cout<<"incremento count in push_back, count: "<<count_job_<<std::endl;
-                        if(sync_queue_.push_back(fun)){
-                            count_job_ ++;
-                            return true;
-                        }
-                        return false;
+                        return sync_queue_.push_back(fun);
                     };
                     std::optional<job> pop_front(){
-                        std::optional<job> j = sync_queue_.pop_front();
-                        if(j){
-                            count_job_ --;
-                        }
-                        return j;
+                        return sync_queue_.pop_front();
+                        
                     };
                     std::optional<job> pop_back(){
-                        std::optional<job> j = sync_queue_.pop_back();
-                        if(j){
-                            count_job_ --;
-                        }
-                        return j;
+                        return sync_queue_.pop_back();
                     };
 
             };
