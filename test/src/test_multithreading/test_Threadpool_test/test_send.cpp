@@ -74,7 +74,6 @@ int main(){
 */
 /*
 {//void function, trasformate in bool fittizie coai che con future si aspetta esecuzione
-
     
     using job = std::function<bool()>;
     fdapde::Threadpool tp(16,4);
@@ -84,11 +83,11 @@ int main(){
     job j4 = fun;
     job j5 = fun;
     
-    auto fut1 = tp.send_task(j1);
-    auto fut2 = tp.send_task(j2);
-    auto fut3 = tp.send_task(j3);
-    auto fut4 = tp.send_task(j4);
-    auto fut5 = tp.send_task(j5);
+    auto fut1 = tp.send(j1);
+    auto fut2 = tp.send(j2);
+    auto fut3 = tp.send(j3);
+    auto fut4 = tp.send(j4);
+    auto fut5 = tp.send(j5);
 
 
     if(fut5){fut5.value().get();} 
@@ -96,17 +95,15 @@ int main(){
     if(fut3){fut3.value().get();} 
     if(fut2){fut2.value().get();} 
     if(fut1){fut1.value().get();}
-}
-    */
-   /*
+}*/
+/*
 {
     fdapde::Threadpool tp(16,4);
     A aa;
     aa.a=10;
-    auto f= tp.send_task(incrementaA,std::ref(aa));
+    auto f= tp.send(incrementaA,std::ref(aa));
     std::cout<<"A.a = "<<f.value().get().a<<std::endl;   
-}
-    */
+}*/
 {
     using job = std::function<void()>;
     fdapde::Threadpool tp(16,4);
@@ -120,7 +117,10 @@ int main(){
         futs.push_back(std::move(tp.send(jobs[i])));
     }
     for (int i = 0; i<n_jobs; i++){
-        futs[i].value().get();
+        if(futs[i]){
+            futs[i].value().get();}
+        else 
+            std::cout<<"noninviato"<<std::endl;
     }
 
 
@@ -128,3 +128,4 @@ int main(){
 }
     return 0;
 }
+
