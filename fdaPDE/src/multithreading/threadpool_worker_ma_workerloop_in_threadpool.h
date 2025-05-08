@@ -83,7 +83,6 @@ namespace fdapde{
             std::vector<std::shared_ptr<Worker>> workers_; //vettore di putatori perche non movable e copiable synchro_queue per via di mutex
             std::deque<std::atomic<int>> count_job_; //oss: sarebbe meglio atomic int ma non e movable e quindi non si puo fare vector<atomic<>>.-> deque si perche non rialloca non serve sia mouvable 
             //OSS: avere atomic int non evita cache corruption (lettura rimane non affidabile senza memory_order o mutex) ma scrittura sicura (prima possibile 100 push e count era 77, ora se 100 push count 100. problema rimane che alcuni thread potrebbero vederlo non aggiornato)
-            std::vector<bool> state_worker_; //false coda vuota. //basterebbe count_job_ != 0 ma cosi aggiornato dopo chiamata a empty() da capire se ne vale la pena
             int n_worker_;
             indx_worker indxw_; 
             std::shared_mutex m_threadpool_; 
@@ -97,11 +96,9 @@ namespace fdapde{
                 loc.lock();
                 //if(k> std::thread::hardware_concurrency()){std::cout<<"thread richiesti > thread supportati: "<<std::thread::hardware_concurrency()<<std::endl; }
                 workers_.reserve(k);
-                state_worker_.reserve(k);
                 for(int i=0; i<k; i++){
                     workers_.emplace_back(std::make_shared<Worker> (n,&Threadpool::worker_loop,this,i));
                     count_job_.emplace_back(0);
-                    state_worker_.push_back(false);
                 }
                 active_ = true;
                 cv_threadpool_.notify_all();
@@ -149,7 +146,6 @@ namespace fdapde{
                         }
                         //else{std::cout<<"thread: "<<std::this_thread::get_id()<<"nullopt"<<std::endl;}
                         else{ //steal
-                            state_worker_[i] = false; //non certo però primo pop fallito secondo dopo sveglia in caso empty() == false fallito, è vero che pop puo fallire ache se coda non empty in Relax ma cosi è improbabile 
                             //steal_from_most_busy_and_do(); 
                             randomo_steal_and_do(i); 
                         }                             
@@ -257,20 +253,7 @@ namespace fdapde{
                 return worker_indx;
             }
 
-            //send con indx_freer criterio
-            /*lock solo di a chi manda e notifica a tutti (ma sara sincronizzata solo worker che riceve il push)
-            bool send_task(job j){
-                int indx_worker = indx_most_free();
-                std::unique_lock<std::mutex> loc(workers_[indx_worker]->get_lock());
-                bool flag = workers_[indx_worker]->push_back(j);
-                notifica_tutti();
-                loc.unlock();
-                if(flag){
-                    return true;
-                }
-                return false;
-            };
-            */
+          
            //TODO: tutti i send uguali cambia solo scelta indice, ma non si puo fare template<typename F, typename... Args, typename tipo_send> perche templeta parameter deduction è un tutto o niente, come fare allora per semplificare ?
            //lock di tutti i mutex cosi notifica a tutti sara sincronizzata lettura di count++, OSSERVAZIONE: se un solo thread che send_job questa è migliore di altra versione che blocca solo un mutex. se piu thread forse meglio altra perche in questa invio job è sequenziale su tutti i worker
             //se F(Args) non void
@@ -290,7 +273,6 @@ namespace fdapde{
                                 //POSSIBILE SOLUZIONE: fare lock_all() e poi unlock_all() ma cosi ogni send blocca worker_loop di chi ancora non ha superato la cv_.wait(), pero sarebbe sincronizzata la lettura dei count_job ++. 
                 if(flag){
                     count_job_[indx_worker]++;
-                    state_worker_[indx_worker] = true;
                     unlock_tutti(std::ref(vett_locks));
                     return fut;
                 }
@@ -316,7 +298,6 @@ namespace fdapde{
                                 //POSSIBILE SOLUZIONE: fare lock_all() e poi unlock_all() ma cosi ogni send blocca worker_loop di chi ancora non ha superato la cv_.wait(), pero sarebbe sincronizzata la lettura dei count_job ++. 
                 if(flag){
                     count_job_[indx_worker]++;
-                    state_worker_[indx_worker] = true;
                     unlock_tutti(std::ref(vett_locks));
                     return fut;
                 }
@@ -340,8 +321,7 @@ namespace fdapde{
                 notifica_tutti(); //sincronizzata solo worker a cui si fa il push ma meglio che niente
                 if(flag){
                     count_job_[indxw_.indx_]++;
-                    state_worker_[indxw_.indx_] = true;
-                    loc.unlock();
+                    unlock_tutti(std::ref(vett_locks));
                     indxw_.next(n_worker_);
                     return fut;
                 }
@@ -365,8 +345,7 @@ namespace fdapde{
                 notifica_tutti(); //sincronizzata solo worker a cui si fa il push ma meglio che niente
                 if(flag){
                     count_job_[indxw_.indx_]++;
-                    state_worker_[indxw_.indx_] = true;
-                    loc.unlock();
+                    unlock_tutti(std::ref(vett_locks));
                     indxw_.next(n_worker_);
                     return fut;
                 }
@@ -381,7 +360,6 @@ namespace fdapde{
                 notifica_tutti(); 
                 if(flag){
                     count_job_[n]++;
-                    state_worker_[n] = true;
                     unlock_tutti(std::ref(vett_locks));
                     push_count++;
                     return true;
