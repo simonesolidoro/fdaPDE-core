@@ -83,7 +83,9 @@ namespace fdapde{
             std::vector<std::shared_ptr<Worker>> workers_; //vettore di putatori perche non movable e copiable synchro_queue per via di mutex
             std::deque<std::atomic<int>> count_job_; //oss: sarebbe meglio atomic int ma non e movable e quindi non si puo fare vector<atomic<>>.-> deque si perche non rialloca non serve sia mouvable 
             //OSS: avere atomic int non evita cache corruption (lettura rimane non affidabile senza memory_order o mutex) ma scrittura sicura (prima possibile 100 push e count era 77, ora se 100 push count 100. problema rimane che alcuni thread potrebbero vederlo non aggiornato)
-            int n_worker_;
+            int n_worker_; //fisso 
+            int queue_size_; // forse non costante poi
+            int threadpool_volume_; //oss: se queue_size non costante fai funzione get thteadpool volume che lo calcola
             indx_worker indxw_; 
             std::shared_mutex m_threadpool_; 
             std::condition_variable_any cv_threadpool_;
@@ -91,7 +93,8 @@ namespace fdapde{
         public:
             friend class Worker; //poi togliere tuti get e sostituire con accesso diretto
             //n = size code, k = numero worker
-            Threadpool(int n, int k):n_worker_(k){
+            Threadpool(int n, int k):n_worker_(k),queue_size_(n){
+                threadpool_volume_ = k * n;
                 std::unique_lock<std::shared_mutex> loc(m_threadpool_,std::defer_lock);
                 loc.lock();
                 //if(k> std::thread::hardware_concurrency()){std::cout<<"thread richiesti > thread supportati: "<<std::thread::hardware_concurrency()<<std::endl; }
@@ -254,7 +257,31 @@ namespace fdapde{
                 return worker_indx;
             }
 
-          
+            //send generico combina send_round e send_most_free. se job in threadpool alto allora manda a chi piu libero, se basso manda a giro. (alto basso per ora segnato da threadpool_volume_/2)
+            template<typename F, typename... Args>
+            requires (!std::is_same_v<std::invoke_result_t<F, Args...>, void>)
+            auto send(F&& f,Args... args)-> std::optional<std::future<decltype(f(args...))>>{
+                if(get_count_all_job()> threadpool_volume_/2){
+                    std::cout<<"sendFree"<<std::endl;
+                    return send_task(f,args...);
+                }
+                else{
+                    std::cout<<"sendround"<<std::endl;
+                    return send_task_round(f,args...);
+                }
+            }
+            template<typename F, typename... Args>
+            requires std::is_same_v<std::invoke_result_t<F, Args...>, void>
+            std::optional<std::future<bool>> send(F&& f,Args... args){
+                if(get_count_all_job()> threadpool_volume_/2){
+                    std::cout<<"sendFree"<<std::endl;
+                    return send_task(f,args...);
+                }
+                else{
+                    std::cout<<"sendround"<<std::endl;
+                    return send_task_round(f,args...);
+                }
+            }
            //TODO: tutti i send uguali cambia solo scelta indice, ma non si puo fare template<typename F, typename... Args, typename tipo_send> perche templeta parameter deduction è un tutto o niente, come fare allora per semplificare ?
            //lock di tutti i mutex cosi notifica a tutti sara sincronizzata lettura di count++, OSSERVAZIONE: se un solo thread che send_job questa è migliore di altra versione che blocca solo un mutex. se piu thread forse meglio altra perche in questa invio job è sequenziale su tutti i worker
             //se F(Args) non void
