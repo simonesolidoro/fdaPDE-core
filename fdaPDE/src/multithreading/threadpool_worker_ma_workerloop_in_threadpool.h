@@ -138,7 +138,7 @@ namespace fdapde{
                     else{
                         std::unique_lock<std::mutex> loc(workers_[i]->m_); //OSS: empty() gia sincronizzato con push grazie a mtex dentro Synchro_queue, mutex in synchro_queue_count serve solo per avere cv che mand a dormire. get_count_job_all() invece non sincronizzato (diversi thread vedono diverso quindi magari ce stato push e count++ ma in thread che fa il check non lo vede) però pazienza meglio di niente 
                         //std::cout<<"mutexInWorkerloop, get count all job: "<<get_count_all_job()<<std::endl;
-                        workers_[i]->cv_.wait(loc,[&](){return !workers_[i]->sync_queue_.empty() || workers_[i]->stop_ || get_count_all_job()>0;});
+                        workers_[i]->cv_.wait(loc,[&](){return get_count_all_job()>0 || !workers_[i]->sync_queue_.empty() || workers_[i]->stop_ ;}); //oss: spostato get_count_job() per primo cosi si riduce chiamata a empty() che blocca push e pop su coda
                         loc.unlock();
                         if(workers_[i]->stop_){return;}
                         std::optional<job> j = workers_[i]->pop_front();
