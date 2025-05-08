@@ -635,7 +635,7 @@ class FeFunction :
 
         Quadrature quadrature {};
         Eigen::Map<const Eigen::Matrix<double, n_quadrature_nodes, Triangulation::local_dim, Eigen::RowMajor>>
-          ref_quad_nodes(quadrature_.nodes.data());
+          ref_quad_nodes(quadrature.nodes.data());
         double integral = 0;
         for (Iterator it = begin; it != end; ++it) {
             double partial = 0;

@@ -107,6 +107,22 @@ template <> struct sp_quadrature_gauss_legendre<1, 4> : public sp_quadrature_gau
     };
 };
 
+// 1D 5 point formula
+template <> struct sp_quadrature_gauss_legendre<1, 5> : public sp_quadrature_gauss_base {
+    static constexpr int local_dim = 1;
+    static constexpr int order  = 5;
+    static constexpr int degree = 2 * order - 1;   // 9
+
+    static constexpr Vector<double, order> nodes {
+      std::array<double, order> {
+	-0.9061798459386639, -0.5384693101056830, 0.0000000000000000, 0.5384693101056830, 0.9061798459386639}
+    };
+    static constexpr Vector<double, order> weights {
+      std::array<double, order> {
+	 0.2369268850561890,  0.4786286704993664, 0.5688888888888889, 0.4786286704993664, 0.2369268850561890}
+    };
+};
+  
 // copy weights and nodes of quadrature rule based on run-time polynomial order
 template <typename T>
     requires(requires(T t, int i, int j) {
@@ -136,6 +152,7 @@ void get_sp_quadrature(int order, T& quad_nodes, T& quad_weights) {
 [[maybe_unused]] static struct QGL1DP3_ : internals::sp_quadrature_gauss_legendre<1, 2> { } QGL1DP3;
 [[maybe_unused]] static struct QGL1DP5_ : internals::sp_quadrature_gauss_legendre<1, 3> { } QGL1DP5;
 [[maybe_unused]] static struct QGL1DP7_ : internals::sp_quadrature_gauss_legendre<1, 4> { } QGL1DP7;
+[[maybe_unused]] static struct QGL1DP9_ : internals::sp_quadrature_gauss_legendre<1, 5> { } QGL1DP9;
   
 }   // namespace fdapde
 

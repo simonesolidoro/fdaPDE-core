@@ -123,10 +123,10 @@ class TpSpace {
                 // perform dof tensor product
                 std::vector<index_t> tp_dofs;
                 tp_dofs.reserve(n_dofs_per_cell());
-                int rhs_offset = std::get<1>(tp_dof_handler_)->n_dofs();
-                for (int i = 0; i < n_lhs_dofs; ++i) {
-                    for (int j = 0; j < n_rhs_dofs; ++j) {
-                        tp_dofs.push_back(lhs_active_dofs[i] * rhs_offset + rhs_active_dofs[j]);
+                int lhs_offset = std::get<0>(tp_dof_handler_)->n_dofs();
+                for (int i = 0; i < n_rhs_dofs; ++i) {
+                    for (int j = 0; j < n_lhs_dofs; ++j) {
+                        tp_dofs.push_back(lhs_active_dofs[j] + lhs_offset * rhs_active_dofs[i]);
                     }
                 }
                 return tp_dofs;

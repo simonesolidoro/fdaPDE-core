@@ -264,8 +264,8 @@ struct MatrixKroneckerProduct :
     constexpr MatrixKroneckerProduct(const Lhs& lhs, const Rhs& rhs) : lhs_(lhs), rhs_(rhs) { }
     constexpr Scalar operator()(int i, int j) const {
         // compute offsets in operand matrices
-        int col_lhs = i / Rhs::Cols, row_lhs = i / Rhs::Rows;
-        int col_rhs = i % Rhs::Cols, row_rhs = i % Rhs::Rows;
+        int col_lhs = j / Rhs::Cols, row_lhs = i / Rhs::Rows;
+        int col_rhs = j % Rhs::Cols, row_rhs = i % Rhs::Rows;
         return lhs_(row_lhs, col_lhs) * rhs_(row_rhs, col_rhs);
     }
     constexpr int rows() const { return lhs_.rows() * rhs_.rows(); }

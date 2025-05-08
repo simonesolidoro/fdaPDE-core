@@ -50,9 +50,14 @@ class Spline : public ScalarFieldBase<1, Spline> {
         // non-recursive implementation of order k-th spline derivative evaluation at point, as detailed in "Piegl, L.,
         // & Tiller, W. (2012). The NURBS book. Springer Science & Business Media. Algorithm A2.5 pag 77"
         template <typename InputType_>
-            requires(internals::is_subscriptable<InputType_, int>)
+            requires(internals::is_subscriptable<InputType_, int> || std::is_floating_point_v<InputType_>)
         constexpr Scalar operator()(const InputType_& p_) const {
-            auto p = p_[0];
+            double p;
+            if constexpr (internals::is_subscriptable<InputType_, int>) {
+                p = p_[0];
+            } else {
+                p = p_;
+            }
             // local property: return 0 if p is outside the range of this basis function
             if (p < knots_[i_] || p >= knots_[i_ + order_ + 1]) return 0.0;
             // initialize triangular table for basis functions
@@ -119,9 +124,14 @@ class Spline : public ScalarFieldBase<1, Spline> {
     // non-recursive implementation of spline evaluation, as detailed in "Piegl, L., & Tiller, W. (2012). The NURBS
     // book. Springer Science & Business Media. Algorithm A2.4 pag 74"
     template <typename InputType_>
-        requires(internals::is_subscriptable<InputType_, int>)
+        requires(internals::is_subscriptable<InputType_, int> || std::is_floating_point_v<InputType_>)
     constexpr Scalar operator()(const InputType_& p_) const {
-        auto p = p_[0];
+        double p;
+        if constexpr (internals::is_subscriptable<InputType_, int>) {
+            p = p_[0];
+        } else {
+            p = p_;
+        }
         int m = knots_.size() - 1;
         std::vector<double> N(order_ + 1, 0.0);
         // special cases
