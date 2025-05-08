@@ -142,7 +142,7 @@ namespace fdapde{
                         loc.unlock();
                         if(workers_[i]->stop_){return;}
                         std::optional<job> j = workers_[i]->pop_front();
-                        if(j){//esegue se non è nullopt. sigifica svegliati da cv perche non empty()
+                        if(j){//esegue se non è nullopt. sigifica non empty()
                             count_job_[i]--;
                             (j.value())(); //esegue funzioni con 0 parametri e void. per non void si dovra fare wrap e associare a promise. per parametri lamda wrap che li cattura cosi no param  
                             //std::cout<<"thread: "<<std::this_thread::get_id()<<" ha eseguito"<<std::endl; 
@@ -271,6 +271,7 @@ namespace fdapde{
                 return false;
             };
             */
+           //TODO: tutti i send uguali cambia solo scelta indice, ma non si puo fare template<typename F, typename... Args, typename tipo_send> perche templeta parameter deduction è un tutto o niente, come fare allora per semplificare ?
            //lock di tutti i mutex cosi notifica a tutti sara sincronizzata lettura di count++, OSSERVAZIONE: se un solo thread che send_job questa è migliore di altra versione che blocca solo un mutex. se piu thread forse meglio altra perche in questa invio job è sequenziale su tutti i worker
             //se F(Args) non void
             template<typename F, typename... Args>
@@ -334,7 +335,7 @@ namespace fdapde{
                 std::future<return_type> fut = ptr_task->get_future();
                 job j = [ptr_task](){(*ptr_task)();};
             
-                std::unique_lock<std::mutex> loc(workers_[indxw_.indx_]->get_loc());
+                std::vector<std::unique_lock<std::mutex>> vett_locks(lock_tutti());
                 bool flag = workers_[indxw_.indx_]->push_back(j);
                 notifica_tutti(); //sincronizzata solo worker a cui si fa il push ma meglio che niente
                 if(flag){
@@ -344,7 +345,7 @@ namespace fdapde{
                     indxw_.next(n_worker_);
                     return fut;
                 }
-                loc.unlock();
+                unlock_tutti(std::ref(vett_locks));
                 return std::nullopt;
             };
             //se F(Args) void --> wrap in bool() cosi che sara possibile usare future.get() per aspettare che funione venga eseguita prima di mandare out of scope la threadpool
@@ -359,7 +360,7 @@ namespace fdapde{
                 std::future<return_type> fut = ptr_task->get_future();
                 job j = [ptr_task](){(*ptr_task)();};
 
-                std::unique_lock<std::mutex> loc(workers_[indxw_.indx_]->get_loc());
+                std::vector<std::unique_lock<std::mutex>> vett_locks(lock_tutti());
                 bool flag = workers_[indxw_.indx_]->push_back(j);
                 notifica_tutti(); //sincronizzata solo worker a cui si fa il push ma meglio che niente
                 if(flag){
@@ -369,7 +370,7 @@ namespace fdapde{
                     indxw_.next(n_worker_);
                     return fut;
                 }
-                loc.unlock();
+                unlock_tutti(std::ref(vett_locks));
                 return std::nullopt;
             };
 
