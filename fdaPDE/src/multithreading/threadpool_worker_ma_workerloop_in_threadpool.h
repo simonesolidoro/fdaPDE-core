@@ -146,8 +146,9 @@ namespace fdapde{
                         }
                         //else{std::cout<<"thread: "<<std::this_thread::get_id()<<"nullopt"<<std::endl;}
                         else{ //steal
-                            //steal_from_most_busy_and_do(); 
-                            randomo_steal_and_do(i); 
+                            //TODO test quale steal migliore
+                            steal_from_most_busy_and_do(); //oss: possibile problema starvation, (tutti i ladri su stesso worker)
+                            //randomo_steal_and_do(i); 
                         }                             
                     }
                 }

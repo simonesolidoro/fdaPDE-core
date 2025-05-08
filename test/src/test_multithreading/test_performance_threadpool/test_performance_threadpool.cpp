@@ -28,7 +28,7 @@ void contafino(int n){
 
 }
 int main(int argc, char** argv){
-    int n = std::stoi(argv[1]); //numero cicli in contafino
+    int n = std::stoi(argv[1]); //numero cicli in contafino // lunghezza singolo job
 
     int n_thread = std::stoi(argv[2]);
     int n_job = 100;
@@ -46,7 +46,7 @@ int main(int argc, char** argv){
     auto start2 = std::chrono::high_resolution_clock::now();
 
     for(int i= 0; i<n_job; i++){
-        futs.push_back(std::move(tp.send_task(contafino,n)));
+        futs.push_back(std::move(tp.send_task_round(contafino,n)));
     }
     for(int i= 0; i<n_job; i++){
         if(futs[i]){

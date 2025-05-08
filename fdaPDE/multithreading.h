@@ -39,9 +39,9 @@
 
 
 #include "src/multithreading/deque.h"
-#include "src/multithreading/synchro_queue_2.h"
-#include "src/multithreading/Synchro_queue_wait_2.h"
-//#include "src/multithreading/Synchro_queue_3.h"
+//#include "src/multithreading/synchro_queue_2.h"
+//#include "src/multithreading/Synchro_queue_wait_2.h"
+#include "src/multithreading/Synchro_queue_3.h"
 //#include "src/multithreading/threadpool_mutex.h"
 //#include "src/multithreading/threadpool_yield.h"
 //#include "src/multithreading/threadpool_steal.h"
