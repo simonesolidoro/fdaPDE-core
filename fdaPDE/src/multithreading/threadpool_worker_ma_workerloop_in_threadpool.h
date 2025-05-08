@@ -130,26 +130,30 @@ namespace fdapde{
                 cv_threadpool_.wait(m_threadpool_,[this](){return active_;});
                 m_threadpool_.unlock_shared();
                 while(!workers_[i]->stop_){
-                    std::unique_lock<std::mutex> loc(workers_[i]->m_); //OSS: empty() gia sincronizzato con push grazie a mtex dentro Synchro_queue, mutex in synchro_queue_count serve solo per avere cv che mand a dormire. get_count_job_all() invece non sincronizzato (diversi thread vedono diverso quindi magari ce stato push e count++ ma in thread che fa il check non lo vede) però pazienza meglio di niente 
-                    //std::cout<<"mutexInWorkerloop, get count all job: "<<get_count_all_job()<<std::endl;
-                    workers_[i]->cv_.wait(loc,[&](){return !workers_[i]->sync_queue_.empty() || workers_[i]->stop_ || get_count_all_job()>0;});
-                    loc.unlock();
-                    if(workers_[i]->stop_){return;}
-                    if(!workers_[i]->sync_queue_.empty()){
+                    std::optional<job> try_j = workers_[i]->pop_front();
+                    if(try_j){//esegue se non è nullopt
+                        count_job_[i]--;
+                        (try_j.value())();
+                    }
+                    else{
+                        std::unique_lock<std::mutex> loc(workers_[i]->m_); //OSS: empty() gia sincronizzato con push grazie a mtex dentro Synchro_queue, mutex in synchro_queue_count serve solo per avere cv che mand a dormire. get_count_job_all() invece non sincronizzato (diversi thread vedono diverso quindi magari ce stato push e count++ ma in thread che fa il check non lo vede) però pazienza meglio di niente 
+                        //std::cout<<"mutexInWorkerloop, get count all job: "<<get_count_all_job()<<std::endl;
+                        workers_[i]->cv_.wait(loc,[&](){return !workers_[i]->sync_queue_.empty() || workers_[i]->stop_ || get_count_all_job()>0;});
+                        loc.unlock();
+                        if(workers_[i]->stop_){return;}
                         std::optional<job> j = workers_[i]->pop_front();
-                        state_worker_[i] = true; //coda non vuota (forse si se cera solo un job che e stato pop ora)
-                        if(j){//esegue se non è nullopt
+                        if(j){//esegue se non è nullopt. sigifica svegliati da cv perche non empty()
                             count_job_[i]--;
                             (j.value())(); //esegue funzioni con 0 parametri e void. per non void si dovra fare wrap e associare a promise. per parametri lamda wrap che li cattura cosi no param  
-                            //std::cout<<"thread: "<<std::this_thread::get_id()<<" ha eseguito"<<std::endl;
+                            //std::cout<<"thread: "<<std::this_thread::get_id()<<" ha eseguito"<<std::endl; 
                         }
                         //else{std::cout<<"thread: "<<std::this_thread::get_id()<<"nullopt"<<std::endl;}
+                        else{ //steal
+                            state_worker_[i] = false; //non certo però primo pop fallito secondo dopo sveglia in caso empty() == false fallito, è vero che pop puo fallire ache se coda non empty in Relax ma cosi è improbabile 
+                            //steal_from_most_busy_and_do(); 
+                            randomo_steal_and_do(i); 
+                        }                             
                     }
-                    else{ //steal
-                        state_worker_[i] = false; //coda vuota
-                        //steal_from_most_busy_and_do(); 
-                        randomo_steal_and_do(i); 
-                    }                             
                 }
             };
             void steal_from_most_busy_and_do(){ 
@@ -285,6 +289,7 @@ namespace fdapde{
                                 //POSSIBILE SOLUZIONE: fare lock_all() e poi unlock_all() ma cosi ogni send blocca worker_loop di chi ancora non ha superato la cv_.wait(), pero sarebbe sincronizzata la lettura dei count_job ++. 
                 if(flag){
                     count_job_[indx_worker]++;
+                    state_worker_[indx_worker] = true;
                     unlock_tutti(std::ref(vett_locks));
                     return fut;
                 }
@@ -310,6 +315,7 @@ namespace fdapde{
                                 //POSSIBILE SOLUZIONE: fare lock_all() e poi unlock_all() ma cosi ogni send blocca worker_loop di chi ancora non ha superato la cv_.wait(), pero sarebbe sincronizzata la lettura dei count_job ++. 
                 if(flag){
                     count_job_[indx_worker]++;
+                    state_worker_[indx_worker] = true;
                     unlock_tutti(std::ref(vett_locks));
                     return fut;
                 }
@@ -333,6 +339,7 @@ namespace fdapde{
                 notifica_tutti(); //sincronizzata solo worker a cui si fa il push ma meglio che niente
                 if(flag){
                     count_job_[indxw_.indx_]++;
+                    state_worker_[indxw_.indx_] = true;
                     loc.unlock();
                     indxw_.next(n_worker_);
                     return fut;
@@ -357,6 +364,7 @@ namespace fdapde{
                 notifica_tutti(); //sincronizzata solo worker a cui si fa il push ma meglio che niente
                 if(flag){
                     count_job_[indxw_.indx_]++;
+                    state_worker_[indxw_.indx_] = true;
                     loc.unlock();
                     indxw_.next(n_worker_);
                     return fut;
@@ -372,6 +380,7 @@ namespace fdapde{
                 notifica_tutti(); 
                 if(flag){
                     count_job_[n]++;
+                    state_worker_[n] = true;
                     unlock_tutti(std::ref(vett_locks));
                     push_count++;
                     return true;
