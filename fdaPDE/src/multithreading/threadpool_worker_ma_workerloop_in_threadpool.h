@@ -21,7 +21,7 @@
 namespace fdapde{
     class Threadpool{
         using job = std::function<void()>;
-        //usato per send_task_round (che è equivalente a usare coutn_task senza decremento)
+        //usato per send_task_round 
         struct indx_worker{
             int indx_ = 0;
             void next(int n_worker){
@@ -79,9 +79,10 @@ namespace fdapde{
                     };
 
             };
-        private://TODO: cambiare nome threadpoool_ in workers_
+        private:
             std::vector<std::shared_ptr<Worker>> workers_; //vettore di putatori perche non movable e copiable synchro_queue per via di mutex
             std::deque<std::atomic<int>> count_job_; //oss: sarebbe meglio atomic int ma non e movable e quindi non si puo fare vector<atomic<>>.-> deque si perche non rialloca non serve sia mouvable 
+            //?TODO: possibile rendere Threadpool template class e passargli come parametro del template n_worker cosi da poter usare array[] al posto di deque, capire se ne vale la pena
             //OSS: avere atomic int non evita cache corruption (lettura rimane non affidabile senza memory_order o mutex) ma scrittura sicura (prima possibile 100 push e count era 77, ora se 100 push count 100. problema rimane che alcuni thread potrebbero vederlo non aggiornato)
             int n_worker_; //fisso 
             int queue_size_; // forse non costante poi
@@ -89,7 +90,7 @@ namespace fdapde{
             indx_worker indxw_; 
             std::shared_mutex m_threadpool_; 
             std::condition_variable_any cv_threadpool_;
-            bool active_ = true;
+            bool active_ = true; //TODO oss: possibile evitare stop_ di singolo worker e usare active, ma stop_ in singolo worker rende worker indipendente da threadpool (puo terminare anche se threadpool non distrutta) e questo puo essere utile magari in seguito 
         public:
             friend class Worker; //poi togliere tuti get e sostituire con accesso diretto
             //n = size code, k = numero worker
@@ -136,22 +137,21 @@ namespace fdapde{
                         (try_j.value())();
                     }
                     else{
-                        std::unique_lock<std::mutex> loc(workers_[i]->m_); //OSS: empty() gia sincronizzato con push grazie a mtex dentro Synchro_queue, mutex in synchro_queue_count serve solo per avere cv che mand a dormire. get_count_job_all() invece non sincronizzato (diversi thread vedono diverso quindi magari ce stato push e count++ ma in thread che fa il check non lo vede) però pazienza meglio di niente 
+                        std::unique_lock<std::mutex> loc(workers_[i]->m_); //OSS: empty() gia sincronizzato con push grazie a mtex dentro Synchro_queue, mutex in Worker serve solo per avere cv che manda a dormire. get_count_job_all() invece vede sincronizzati solo i count_job[i]++ perche avvengono in mutex con push, pro: se ce push chi non lha ricevuto si sveglia per rubare, contro: possibile svegliarsi e invece non ce niente da rubare perche count_job[i]-- gia fatto ma non letto perche non sincornizzato 
                         //std::cout<<"mutexInWorkerloop, get count all job: "<<get_count_all_job()<<std::endl;
                         workers_[i]->cv_.wait(loc,[&](){return get_count_all_job()>0 || !workers_[i]->sync_queue_.empty() || workers_[i]->stop_ ;}); //oss: spostato get_count_job() per primo cosi si riduce chiamata a empty() che blocca push e pop su coda
                         loc.unlock();
                         if(workers_[i]->stop_){return;}
                         std::optional<job> j = workers_[i]->pop_front();
-                        if(j){//esegue se non è nullopt. sigifica non empty()
-                            count_job_[i]--;
+                        if(j){//esegue se non è nullopt. sigifica non empty()==true
+                            count_job_[i].fetch_sub(1,std::memory_order_release);
                             (j.value())(); //esegue funzioni con 0 parametri e void. per non void si dovra fare wrap e associare a promise. per parametri lamda wrap che li cattura cosi no param  
                             //std::cout<<"thread: "<<std::this_thread::get_id()<<" ha eseguito"<<std::endl; 
                         }
-                        //else{std::cout<<"thread: "<<std::this_thread::get_id()<<"nullopt"<<std::endl;}
                         else{ //steal
                             //TODO test quale steal migliore
-                            steal_from_most_busy_and_do(); //oss: possibile problema starvation, (tutti i ladri su stesso worker)
-                            //randomo_steal_and_do(i); 
+                            //steal_from_most_busy_and_do(); //oss: possibile problema starvation, (tutti i ladri su stesso worker)
+                            randomo_steal_and_do(i); //credo migliore. test confermano se distribuzione job sbilanciata e n_worker alto rand migliore di most_busy,( starvetion in most busy con n_thread alto si evidenzia)
                         }                             
                     }
                 }
@@ -161,7 +161,7 @@ namespace fdapde{
                 if(most_busy != -1){
                     std::optional<job> j = workers_[most_busy]->pop_back();
                     if(j){
-                        count_job_[most_busy]--;
+                        count_job_[most_busy].fetch_sub(1,std::memory_order_release);
                         (j.value())();
                         //std::cout<<"thread: "<<std::this_thread::get_id()<<" ha rubato"<<std::endl;
                     }
@@ -169,21 +169,19 @@ namespace fdapde{
                 }
             }
 
-             // per steal random tra chi ha code non vuote
-             //da segmentation fault per ora tolto da capire perche
+            // per steal random tra chi ha code non vuote
             int random_indx(int size){
                 std::random_device rd;
                 std::mt19937 gen(rd());
                 std::uniform_int_distribution<> distrib(0,size-1);
                 return distrib(gen);
-                //return 0; //per capire segmenattion fault 
             }
             void randomo_steal_and_do(int i){
                 std::vector<int> indxs;
                 for(int k = 0; k<n_worker_; k++){
-                    //momemntaneo if per evitare se stessi.  poi da fare piu efficente
+                    //if per evitare se stessi.  poi da fare piu efficente se possibile
                     if(k != i){
-                        if(count_job_[k].load() != 0){
+                        if(count_job_[k].load(std::memory_order_acquire) != 0){
                             indxs.push_back(k);
                         }
                     }
@@ -193,7 +191,7 @@ namespace fdapde{
                 int indx = indxs[random_indx(size)];
                 std::optional<job> j = workers_[indx]->pop_back();
                 if(j){
-                    count_job_[indx]--;
+                    count_job_[indx].fetch_sub(1,std::memory_order_release);
                     (j.value())();
                     //std::cout<<"thread: "<<std::this_thread::get_id()<<" ha eseguito"<<std::endl;
                 }
@@ -205,9 +203,10 @@ namespace fdapde{
             int get_count_all_job(){
                 int somma = 0;
                 for (int i = 0; i<n_worker_; i++)
-                    somma += count_job_[i].load();
+                    somma += count_job_[i].load(std::memory_order_acquire);
                 return somma;
             }
+            //per notificare tutte le CV_ dei worker
             void notifica_tutti(){
                 for(int i=0; i<n_worker_; i++){
                     workers_[i]->cv_.notify_one();
@@ -232,9 +231,9 @@ namespace fdapde{
 
             int indx_most_free(){
                 int worker_indx = 0;
-                int min_elem= count_job_[0].load(); //numero elementi in primo worker 
+                int min_elem= count_job_[0].load(std::memory_order_acquire); //numero elementi in primo worker 
                 for (int j=1; j<n_worker_; j++){
-                    int current_el = count_job_[j].load();
+                    int current_el = count_job_[j].load(std::memory_order_acquire);
                     if(current_el < min_elem ){ 
                         worker_indx = j;
                         min_elem = current_el;
@@ -245,15 +244,15 @@ namespace fdapde{
 
             int indx_most_busy(){
                 int worker_indx = 0;
-                int max_elem= count_job_[0].load(); //numero elementi in primo worker 
+                int max_elem= count_job_[0].load(std::memory_order_acquire); //numero elementi in primo worker 
                 for (int j=1; j<n_worker_; j++){
-                    int current_el = count_job_[j].load();
+                    int current_el = count_job_[j].load(std::memory_order_acquire);
                     if(current_el > max_elem ){
                         worker_indx = j;
                         max_elem = current_el;
                     }
                 }
-                if(max_elem == 0){return -1;}
+                if(max_elem == 0){return -1;} //evita steal di nullopt 
                 return worker_indx;
             }
 
@@ -262,11 +261,11 @@ namespace fdapde{
             requires (!std::is_same_v<std::invoke_result_t<F, Args...>, void>)
             auto send(F&& f,Args... args)-> std::optional<std::future<decltype(f(args...))>>{
                 if(get_count_all_job()> threadpool_volume_/2){
-                    std::cout<<"sendFree"<<std::endl;
+                    //std::cout<<"sendFree"<<std::endl;
                     return send_task(f,args...);
                 }
                 else{
-                    std::cout<<"sendround"<<std::endl;
+                    //std::cout<<"sendround"<<std::endl;
                     return send_task_round(f,args...);
                 }
             }
@@ -283,7 +282,7 @@ namespace fdapde{
                 }
             }
            //TODO: tutti i send uguali cambia solo scelta indice, ma non si puo fare template<typename F, typename... Args, typename tipo_send> perche templeta parameter deduction è un tutto o niente, come fare allora per semplificare ?
-           //lock di tutti i mutex cosi notifica a tutti sara sincronizzata lettura di count++, OSSERVAZIONE: se un solo thread che send_job questa è migliore di altra versione che blocca solo un mutex. se piu thread forse meglio altra perche in questa invio job è sequenziale su tutti i worker
+           //lock di tutti i mutex cosi notifica a tutti sara sincronizzata con push e  count++, OSSERVAZIONE: lock di mutex non interrompe worker_loop di chi ha gia job in coda grazie a nuovo worker_loop con try_j all inizio di while 
             //se F(Args) non void
             template<typename F, typename... Args>
             requires (!std::is_same_v<std::invoke_result_t<F, Args...>, void>)
@@ -300,7 +299,7 @@ namespace fdapde{
                 notifica_tutti(); // problema: push e notifica sono sincronizati solo in thread su cui viene fatto push perche mutex che poi leggera è lo stesso bloccato in push.
                                 //POSSIBILE SOLUZIONE: fare lock_all() e poi unlock_all() ma cosi ogni send blocca worker_loop di chi ancora non ha superato la cv_.wait(), pero sarebbe sincronizzata la lettura dei count_job ++. 
                 if(flag){
-                    count_job_[indx_worker]++;
+                    count_job_[indx_worker].fetch_add(1,std::memory_order_release);
                     unlock_tutti(std::ref(vett_locks));
                     return fut;
                 }
@@ -325,7 +324,7 @@ namespace fdapde{
                 notifica_tutti(); // problema: push e notifica sono sincronizati solo in thread su cui viene fatto push perche mutex che poi leggera è lo stesso bloccato in push.
                                 //POSSIBILE SOLUZIONE: fare lock_all() e poi unlock_all() ma cosi ogni send blocca worker_loop di chi ancora non ha superato la cv_.wait(), pero sarebbe sincronizzata la lettura dei count_job ++. 
                 if(flag){
-                    count_job_[indx_worker]++;
+                    count_job_[indx_worker].fetch_add(1,std::memory_order_release);
                     unlock_tutti(std::ref(vett_locks));
                     return fut;
                 }
@@ -348,9 +347,9 @@ namespace fdapde{
                 bool flag = workers_[indxw_.indx_]->push_back(j);
                 notifica_tutti(); //sincronizzata solo worker a cui si fa il push ma meglio che niente
                 if(flag){
-                    count_job_[indxw_.indx_]++;
+                    count_job_[indxw_.indx_].fetch_add(1,std::memory_order_release);
+                    indxw_.next(n_worker_); //dentro mutex per sincronizzazione visione (se solo un thread manda non necessario)
                     unlock_tutti(std::ref(vett_locks));
-                    indxw_.next(n_worker_);
                     return fut;
                 }
                 unlock_tutti(std::ref(vett_locks));
@@ -372,29 +371,109 @@ namespace fdapde{
                 bool flag = workers_[indxw_.indx_]->push_back(j);
                 notifica_tutti(); //sincronizzata solo worker a cui si fa il push ma meglio che niente
                 if(flag){
-                    count_job_[indxw_.indx_]++;
-                    unlock_tutti(std::ref(vett_locks));
+                    count_job_[indxw_.indx_].fetch_add(1,std::memory_order_release);
                     indxw_.next(n_worker_);
+                    unlock_tutti(std::ref(vett_locks));
                     return fut;
                 }
                 unlock_tutti(std::ref(vett_locks));
                 return std::nullopt;
             };
 
-            //per debug di steal job
-            bool send_al_worker_n(job j,int n,int & push_count){
+            //send a sola meta di worker per debug/ test di steal job. 
+            //se F(Args) non void
+            template<typename F, typename... Args>
+            requires (!std::is_same_v<std::invoke_result_t<F, Args...>, void>)
+            auto send_task_only_to_some(F&& f,Args... args) -> std::optional<std::future<decltype(f(args...))>>{
+                //wrap 
+                using return_type = decltype(f(args...));
+                std::shared_ptr<std::packaged_task<return_type()>> ptr_task = std::make_shared<std::packaged_task<return_type()>> ([fun = std::forward<F>(f), ...args_catturati = std::forward<Args>(args) ]()mutable{return fun(args_catturati...);});
+                std::future<return_type> fut = ptr_task->get_future();
+                job j = [ptr_task](){(*ptr_task)();};
+            
                 std::vector<std::unique_lock<std::mutex>> vett_locks(lock_tutti());
-                bool flag = workers_[n]->push_back(j);
-                notifica_tutti(); 
+                bool flag = workers_[indxw_.indx_]->push_back(j);
+                notifica_tutti(); //sincronizzata solo worker a cui si fa il push ma meglio che niente
                 if(flag){
-                    count_job_[n]++;
+                    count_job_[indxw_.indx_].fetch_add(1,std::memory_order_release);
+                    if(n_worker_ > 1)
+                        indxw_.next(n_worker_/2);
                     unlock_tutti(std::ref(vett_locks));
-                    push_count++;
-                    return true;
+                    return fut;
                 }
-                std::cout<<"thread: "<<std::this_thread::get_id()<<"non push"<<std::endl;
-                return false;
+                unlock_tutti(std::ref(vett_locks));
+                return std::nullopt;
             };
-    };
-}
+            //se F(Args) void --> wrap in bool() cosi che sara possibile usare future.get() per aspettare che funione venga eseguita prima di mandare out of scope la threadpool
+            template<typename F, typename... Args>
+            requires std::is_same_v<std::invoke_result_t<F, Args...>, void>
+            std::optional<std::future<bool>> send_task_only_to_some(F&& f,Args... args){
+
+                //wrap di funzione in un task e poi in lamda in modo da ricondursi a firma void()
+                using return_type = bool;
+                std::shared_ptr<std::packaged_task<return_type()>> ptr_task = std::make_shared<std::packaged_task<return_type()>> ([fun = std::forward<F>(f), ...args_catturati = std::forward<Args>(args) ]()mutable{fun(args_catturati...);
+                return true;});
+                std::future<return_type> fut = ptr_task->get_future();
+                job j = [ptr_task](){(*ptr_task)();};
+
+                std::vector<std::unique_lock<std::mutex>> vett_locks(lock_tutti());
+                bool flag = workers_[indxw_.indx_]->push_back(j);
+                notifica_tutti(); //sincronizzata solo worker a cui si fa il push ma meglio che niente
+                if(flag){
+                    count_job_[indxw_.indx_].fetch_add(1,std::memory_order_release);
+                    if(n_worker_ > 1) //con 1 da segmwntation fault non capito perche
+                        indxw_.next(n_worker_/2);
+                    unlock_tutti(std::ref(vett_locks));
+                    return fut;
+                }
+                unlock_tutti(std::ref(vett_locks));
+                return std::nullopt;
+            };
+            //send a sola  a un worker (0 perche sicuro esiste sempre) per debug/ test di steal job. 
+            //se F(Args) non void
+            template<typename F, typename... Args>
+            requires (!std::is_same_v<std::invoke_result_t<F, Args...>, void>)
+            auto send_task_only_to_zero(F&& f,Args... args) -> std::optional<std::future<decltype(f(args...))>>{
+                //wrap 
+                using return_type = decltype(f(args...));
+                std::shared_ptr<std::packaged_task<return_type()>> ptr_task = std::make_shared<std::packaged_task<return_type()>> ([fun = std::forward<F>(f), ...args_catturati = std::forward<Args>(args) ]()mutable{return fun(args_catturati...);});
+                std::future<return_type> fut = ptr_task->get_future();
+                job j = [ptr_task](){(*ptr_task)();};
+            
+                std::vector<std::unique_lock<std::mutex>> vett_locks(lock_tutti());
+                bool flag = workers_[0]->push_back(j);
+                notifica_tutti(); //sincronizzata solo worker a cui si fa il push ma meglio che niente
+                if(flag){
+                    count_job_[indxw_.indx_].fetch_add(1,std::memory_order_release);
+                    unlock_tutti(std::ref(vett_locks));
+                    return fut;
+                }
+                unlock_tutti(std::ref(vett_locks));
+                return std::nullopt;
+            };
+            //se F(Args) void --> wrap in bool() cosi che sara possibile usare future.get() per aspettare che funione venga eseguita prima di mandare out of scope la threadpool
+            template<typename F, typename... Args>
+            requires std::is_same_v<std::invoke_result_t<F, Args...>, void>
+            std::optional<std::future<bool>> send_task_only_to_zero(F&& f,Args... args){
+
+                //wrap di funzione in un task e poi in lamda in modo da ricondursi a firma void()
+                using return_type = bool;
+                std::shared_ptr<std::packaged_task<return_type()>> ptr_task = std::make_shared<std::packaged_task<return_type()>> ([fun = std::forward<F>(f), ...args_catturati = std::forward<Args>(args) ]()mutable{fun(args_catturati...);
+                return true;});
+                std::future<return_type> fut = ptr_task->get_future();
+                job j = [ptr_task](){(*ptr_task)();};
+
+                std::vector<std::unique_lock<std::mutex>> vett_locks(lock_tutti());
+                bool flag = workers_[0]->push_back(j);
+                notifica_tutti(); //sincronizzata solo worker a cui si fa il push ma meglio che niente
+                if(flag){
+                    count_job_[indxw_.indx_].fetch_add(1,std::memory_order_release);
+                    unlock_tutti(std::ref(vett_locks));
+                    return fut;
+                }
+                unlock_tutti(std::ref(vett_locks));
+                return std::nullopt;
+            };
+        };
+    }
 #endif
