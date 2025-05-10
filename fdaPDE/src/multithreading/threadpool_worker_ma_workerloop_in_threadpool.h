@@ -82,7 +82,7 @@ namespace fdapde{
         private:
             std::vector<std::shared_ptr<Worker>> workers_; //vettore di putatori perche non movable e copiable synchro_queue per via di mutex
             std::deque<std::atomic<int>> count_job_; //oss: sarebbe meglio atomic int ma non e movable e quindi non si puo fare vector<atomic<>>.-> deque si perche non rialloca non serve sia mouvable 
-            //?TODO: possibile rendere Threadpool template class e passargli come parametro del template n_worker cosi da poter usare array[] al posto di deque, capire se ne vale la pena
+            //?TODO: possibile rendere Threadpool template class e passargli come parametro del template n_worker cosi da poter usare array[] al posto di deque e loop per calcolo total job sarebbe cache freindly :)
             //OSS: avere atomic int non evita cache corruption (lettura rimane non affidabile senza memory_order o mutex) ma scrittura sicura (prima possibile 100 push e count era 77, ora se 100 push count 100. problema rimane che alcuni thread potrebbero vederlo non aggiornato)
             int n_worker_; //fisso 
             int queue_size_; // forse non costante poi
@@ -90,7 +90,7 @@ namespace fdapde{
             indx_worker indxw_; 
             std::shared_mutex m_threadpool_; 
             std::condition_variable_any cv_threadpool_;
-            bool active_ = true; //TODO oss: possibile evitare stop_ di singolo worker e usare active, ma stop_ in singolo worker rende worker indipendente da threadpool (puo terminare anche se threadpool non distrutta) e questo puo essere utile magari in seguito 
+            bool active_ = false; //TODO oss: possibile evitare stop_ di singolo worker e usare active, ma stop_ in singolo worker rende worker indipendente da threadpool (puo terminare anche se threadpool non distrutta) e questo puo essere utile magari in seguito 
         public:
             friend class Worker; //poi togliere tuti get e sostituire con accesso diretto
             //n = size code, k = numero worker
@@ -148,14 +148,25 @@ namespace fdapde{
                             (j.value())(); //esegue funzioni con 0 parametri e void. per non void si dovra fare wrap e associare a promise. per parametri lamda wrap che li cattura cosi no param  
                             //std::cout<<"thread: "<<std::this_thread::get_id()<<" ha eseguito"<<std::endl; 
                         }
-                        else{ //steal
+                        else{ //steal. 
+                            //TODO se n_worker == 2 inutile usare random steal o altro deve rubare a unico altro (se n_worker paraemtro di template si mette pure if constexpr cosi efficente)
                             //TODO test quale steal migliore
-                            //steal_from_most_busy_and_do(); //oss: possibile problema starvation, (tutti i ladri su stesso worker)
-                            randomo_steal_and_do(i); //credo migliore. test confermano se distribuzione job sbilanciata e n_worker alto rand migliore di most_busy,( starvetion in most busy con n_thread alto si evidenzia)
+                            steal_from_most_busy_and_do(); //oss: possibile problema starvation, (tutti i ladri su stesso worker)
+                            //random_steal_and_do(i); //credo migliore. test confermano se distribuzione job sbilanciata e n_worker alto rand migliore di most_busy,( starvetion in most busy con n_thread alto si evidenzia)
                         }                             
                     }
                 }
             };
+            //al posto di steal se n_worer solo 2
+            void steal_from_the_other_one_and_do(int i){
+                int indx_the_other_one = (i == 0)?(1):(0);
+                std::optional<job> j = workers_[indx_the_other_one]->pop_back();
+                if(j){
+                    count_job_[indx_the_other_one].fetch_sub(1,std::memory_order_release);
+                    (j.value())();
+                }
+            };
+            
             void steal_from_most_busy_and_do(){ 
                 int most_busy = indx_most_busy();
                 if(most_busy != -1){
@@ -176,15 +187,15 @@ namespace fdapde{
                 std::uniform_int_distribution<> distrib(0,size-1);
                 return distrib(gen);
             }
-            void randomo_steal_and_do(int i){
+            void random_steal_and_do(int i){
                 std::vector<int> indxs;
                 for(int k = 0; k<n_worker_; k++){
                     //if per evitare se stessi.  poi da fare piu efficente se possibile
-                    if(k != i){
-                        if(count_job_[k].load(std::memory_order_acquire) != 0){
+                    //if(k != i){ per ora tolto, se fa steal molto probabilmente ha coda vuota (non certo perche pop in Relax puo fallire anche se coda non vuota)
+                        if(count_job_[k].load(std::memory_order_acquire) > 0){
                             indxs.push_back(k);
                         }
-                    }
+                    //}
                 }
                 int size = indxs.size();
                 if(size == 0){ return;}
@@ -294,12 +305,12 @@ namespace fdapde{
                 job j = [ptr_task](){(*ptr_task)();};
 
                 int indx_worker = indx_most_free();
-                std::vector<std::unique_lock<std::mutex>> vett_locks(lock_tutti());
+                std::vector<std::unique_lock<std::mutex>> vett_locks(lock_tutti()); // alternativa lock dei mutex direttamente 
                 bool flag = workers_[indx_worker]->push_back(j);
                 notifica_tutti(); // problema: push e notifica sono sincronizati solo in thread su cui viene fatto push perche mutex che poi leggera è lo stesso bloccato in push.
                                 //POSSIBILE SOLUZIONE: fare lock_all() e poi unlock_all() ma cosi ogni send blocca worker_loop di chi ancora non ha superato la cv_.wait(), pero sarebbe sincronizzata la lettura dei count_job ++. 
                 if(flag){
-                    count_job_[indx_worker].fetch_add(1,std::memory_order_release);
+                    count_job_[indx_worker].fetch_add(1,std::memory_order_release); // TODO: in realta dato che dentro mutex basta relax ancora piu efficente, però non tutte le letture avvengono dentro mutex quindi non saprei
                     unlock_tutti(std::ref(vett_locks));
                     return fut;
                 }
