@@ -264,13 +264,13 @@ class ScalarField : public ScalarFieldBase<Size, ScalarField<Size, FunctorType_>
         return *this;
     }
     // static initializers
-    struct ConstantFunction : public ScalarFieldBase<Size, ConstantFunction> {
+    struct ConstantField : public ScalarFieldBase<Size, ConstantField> {
         Scalar c_ = 0;
-        ConstantFunction(Scalar c) : c_(c) { }
+        ConstantField(Scalar c) : c_(c) { }
         constexpr Scalar operator()([[maybe_unused]] const InputType& x) const { return c_; }
     };
-    static constexpr ConstantFunction Constant(Scalar c) { return ConstantFunction(c); }
-    static constexpr ConstantFunction Zero() { return ConstantFunction(0.0); }
+    static constexpr ConstantField Constant(Scalar c) { return ConstantField(c); }
+    static constexpr ConstantField Zero() { return ConstantField(0.0); }
     constexpr int input_size() const { return StaticInputSize == Dynamic ? dynamic_input_size_ : StaticInputSize; }
     // evaluation at point
     constexpr Scalar operator()(const InputType& x) const { return f_(x); }
@@ -416,6 +416,14 @@ template <int Size, typename Derived> struct ScalarFieldBase {
     double step_ = 1e-3;   // step size used in derivative approximation
 };
 
+#ifdef __FDAPDE_HAS_EIGEN__
+// special fields
+template <int StaticInputSize>
+struct ZeroField : public ScalarField<StaticInputSize, decltype([](const Eigen::Matrix<double, StaticInputSize, 1>& p) {
+                                          return 0.0;
+                                      })> { };
+#endif
+  
 namespace internals {
 
 // for type Functor_ having just a call operator, xpr_wrap<Xpr_, Functor_> makes Functor_ a valid expression type to be
