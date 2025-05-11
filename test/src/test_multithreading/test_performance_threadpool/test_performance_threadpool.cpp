@@ -27,16 +27,9 @@ void contafino(int n){
     //std::this_thread::sleep_for(std::chrono::milliseconds(1));
 
 }
-int main(int argc, char** argv){
-    int n = std::stoi(argv[1]); //numero cicli in contafino // lunghezza singolo job
-
-    int n_thread = std::stoi(argv[2]);
-    int n_job = 100;
-    fdapde::Threadpool tp(n_job,n_thread);
-    std::atomic<int> a = 0;
-
-    
-
+template<int N>
+void runTest(int n, int n_job){
+    fdapde::Threadpool<N> tp(n_job);
     std::vector<std::function<void(int)>> jobs;
     std::vector<std::optional<std::future<bool>>> futs;
     for(int i= 0; i<n_job; i++){
@@ -58,7 +51,59 @@ int main(int argc, char** argv){
     auto duration2 = std::chrono::duration_cast<std::chrono::microseconds>(end2 - start2);  
     //std::cout<<"operazioni fatte: "<<n*n_job<<"  con n_job: "<<n_job<<"mandati su n_thread:"<<n_thread<<" impiegato:"<<duration2.count()<< " microsecondi\n";
     std::cout<<duration2.count()<<",";
+}
+int main(int argc, char** argv){
+    int n = std::stoi(argv[1]); //numero cicli in contafino // lunghezza singolo job
 
+    int n_thread = std::stoi(argv[2]);
+    int n_job = 100;
+
+    //per definire threadpool template va fatta at compile time, ma cosi possiile passare a file umero di thread
+    switch (n_thread)
+    {
+    case 1:
+        runTest<1>(n, n_job);
+        break;
+    case 2:
+        runTest<2>(n, n_job);
+        break;
+    case 3:
+        runTest<3>(n, n_job);
+        break;
+    case 4:
+        runTest<4>(n, n_job);
+        break;
+    case 5:
+        runTest<5>(n, n_job);
+        break;
+    case 6:
+        runTest<6>(n, n_job);
+        break;
+    case 7:
+        runTest<7>(n, n_job);
+        break;
+    case 8:
+        runTest<8>(n, n_job);
+        break;
+    case 10:
+        runTest<10>(n, n_job);
+        break;
+    case 12:
+        runTest<12>(n, n_job);
+        break;
+    case 14:
+        runTest<14>(n, n_job);
+        break;
+    case 16:
+        runTest<16>(n, n_job);
+        break;
+    case 18:
+        runTest<18>(n, n_job);
+        break;
+
+    default:
+        break;
+    }
     return 0;
 }
 
