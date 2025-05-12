@@ -141,7 +141,7 @@ namespace fdapde{
                     else{
                         std::unique_lock<std::mutex> loc(workers_[i]->m_); //OSS: empty() gia sincronizzato con push grazie a mtex dentro Synchro_queue, mutex in Worker serve solo per avere cv che manda a dormire. get_count_job_all() invece vede sincronizzati solo i count_job[i]++ perche avvengono in mutex con push, pro: se ce push chi non lha ricevuto si sveglia per rubare, contro: possibile svegliarsi e invece non ce niente da rubare perche count_job[i]-- gia fatto ma non letto perche non sincornizzato 
                         //std::cout<<"mutexInWorkerloop, get count all job: "<<get_count_all_job()<<std::endl;
-                        workers_[i]->cv_.wait(loc,[&](){return get_count_all_job()>0 || !workers_[i]->sync_queue_.empty() || workers_[i]->stop_ ;}); //oss: spostato get_count_job() per primo cosi si riduce chiamata a empty() che blocca push e pop su coda
+                        workers_[i]->cv_.wait(loc,[&](){return get_count_all_job()>0 || !workers_[i]->sync_queue_.empty() || workers_[i]->stop_ ;}); //oss: spostato get_count_job() per primo cosi si riduce chiamata a empty() che blocca push e pop su coda. //OSS: magari get_cout_jo()>N cosi da evitare sveglia se steal non necessario (logica da coordinare con send)
                         loc.unlock();
                         if(workers_[i]->stop_){return;}
                         std::optional<job> j = workers_[i]->pop_front();
@@ -151,14 +151,19 @@ namespace fdapde{
                             //std::cout<<"thread: "<<std::this_thread::get_id()<<" ha eseguito"<<std::endl; 
                         }
                         else{ //steal. 
-                            //TODO se n_worker == 2 inutile usare random steal o altro deve rubare a unico altro (se n_worker paraemtro di template si mette pure if constexpr cosi efficente)
                             if constexpr(N == 2){
                                 steal_from_the_other_one_and_do(i);
                             }
+                            if constexpr(N == 3){
+                                steal_from_most_busy_and_do(); // in 3 non ha senso random. certezza
+                            }
+                            if constexpr(N > 3 && N < 6){//questo solo per ipotesi starvation con fino a 4 thread trascurabile
+                                steal_from_most_busy_and_do(); // se N<=6 massima concorrenza sono 4 worker ladri che provano a fare steal a stesso worker dei due con job (concorrenza a 4 da test pop/push sembra trascurabile)
+                                //random_steal_and_do();
+                            }
                             else{
-                                //TODO test quale steal migliore
-                                steal_from_most_busy_and_do(); //oss: possibile problema starvation, (tutti i ladri su stesso worker)
-                                //random_steal_and_do(i); //credo migliore. test confermano se distribuzione job sbilanciata e n_worker alto rand migliore di most_busy,( starvetion in most busy con n_thread alto si evidenzia)
+                                steal_random_from_most_busy_and_do(); //per evitare starvation, ma conservare proprietà di steal_from_most_busy di equilibrare distribuzione job
+                                //oss: steal_random_from_most_busy_and_do() ha senso solo per N > 5 (perche dimezza i worker con job tra cui sceglie random)
                             }
                         }                             
                     }
@@ -167,6 +172,7 @@ namespace fdapde{
             //al posto di steal se n_worer solo 2
             void steal_from_the_other_one_and_do(int i){
                 int indx_the_other_one = (i == 0)?(1):(0);
+                //if(count_job_[indx_the_other_one]<2) return; 
                 std::optional<job> j = workers_[indx_the_other_one]->pop_back();
                 if(j){
                     count_job_[indx_the_other_one].fetch_sub(1,std::memory_order_release);
@@ -194,7 +200,7 @@ namespace fdapde{
                 std::uniform_int_distribution<> distrib(0,size-1);
                 return distrib(gen);
             }
-            void random_steal_and_do(int i){
+            void random_steal_and_do(){
                 std::vector<int> indxs;
                 for(int k = 0; k<N; k++){
                     //if per evitare se stessi.  poi da fare piu efficente se possibile
@@ -216,7 +222,38 @@ namespace fdapde{
                 //else{std::cout<<"thread: "<<std::this_thread::get_id()<<"nullopt"<<std::endl;}
                 
             }
-            
+
+            //m numero di worker con job, i ladri fanno steal a worker casuale tra i primi m/2 con piu job in coda
+            //obbiettivo evitare starvation di steal_from_most_busy ma preservare la sua proprietà stabilizzante (steal_from_most_busy tende a riequilibrare i count_job, steal_random mantiene squilibrio )
+            void steal_random_from_most_busy_and_do(){ 
+                std::vector<std::pair<int,int>> indxs; //vettore di coppie j,count_job[j] 
+                int tmp_count_job = 0;
+                //mappa di chi ha count_job()>0
+                for(int k = 0; k<N; k++){
+                    tmp_count_job = count_job_[k];
+                    if(tmp_count_job > 0){
+                        indxs.emplace_back(k,tmp_count_job);
+                    }
+                }
+                int size = indxs.size();
+                if(size == 0) {return;}
+                std::sort(indxs.begin(), indxs.end(), [](std::pair<int,int> &a, std::pair<int,int> &b) {return a.second > b.second;}); //ordina da chi ha piu job (indx[].second) a chi ne ha meno
+                int indx = 0;
+                switch (size)
+                {
+                case 1:
+                    indx = indxs[0].first;
+                    break;
+                default: 
+                    indx = indxs[random_indx(size/2)].first; //sceglie a caso tra i primi size/2 con count_job maggiore.
+                    break;
+                }
+                std::optional<job> j = workers_[indx]->pop_back();
+                if(j){
+                    count_job_[indx].fetch_sub(1,std::memory_order_release);
+                    (j.value())();
+                }
+            }
             
             int get_count_all_job(){
                 int somma = 0;
