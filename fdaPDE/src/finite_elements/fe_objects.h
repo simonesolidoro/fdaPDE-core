@@ -625,7 +625,7 @@ class FeFunction :
     }
     double h1_norm() const { return std::sqrt(h1_squared_norm()); }
     // specialized integration routine for fe functions on cell range
-    template <Triangulation>
+    template <typename Triangulation>
     double integrate_on(CellIterator<Triangulation> begin, CellIterator<Triangulation> end) const {
         fdapde_static_assert(FeSpace::n_components == 1, THIS_METHOD_IS_FOR_SCALAR_FINITE_ELEMENT_FUNCTIONS_ONLY);
         using FeType = typename FeSpace::FeType;
