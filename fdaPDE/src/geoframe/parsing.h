@@ -132,14 +132,22 @@ double stod(CharBuff&& str) {
     auto is_na = [](CharBuff& chr, int& i) -> bool {
         if (chr[i] == 'N') {
             i++;
-            if (chr[i] == 'A') {
-                i++;
+	    char c = chr[i];
+            if (c == 'A') {
+                i += 1;
                 return true;
             }
-            if (chr[i] == 'a' && chr[++i] == 'N') { return true; }
+            if (c == 'a' && chr[i + 1] == 'N') {
+                i += 2;
+                return true;
+            }
+	    i--;
             return false;
         }
-        if (chr[i] == 'n' && chr[i++] == 'a' && chr[i++] == 'n') { return true; }
+        if (chr[i] == 'n' && chr[i + 1] == 'a' && chr[i + 2] == 'n') {
+            i += 3;
+            return true;
+        }
         return false;
     };
 
