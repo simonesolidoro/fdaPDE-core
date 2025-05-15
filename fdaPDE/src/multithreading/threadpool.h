@@ -19,7 +19,10 @@
 #include "header_check.h"
 
 namespace fdapde{
-    class Threadpool{
+
+    enum class steal {random, most_busy, random_half_most_busy};
+
+    template <steal T> class Threadpool{
         using job = std::function<void()>;
         //usato per send_task_round 
         struct indx_worker{
@@ -42,7 +45,7 @@ namespace fdapde{
                     friend class Threadpool; //TODO: classi friend quindi inutili tuti i getter ecc.. ripulire codice. lasciare magari wrap di alcune funzioni per chiarezza in uso in threadpool(es workers_[i]->notifica() al posto di workers_[i]->cv_.notify_one())
                     // costruttore con numero elementi di coda
                     //inizializza thread con funzione membro worker_loop di Threadpoool cosi che accessibili altre code senza passaggio di puntatore/reference a threadpool in worker che causava segmentation fault  
-                    Worker(int n, void (Threadpool::*worker_loop)(int),Threadpool* T, int idx):indx_(idx),sync_queue_(n),t_(worker_loop,T,idx){}; //oss non serve <N> compila e funziona lo stesso ma non so perche
+                    Worker(int n, void (Threadpool::*worker_loop)(int),Threadpool* Th, int idx):indx_(idx),sync_queue_(n),t_(worker_loop,Th,idx){}; //oss non serve <N> compila e funziona lo stesso ma non so perche
 
                     //  TUTTI WRAP "INUTILI" BASTA FATTO CHE SIA FRIEND PER ACCESSO DIRETTO, FORSE PIU LEGGIBILE USARLI PERO.
                     //per poter bloccare il mutex di Worker m_ in threadpool
@@ -164,11 +167,16 @@ namespace fdapde{
                             (j.value())(); //esegue funzioni con 0 parametri e void. per non void si dovra fare wrap e associare a promise. per parametri lamda wrap che li cattura cosi no param  
                             //std::cout<<"thread: "<<std::this_thread::get_id()<<" ha eseguito"<<std::endl; 
                         }
-                        else{ //steal. 
-                                //steal_from_the_other_one_and_do(i); 
-                                //steal_from_most_busy_and_do(); // se N<=6 massima concorrenza sono 4 worker ladri che provano a fare steal a stesso worker dei due con job (concorrenza a 4 da test pop/push sembra trascurabile)
-                                //random_steal_and_do();
-                                steal_random_from_most_busy_and_do(); //per evitare starvation, ma conservare proprietà di steal_from_most_busy di equilibrare distribuzione job
+                        else{ //steal.
+                            if constexpr(T == steal::random){
+                                random_steal_and_do();
+                            }
+                            if constexpr(T == steal::most_busy){
+                                steal_from_most_busy_and_do();
+                            }
+                            if constexpr(T == steal::random_half_most_busy){
+                                steal_random_from_most_busy_and_do();
+                            } 
                                 //oss: steal_random_from_most_busy_and_do() ha senso solo per N > 5 (perche dimezza i worker con job tra cui sceglie random)
                             
                         }                             

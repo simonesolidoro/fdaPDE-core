@@ -15,7 +15,7 @@
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 #include<fdaPDE/multithreading.h>
-/*manda prima metà dei job a unico worker e altra metà a metà dei worker, cosi metà worker saranno ladri però job in code sono sbilanciati*/
+
 void contafino(int n){
     int a= 0;
     for (int j = 0; j<n; j++){
@@ -24,19 +24,16 @@ void contafino(int n){
         a++;
         a--;
     }
-    //std::this_thread::sleep_for(std::chrono::microseconds(1000));
+    //std::this_thread::sleep_for(std::chrono::milliseconds(1));
 
 }
 
-
 int main(int argc, char** argv){
-//manda meta job totali solo a uno e poi atra meta solo a meta worker, cosi si crea asimmetria e starvetion in steal_from_most_busy dovrebbe essere piu evidente e peggiorare prestazioni
     int n = std::stoi(argv[1]); //numero cicli in contafino // lunghezza singolo job
 
     int n_thread = std::stoi(argv[2]);
     int n_job = 100;
-    fdapde::Threadpool<fdapde::steal::most_busy> tp(n_job,n_thread);
-
+    fdapde::Threadpool<fdapde::steal::random> tp(n_job,n_thread);
     std::vector<std::function<void(int)>> jobs;
     std::vector<std::optional<std::future<bool>>> futs;
     for(int i= 0; i<n_job; i++){
@@ -45,11 +42,8 @@ int main(int argc, char** argv){
     
     auto start2 = std::chrono::high_resolution_clock::now();
 
-    for(int i= 0; i<n_job/2; i++){
-        futs.push_back(std::move(tp.send_task_only_to_zero(contafino,n)));
-    }
-    for(int i= 0; i<n_job/2; i++){
-        futs.push_back(std::move(tp.send_task_only_to_some(contafino,n)));
+    for(int i= 0; i<n_job; i++){
+        futs.push_back(std::move(tp.send_task_round(contafino,n)));
     }
     for(int i= 0; i<n_job; i++){
         if(futs[i]){
@@ -61,5 +55,9 @@ int main(int argc, char** argv){
     auto duration2 = std::chrono::duration_cast<std::chrono::microseconds>(end2 - start2);  
     //std::cout<<"operazioni fatte: "<<n*n_job<<"  con n_job: "<<n_job<<"mandati su n_thread:"<<n_thread<<" impiegato:"<<duration2.count()<< " microsecondi\n";
     std::cout<<duration2.count()<<",";
+
+
     return 0;
 }
+
+
