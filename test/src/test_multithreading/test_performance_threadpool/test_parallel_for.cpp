@@ -27,8 +27,8 @@ int main(){
     
     fdapde::Threadpool<fdapde::steal::random> tp(64,4);
     std::vector<std::optional<std::future<bool>>> futs;
-    
-    tp.parallel_for(0,16,1,[&](int i){printnum(i);});
+    //lambda = [&](){}//
+    tp.parallel_for(0,16,1,[](int i){printnum(i);});
 
 
     std::this_thread::sleep_for(std::chrono::milliseconds(1000)); //per aspettare esecuzione di tutti 

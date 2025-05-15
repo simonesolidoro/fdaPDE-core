@@ -184,6 +184,7 @@ namespace fdapde{
                             if constexpr(T == steal::random_half_most_busy){
                                 steal_random_from_most_busy_and_do();
                             } 
+                            std::cout<<"furtooooo"<<std::endl;
                                 //oss: steal_random_from_most_busy_and_do() ha senso solo per N > 5 (perche dimezza i worker con job tra cui sceglie random)
                             
                         }                             
