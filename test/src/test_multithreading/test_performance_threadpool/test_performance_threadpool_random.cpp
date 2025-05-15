@@ -35,7 +35,7 @@ int main(int argc, char** argv){
     int n_job = 100;
     fdapde::Threadpool<fdapde::steal::random> tp(n_job,n_thread);
     std::vector<std::function<void(int)>> jobs;
-    std::vector<std::optional<std::future<bool>>> futs;
+    std::vector<std::optional<std::future<void>>> futs;
     for(int i= 0; i<n_job; i++){
         jobs.push_back(contafino);
     }

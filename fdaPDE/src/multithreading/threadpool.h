@@ -191,6 +191,7 @@ namespace fdapde{
                 }
             };
             //al posto di steal se n_worer solo 2
+            //ora che umero worker non noto at compile time inutile
             void steal_from_the_other_one_and_do(int i){
                 int indx_the_other_one = (i == 0)?(1):(0);
                 //if(count_job_[indx_the_other_one]<2) return; 
@@ -334,8 +335,8 @@ namespace fdapde{
             }
 
             //send generico combina send_round e send_most_free. se job in threadpool alto allora manda a chi piu libero, se basso manda a giro. (alto basso per ora segnato da threadpool_volume_/2)
+            //TODO: se viene tolto togliere ache membro threadpool volume
             template<typename F, typename... Args>
-            requires (!std::is_same_v<std::invoke_result_t<F, Args...>, void>)
             auto send(F&& f,Args... args)-> std::optional<std::future<decltype(f(args...))>>{
                 if(get_count_all_job()> threadpool_volume_/2){
                     //std::cout<<"sendFree"<<std::endl;
@@ -346,23 +347,9 @@ namespace fdapde{
                     return send_task_round(f,args...);
                 }
             }
-            template<typename F, typename... Args>
-            requires std::is_same_v<std::invoke_result_t<F, Args...>, void>
-            std::optional<std::future<bool>> send(F&& f,Args... args){
-                if(get_count_all_job()> threadpool_volume_/2){
-                    std::cout<<"sendFree"<<std::endl;
-                    return send_task(f,args...);
-                }
-                else{
-                    std::cout<<"sendround"<<std::endl;
-                    return send_task_round(f,args...);
-                }
-            }
            //TODO: tutti i send uguali cambia solo scelta indice, ma non si puo fare template<typename F, typename... Args, typename tipo_send> perche templeta parameter deduction è un tutto o niente, come fare allora per semplificare ?
            //lock di tutti i mutex cosi notifica a tutti sara sincronizzata con push e  count++, OSSERVAZIONE: lock di mutex non interrompe worker_loop di chi ha gia job in coda grazie a nuovo worker_loop con try_j all inizio di while 
-            //se F(Args) non void
             template<typename F, typename... Args>
-            requires (!std::is_same_v<std::invoke_result_t<F, Args...>, void>)
             auto send_task(F&& f,Args... args) -> std::optional<std::future<decltype(f(args...))>>{
                 //wrap 
                 using return_type = decltype(f(args...));
@@ -383,36 +370,10 @@ namespace fdapde{
                 unlock_tutti(std::ref(vett_locks));
                 return std::nullopt;  //OSSERVAZIONE:return optional e non future cosi possibilita di fallire per push e non è necessario fare while(). spostato check se push e quindi send a buon fine fuori da threadpool perche usando hold queue per esempio non puo fallire il push e quindi ci sarebbe un while inutile              
             };
-            //se F(Args) void --> wrap in bool() cosi che sara possibile usare future.get() per aspettare che funione venga eseguita prima di mandare out of scope la threadpool
-            template<typename F, typename... Args>
-            requires std::is_same_v<std::invoke_result_t<F, Args...>, void>
-            std::optional<std::future<bool>> send_task(F&& f,Args... args){
-
-                //wrap di funzione in un task e poi in lamda in modo da ricondursi a firma void()
-                using return_type = bool;
-                std::shared_ptr<std::packaged_task<return_type()>> ptr_task = std::make_shared<std::packaged_task<return_type()>> ([fun = std::forward<F>(f), ...args_catturati = std::forward<Args>(args) ]()mutable{fun(args_catturati...);
-                return true;});
-                std::future<return_type> fut = ptr_task->get_future();
-                job j = [ptr_task](){(*ptr_task)();};
-
-                int indx_worker = indx_most_free();
-                std::vector<std::unique_lock<std::mutex>> vett_locks(lock_tutti());
-                bool flag = workers_[indx_worker]->push_back(j);
-                notifica_tutti(); // problema: push e notifica sono sincronizati solo in thread su cui viene fatto push perche mutex che poi leggera è lo stesso bloccato in push.
-                                //POSSIBILE SOLUZIONE: fare lock_all() e poi unlock_all() ma cosi ogni send blocca worker_loop di chi ancora non ha superato la cv_.wait(), pero sarebbe sincronizzata la lettura dei count_job ++. 
-                if(flag){
-                    count_job_[indx_worker].fetch_add(1,std::memory_order_release);
-                    unlock_tutti(std::ref(vett_locks));
-                    return fut;
-                }
-                unlock_tutti(std::ref(vett_locks));
-                return std::nullopt;  //OSSERVAZIONE:return optional e non future cosi possibilita di fallire per push e non è necessario fare while(). spostato check se push e quindi send a buon fine fuori da threadpool perche usando hold queue per esempio non puo fallire il push e quindi ci sarebbe un while inutile              
-            };
 
             //send a giro usando struct indxw 
-            //se F(Args) non void
+            
             template<typename F, typename... Args>
-            requires (!std::is_same_v<std::invoke_result_t<F, Args...>, void>)
             auto send_task_round(F&& f,Args... args) -> std::optional<std::future<decltype(f(args...))>>{
                 //wrap 
                 using return_type = decltype(f(args...));
@@ -432,35 +393,10 @@ namespace fdapde{
                 unlock_tutti(std::ref(vett_locks));
                 return std::nullopt;
             };
-            //se F(Args) void --> wrap in bool() cosi che sara possibile usare future.get() per aspettare che funione venga eseguita prima di mandare out of scope la threadpool
-            template<typename F, typename... Args>
-            requires std::is_same_v<std::invoke_result_t<F, Args...>, void>
-            std::optional<std::future<bool>> send_task_round(F&& f,Args... args){
-
-                //wrap di funzione in un task e poi in lamda in modo da ricondursi a firma void()
-                using return_type = bool;
-                std::shared_ptr<std::packaged_task<return_type()>> ptr_task = std::make_shared<std::packaged_task<return_type()>> ([fun = std::forward<F>(f), ...args_catturati = std::forward<Args>(args) ]()mutable{fun(args_catturati...);
-                return true;});
-                std::future<return_type> fut = ptr_task->get_future();
-                job j = [ptr_task](){(*ptr_task)();};
-
-                std::vector<std::unique_lock<std::mutex>> vett_locks(lock_tutti());
-                bool flag = workers_[indxw_.indx_]->push_back(j);
-                notifica_tutti(); //sincronizzata solo worker a cui si fa il push ma meglio che niente
-                if(flag){
-                    count_job_[indxw_.indx_].fetch_add(1,std::memory_order_release);
-                    indxw_.next(n_worker_);
-                    unlock_tutti(std::ref(vett_locks));
-                    return fut;
-                }
-                unlock_tutti(std::ref(vett_locks));
-                return std::nullopt;
-            };
 
             //send a sola meta di worker per debug/ test di steal job. 
-            //se F(Args) non void
+            
             template<typename F, typename... Args>
-            requires (!std::is_same_v<std::invoke_result_t<F, Args...>, void>)
             auto send_task_only_to_some(F&& f,Args... args) -> std::optional<std::future<decltype(f(args...))>>{
                 //wrap 
                 using return_type = decltype(f(args...));
@@ -473,41 +409,17 @@ namespace fdapde{
                 notifica_tutti(); //sincronizzata solo worker a cui si fa il push ma meglio che niente
                 if(flag){
                     count_job_[indxw_.indx_].fetch_add(1,std::memory_order_release);
-                    indxw_.next(n_worker_/2);
+                    if (n_worker_ != 1)
+                        indxw_.next(n_worker_/2);
                     unlock_tutti(std::ref(vett_locks));
                     return fut;
                 }
                 unlock_tutti(std::ref(vett_locks));
                 return std::nullopt;
             };
-            //se F(Args) void --> wrap in bool() cosi che sara possibile usare future.get() per aspettare che funione venga eseguita prima di mandare out of scope la threadpool
-            template<typename F, typename... Args>
-            requires std::is_same_v<std::invoke_result_t<F, Args...>, void>
-            std::optional<std::future<bool>> send_task_only_to_some(F&& f,Args... args){
 
-                //wrap di funzione in un task e poi in lamda in modo da ricondursi a firma void()
-                using return_type = bool;
-                std::shared_ptr<std::packaged_task<return_type()>> ptr_task = std::make_shared<std::packaged_task<return_type()>> ([fun = std::forward<F>(f), ...args_catturati = std::forward<Args>(args) ]()mutable{fun(args_catturati...);
-                return true;});
-                std::future<return_type> fut = ptr_task->get_future();
-                job j = [ptr_task](){(*ptr_task)();};
-
-                std::vector<std::unique_lock<std::mutex>> vett_locks(lock_tutti());
-                bool flag = workers_[indxw_.indx_]->push_back(j);
-                notifica_tutti(); //sincronizzata solo worker a cui si fa il push ma meglio che niente
-                if(flag){
-                    count_job_[indxw_.indx_].fetch_add(1,std::memory_order_release);
-                    indxw_.next(n_worker_/2);
-                    unlock_tutti(std::ref(vett_locks));
-                    return fut;
-                }
-                unlock_tutti(std::ref(vett_locks));
-                return std::nullopt;
-            };
             //send a sola  a un worker (0 perche sicuro esiste sempre) per debug/ test di steal job. 
-            //se F(Args) non void
             template<typename F, typename... Args>
-            requires (!std::is_same_v<std::invoke_result_t<F, Args...>, void>)
             auto send_task_only_to_zero(F&& f,Args... args) -> std::optional<std::future<decltype(f(args...))>>{
                 //wrap 
                 using return_type = decltype(f(args...));
@@ -515,29 +427,6 @@ namespace fdapde{
                 std::future<return_type> fut = ptr_task->get_future();
                 job j = [ptr_task](){(*ptr_task)();};
             
-                std::vector<std::unique_lock<std::mutex>> vett_locks(lock_tutti());
-                bool flag = workers_[0]->push_back(j);
-                notifica_tutti(); //sincronizzata solo worker a cui si fa il push ma meglio che niente
-                if(flag){
-                    count_job_[indxw_.indx_].fetch_add(1,std::memory_order_release);
-                    unlock_tutti(std::ref(vett_locks));
-                    return fut;
-                }
-                unlock_tutti(std::ref(vett_locks));
-                return std::nullopt;
-            };
-            //se F(Args) void --> wrap in bool() cosi che sara possibile usare future.get() per aspettare che funione venga eseguita prima di mandare out of scope la threadpool
-            template<typename F, typename... Args>
-            requires std::is_same_v<std::invoke_result_t<F, Args...>, void>
-            std::optional<std::future<bool>> send_task_only_to_zero(F&& f,Args... args){
-
-                //wrap di funzione in un task e poi in lamda in modo da ricondursi a firma void()
-                using return_type = bool;
-                std::shared_ptr<std::packaged_task<return_type()>> ptr_task = std::make_shared<std::packaged_task<return_type()>> ([fun = std::forward<F>(f), ...args_catturati = std::forward<Args>(args) ]()mutable{fun(args_catturati...);
-                return true;});
-                std::future<return_type> fut = ptr_task->get_future();
-                job j = [ptr_task](){(*ptr_task)();};
-
                 std::vector<std::unique_lock<std::mutex>> vett_locks(lock_tutti());
                 bool flag = workers_[0]->push_back(j);
                 notifica_tutti(); //sincronizzata solo worker a cui si fa il push ma meglio che niente
