@@ -19,7 +19,6 @@
 #include "header_check.h"
 
 namespace fdapde{
-    template<int N>
     class Threadpool{
         using job = std::function<void()>;
         //usato per send_task_round 
@@ -39,12 +38,11 @@ namespace fdapde{
                     bool stop_ = false;
                     std::mutex m_;
                     std::condition_variable cv_; 
-                    int n_worker_ = N; //size() di workers_
                 public:
                     friend class Threadpool; //TODO: classi friend quindi inutili tuti i getter ecc.. ripulire codice. lasciare magari wrap di alcune funzioni per chiarezza in uso in threadpool(es workers_[i]->notifica() al posto di workers_[i]->cv_.notify_one())
                     // costruttore con numero elementi di coda
                     //inizializza thread con funzione membro worker_loop di Threadpoool cosi che accessibili altre code senza passaggio di puntatore/reference a threadpool in worker che causava segmentation fault  
-                    Worker(int n, void (Threadpool<N>::*worker_loop)(int),Threadpool<N>* T, int idx):indx_(idx),sync_queue_(n),t_(worker_loop,T,idx){}; //oss non serve <N> compila e funziona lo stesso ma non so perche
+                    Worker(int n, void (Threadpool::*worker_loop)(int),Threadpool* T, int idx):indx_(idx),sync_queue_(n),t_(worker_loop,T,idx){}; //oss non serve <N> compila e funziona lo stesso ma non so perche
 
                     //  TUTTI WRAP "INUTILI" BASTA FATTO CHE SIA FRIEND PER ACCESSO DIRETTO, FORSE PIU LEGGIBILE USARLI PERO.
                     //per poter bloccare il mutex di Worker m_ in threadpool
@@ -83,10 +81,10 @@ namespace fdapde{
             };
         private:
             std::vector<std::shared_ptr<Worker>> workers_; //vettore di putatori perche non movable e copiable synchro_queue per via di mutex. ???=meglio usare array ???
-            std::array<std::atomic<int>,N> count_job_; //oss: sarebbe meglio atomic int ma non e movable e quindi non si puo fare vector<atomic<>>.-> deque si perche non rialloca non serve sia mouvable 
+            std::deque<std::atomic<int>> count_job_; //oss: sarebbe meglio atomic int ma non e movable e quindi non si puo fare vector<atomic<>>.-> deque si perche non rialloca non serve sia mouvable 
             //?TODO: possibile rendere Threadpool template class e passargli come parametro del template n_worker cosi da poter usare array[] al posto di deque e loop per calcolo total job sarebbe cache freindly :)
             //OSS: avere atomic int non evita cache corruption (lettura rimane non affidabile senza memory_order o mutex) ma scrittura sicura (prima possibile 100 push e count era 77, ora se 100 push count 100. problema rimane che alcuni thread potrebbero vederlo non aggiornato)
-            //int n_worker_ = N; //TODO: per ora lasciato cosi dopo sostituire n_worker con N in implementazione classe. anzi lasciamo come alyas
+            int n_worker_ ; //TODO: per ora lasciato cosi dopo sostituire n_worker con N in implementazione classe. anzi lasciamo come alyas
             int queue_size_; // forse non costante poi
             int threadpool_volume_; //oss: se queue_size non costante fai funzione get thteadpool volume che lo calcola
             indx_worker indxw_; 
@@ -96,15 +94,15 @@ namespace fdapde{
         public:
             friend class Worker; //poi togliere tuti get e sostituire con accesso diretto
             //n = size code, k = numero worker
-            Threadpool(int n):queue_size_(n){
-                threadpool_volume_ = N * n;
+            Threadpool(int n,int k):n_worker_(k),queue_size_(n){
+                threadpool_volume_ = k * n;
                 std::unique_lock<std::shared_mutex> loc(m_threadpool_,std::defer_lock);
                 loc.lock();
                 //if(k> std::thread::hardware_concurrency()){std::cout<<"thread richiesti > thread supportati: "<<std::thread::hardware_concurrency()<<std::endl; }
-                workers_.reserve(N);
-                for(int i=0; i<N; i++){
+                workers_.reserve(k);
+                for(int i=0; i<k; i++){
                     workers_.emplace_back(std::make_shared<Worker> (n,&Threadpool::worker_loop,this,i));
-                    count_job_[i]=0;
+                    count_job_.emplace_back(0);
                 }
                 active_ = true;
                 cv_threadpool_.notify_all();
@@ -113,16 +111,16 @@ namespace fdapde{
                 //std::unique_lock<std::mutex> loc_t(m_threadpool_);
                 //active_= false;
                 //loc_t.unlock();
-                for(int j = 0; j<N; j++){
+                for(int j = 0; j<n_worker_; j++){
                     workers_[j]->sync_queue_.clear(); //svuotiamo tutte le code 
                 }
                 //facciamo terminare tutti worker_loop cosi che nessun worker acceda a worker distrutti o a threadpool (perche quando il resto del distruttore di threadpool verra chiamato, cioe finito il corpo di questo distruttore, tutti i worker avranno terminato worker_loop grazie a join())
-                for(int j = 0; j<N; j++){
+                for(int j = 0; j<n_worker_; j++){
                     std::unique_lock<std::mutex> loc(workers_[j]->get_loc());
                     workers_[j]->set_stop(true); //in mutex perche se ce cv che dorme notifica e aggiornamnto stop devono essere sincronizzati
                     workers_[j]->notifica();
                 }
-                for(int j = 0; j<N; j++){
+                for(int j = 0; j<n_worker_; j++){
                     workers_[j]->join_thread();
                 }
             }
@@ -133,6 +131,7 @@ namespace fdapde{
                 cv_threadpool_.wait(m_threadpool_,[this](){return active_;});
                 m_threadpool_.unlock_shared();
                 while(!workers_[i]->stop_){
+                    //TODO è meglio fare unico thread_local job per ogni thread e riusare sempre quello ? 
                     std::optional<job> try_j = workers_[i]->pop_front();
                     if(try_j){//esegue se non è nullopt
                         count_job_[i]--;
@@ -151,20 +150,12 @@ namespace fdapde{
                             //std::cout<<"thread: "<<std::this_thread::get_id()<<" ha eseguito"<<std::endl; 
                         }
                         else{ //steal. 
-                            if constexpr(N == 2){
-                                steal_from_the_other_one_and_do(i);
-                            }
-                            if constexpr(N == 3){
-                                steal_from_most_busy_and_do(); // in 3 non ha senso random. certezza
-                            }
-                            if constexpr(N > 3 && N < 6){//questo solo per ipotesi starvation con fino a 4 thread trascurabile
-                                steal_from_most_busy_and_do(); // se N<=6 massima concorrenza sono 4 worker ladri che provano a fare steal a stesso worker dei due con job (concorrenza a 4 da test pop/push sembra trascurabile)
+                                //steal_from_the_other_one_and_do(i); 
+                                //steal_from_most_busy_and_do(); // se N<=6 massima concorrenza sono 4 worker ladri che provano a fare steal a stesso worker dei due con job (concorrenza a 4 da test pop/push sembra trascurabile)
                                 //random_steal_and_do();
-                            }
-                            else{
                                 steal_random_from_most_busy_and_do(); //per evitare starvation, ma conservare proprietà di steal_from_most_busy di equilibrare distribuzione job
                                 //oss: steal_random_from_most_busy_and_do() ha senso solo per N > 5 (perche dimezza i worker con job tra cui sceglie random)
-                            }
+                            
                         }                             
                     }
                 }
@@ -202,7 +193,7 @@ namespace fdapde{
             }
             void random_steal_and_do(){
                 std::vector<int> indxs;
-                for(int k = 0; k<N; k++){
+                for(int k = 0; k<n_worker_; k++){
                     //if per evitare se stessi.  poi da fare piu efficente se possibile
                     //if(k != i){ per ora tolto, se fa steal molto probabilmente ha coda vuota (non certo perche pop in Relax puo fallire anche se coda non vuota)
                         if(count_job_[k].load(std::memory_order_acquire) > 0){
@@ -225,11 +216,12 @@ namespace fdapde{
 
             //m numero di worker con job, i ladri fanno steal a worker casuale tra i primi m/2 con piu job in coda
             //obbiettivo evitare starvation di steal_from_most_busy ma preservare la sua proprietà stabilizzante (steal_from_most_busy tende a riequilibrare i count_job, steal_random mantiene squilibrio )
+            //OSS: importante equilibrare count_job perchè count_job[] squilibrati porta poi a maggiore penalita per starvation
             void steal_random_from_most_busy_and_do(){ 
                 std::vector<std::pair<int,int>> indxs; //vettore di coppie j,count_job[j] 
                 int tmp_count_job = 0;
                 //mappa di chi ha count_job()>0
-                for(int k = 0; k<N; k++){
+                for(int k = 0; k<n_worker_; k++){
                     tmp_count_job = count_job_[k];
                     if(tmp_count_job > 0){
                         indxs.emplace_back(k,tmp_count_job);
@@ -245,7 +237,7 @@ namespace fdapde{
                     indx = indxs[0].first;
                     break;
                 default: 
-                    indx = indxs[random_indx(size/2)].first; //sceglie a caso tra i primi size/2 con count_job maggiore.
+                    indx = indxs[random_indx(size/2)].first; //sceglie a caso tra i primi size/2 con count_job maggiore. //TODO: per ora size/2, sarebbe meglio aggiungere dipendenza da N-size (N-size = numero worker ladri) o simile. 
                     break;
                 }
                 std::optional<job> j = workers_[indx]->pop_back();
@@ -257,21 +249,21 @@ namespace fdapde{
             
             int get_count_all_job(){
                 int somma = 0;
-                for (int i = 0; i<N; i++)
+                for (int i = 0; i<n_worker_; i++)
                     somma += count_job_[i].load(std::memory_order_acquire);
                 return somma;
             }
             //per notificare tutte le CV_ dei worker
             void notifica_tutti(){
-                for(int i=0; i<N; i++){
+                for(int i=0; i<n_worker_; i++){
                     workers_[i]->cv_.notify_one();
                 }
             }
             //per acquisire tutti i mutex dei worker
             std::vector<std::unique_lock<std::mutex>> lock_tutti(){
                 std::vector<std::unique_lock<std::mutex>> vett_lock;
-                vett_lock.reserve(N);
-                for(int i=0; i<N; i++){
+                vett_lock.reserve(n_worker_);
+                for(int i=0; i<n_worker_; i++){
                     std::unique_lock<std::mutex> loc_w(workers_[i]->m_);
                     vett_lock.push_back(std::move(loc_w));
                 }
@@ -279,7 +271,7 @@ namespace fdapde{
             }
             //per rilasciare tutti i mutex dei worker
             void unlock_tutti(std::vector<std::unique_lock<std::mutex>>& vett_lock){
-                for(int i=0; i<N; i++){
+                for(int i=0; i<n_worker_; i++){
                     vett_lock[i].unlock();
                 }
             }
@@ -287,7 +279,7 @@ namespace fdapde{
             int indx_most_free(){
                 int worker_indx = 0;
                 int min_elem= count_job_[0].load(std::memory_order_acquire); //numero elementi in primo worker 
-                for (int j=1; j<N; j++){
+                for (int j=1; j<n_worker_; j++){
                     int current_el = count_job_[j].load(std::memory_order_acquire);
                     if(current_el < min_elem ){ 
                         worker_indx = j;
@@ -300,7 +292,7 @@ namespace fdapde{
             int indx_most_busy(){
                 int worker_indx = 0;
                 int max_elem= count_job_[0].load(std::memory_order_acquire); //numero elementi in primo worker 
-                for (int j=1; j<N; j++){
+                for (int j=1; j<n_worker_; j++){
                     int current_el = count_job_[j].load(std::memory_order_acquire);
                     if(current_el > max_elem ){
                         worker_indx = j;
@@ -403,7 +395,7 @@ namespace fdapde{
                 notifica_tutti(); //sincronizzata solo worker a cui si fa il push ma meglio che niente
                 if(flag){
                     count_job_[indxw_.indx_].fetch_add(1,std::memory_order_release);
-                    indxw_.next(N); //dentro mutex per sincronizzazione visione (se solo un thread manda non necessario)
+                    indxw_.next(n_worker_); //dentro mutex per sincronizzazione visione (se solo un thread manda non necessario)
                     unlock_tutti(std::ref(vett_locks));
                     return fut;
                 }
@@ -427,7 +419,7 @@ namespace fdapde{
                 notifica_tutti(); //sincronizzata solo worker a cui si fa il push ma meglio che niente
                 if(flag){
                     count_job_[indxw_.indx_].fetch_add(1,std::memory_order_release);
-                    indxw_.next(N);
+                    indxw_.next(n_worker_);
                     unlock_tutti(std::ref(vett_locks));
                     return fut;
                 }
@@ -451,8 +443,7 @@ namespace fdapde{
                 notifica_tutti(); //sincronizzata solo worker a cui si fa il push ma meglio che niente
                 if(flag){
                     count_job_[indxw_.indx_].fetch_add(1,std::memory_order_release);
-                    if constexpr(N > 1)
-                        indxw_.next(N/2);
+                    indxw_.next(n_worker_/2);
                     unlock_tutti(std::ref(vett_locks));
                     return fut;
                 }
@@ -476,8 +467,7 @@ namespace fdapde{
                 notifica_tutti(); //sincronizzata solo worker a cui si fa il push ma meglio che niente
                 if(flag){
                     count_job_[indxw_.indx_].fetch_add(1,std::memory_order_release);
-                    if constexpr(N > 1) //con 1 da segmwntation fault non capito perche
-                        indxw_.next(N/2);
+                    indxw_.next(n_worker_/2);
                     unlock_tutti(std::ref(vett_locks));
                     return fut;
                 }
