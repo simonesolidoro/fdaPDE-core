@@ -20,7 +20,7 @@
 
 namespace fdapde{
 
-    enum class steal {random, most_busy, random_half_most_busy};
+    enum class steal {no_steal, random, most_busy, random_half_most_busy};
 
     template <steal T> class Threadpool{
         using job = std::function<void()>;
