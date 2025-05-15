@@ -46,8 +46,8 @@ bool count (int n){
 };
 int main(){
     using job = std::function<void()>;
-    fdapde::Threadpool tp;
-    std::vector<std::optional<std::future<bool>>> futs;
+    fdapde::Threadpool<fdapde::steal::most_busy> tp;
+    std::vector<std::optional<std::future<void>>> futs;
     std::vector<job> jobs;
     int n_jobs = 64;
     for (int i = 0; i<n_jobs; i++){
