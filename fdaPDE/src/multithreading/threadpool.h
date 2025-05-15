@@ -126,9 +126,15 @@ namespace fdapde{
                 //std::unique_lock<std::mutex> loc_t(m_threadpool_);
                 //active_= false;
                 //loc_t.unlock();
-                for(int j = 0; j<n_worker_; j++){
-                    workers_[j]->sync_queue_.clear(); //svuotiamo tutte le code 
+                while(get_count_all_job()>0){}; //aspetta finche count_job[] di tutti non a zero
+                //aspetta che code siano vuote una per volta, messo dopo count_job perche questo chiama empty e quindi locca interventi su coda e rallenta tutto, dopo while con get_count_all_job elemeti in coda dovreero essere zero o quasi quindi empty rallenta ma molto meno
+                for (int i =0; i<n_worker_; i++){
+                    while(!workers_[i]->sync_queue_.empty()){}
                 }
+
+                //TODO: ora deve aspettare che worker abbiano effettivamente finito i job dopo averli pop da coda
+                //RISPOSTA: i realta ora sicuro che che code sono vuote quindi eseguito pop su tutte, dopo viene messo stop_ = true ma dato che siamo dopo il pop prima di check su stop_ cronologicamente i workerloop avviene esecuzioe job :)
+
                 //facciamo terminare tutti worker_loop cosi che nessun worker acceda a worker distrutti o a threadpool (perche quando il resto del distruttore di threadpool verra chiamato, cioe finito il corpo di questo distruttore, tutti i worker avranno terminato worker_loop grazie a join())
                 for(int j = 0; j<n_worker_; j++){
                     std::unique_lock<std::mutex> loc(workers_[j]->get_loc());
@@ -139,6 +145,7 @@ namespace fdapde{
                     workers_[j]->join_thread();
                 }
             }
+
 
             void worker_loop(int i){
                 //per assicurare che thread partano a fare worker_loop solo dopo che tutti siano stati inizializzati
