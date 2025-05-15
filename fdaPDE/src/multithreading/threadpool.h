@@ -439,11 +439,11 @@ namespace fdapde{
                 unlock_tutti(std::ref(vett_locks));
                 return std::nullopt;
             };
-            template<typename F, typename... Args>
+            template<typename F>
             void parallel_for(int start, int end, int n, F&& f){
                 for(int j=start; j<end; j++){
-                    std::function<void(int)> body=  [fun = std::forward<F>(f)](int jj)mutable{return fun(jj);};
-                    this->send_task_round(body,j);
+                    //std::function<void(int)> body=  [fun = std::forward<F>(f)](int jj)mutable{return fun(jj);};
+                    this->send_task_round(f,j);
                 }
             }
         };
