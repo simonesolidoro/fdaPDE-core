@@ -35,7 +35,7 @@ int main(int argc, char** argv){
 
     int n_thread = std::stoi(argv[2]);
     int n_job = 100;
-    fdapde::Threadpool tp(n_job,n_thread);
+    fdapde::Threadpool<fdapde::steal::most_busy> tp(n_job,n_thread);
     std::vector<std::function<void(int)>> jobs;
     std::vector<std::optional<std::future<bool>>> futs;
     for(int i= 0; i<n_job; i++){
