@@ -184,6 +184,7 @@ namespace fdapde{
                             if constexpr(T == steal::random_half_most_busy){
                                 steal_random_from_most_busy_and_do();
                             } 
+                            std::cout<<"furtooooo"<<std::endl;
                                 //oss: steal_random_from_most_busy_and_do() ha senso solo per N > 5 (perche dimezza i worker con job tra cui sceglie random)
                             
                         }                             
@@ -438,6 +439,13 @@ namespace fdapde{
                 unlock_tutti(std::ref(vett_locks));
                 return std::nullopt;
             };
+            template<typename F, typename... Args>
+            void parallel_for(int start, int end, int n, F&& f){
+                for(int j=start; j<end; j++){
+                    std::function<void(int)> body=  [fun = std::forward<F>(f)](int jj)mutable{return fun(jj);};
+                    this->send_task_round(body,j);
+                }
+            }
         };
     }
 #endif
