@@ -27,9 +27,15 @@ void contafino(int n){
     //std::this_thread::sleep_for(std::chrono::microseconds(1000));
 
 }
-template<int N>
-void runTest_send_sbilaciati(int n, int n_job){
-    fdapde::Threadpool<N> tp(n_job);
+
+
+int main(int argc, char** argv){
+//manda meta job totali solo a uno e poi atra meta solo a meta worker, cosi si crea asimmetria e starvetion in steal_from_most_busy dovrebbe essere piu evidente e peggiorare prestazioni
+    int n = std::stoi(argv[1]); //numero cicli in contafino // lunghezza singolo job
+
+    int n_thread = std::stoi(argv[2]);
+    int n_job = 100;
+    fdapde::Threadpool tp(n_job,n_thread);
 
     std::vector<std::function<void(int)>> jobs;
     std::vector<std::optional<std::future<bool>>> futs;
@@ -55,59 +61,5 @@ void runTest_send_sbilaciati(int n, int n_job){
     auto duration2 = std::chrono::duration_cast<std::chrono::microseconds>(end2 - start2);  
     //std::cout<<"operazioni fatte: "<<n*n_job<<"  con n_job: "<<n_job<<"mandati su n_thread:"<<n_thread<<" impiegato:"<<duration2.count()<< " microsecondi\n";
     std::cout<<duration2.count()<<",";
-}
-
-int main(int argc, char** argv){
-//manda meta job totali solo a uno e poi atra meta solo a meta worker, cosi si crea asimmetria e starvetion in steal_from_most_busy dovrebbe essere piu evidente e peggiorare prestazioni
-    int n = std::stoi(argv[1]); //numero cicli in contafino // lunghezza singolo job
-
-    int n_thread = std::stoi(argv[2]);
-    int n_job = 200;
-    //per definire threadpool template va fatta at compile time, ma cosi possiile passare a file umero di thread
-    switch (n_thread)
-    {
-    case 1:
-        runTest_send_sbilaciati<1>(n, n_job);
-        break;
-    case 2:
-        runTest_send_sbilaciati<2>(n, n_job);
-        break;
-    case 3:
-        runTest_send_sbilaciati<3>(n, n_job);
-        break;
-    case 4:
-        runTest_send_sbilaciati<4>(n, n_job);
-        break;
-    case 5:
-        runTest_send_sbilaciati<5>(n, n_job);
-        break;
-    case 6:
-        runTest_send_sbilaciati<6>(n, n_job);
-        break;
-    case 7:
-        runTest_send_sbilaciati<7>(n, n_job);
-        break;
-    case 8:
-        runTest_send_sbilaciati<8>(n, n_job);
-        break;
-    case 10:
-        runTest_send_sbilaciati<10>(n, n_job);
-        break;
-    case 12:
-        runTest_send_sbilaciati<12>(n, n_job);
-        break;
-    case 14:
-        runTest_send_sbilaciati<14>(n, n_job);
-        break;
-    case 16:
-        runTest_send_sbilaciati<16>(n, n_job);
-        break;
-    case 18:
-        runTest_send_sbilaciati<18>(n, n_job);
-        break;
-
-    default:
-        break;
-    }
     return 0;
 }
