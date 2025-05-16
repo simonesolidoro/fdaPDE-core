@@ -86,6 +86,10 @@ template <> class Triangulation<1, 2> : public TriangulationBase<1, 2, Triangula
         adjoint_neighbors.setFromTriplets(triplet_list.begin(), triplet_list.end());
         neighbors_ = adjoint_neighbors.selfadjointView<Eigen::Lower>();   // symmetrize neighboring relation
     }
+    Triangulation(const std::string& nodes, const std::string& cells, const std::string& boundary, int flags = 0) :
+        Triangulation(
+          read_table<double>(nodes).as_matrix(), read_table<int>(cells).as_matrix(),
+          read_table<int>(boundary).as_matrix(), flags) { }
 
     // getters
     const Eigen::SparseMatrix<int>& neighbors() const { return neighbors_; }

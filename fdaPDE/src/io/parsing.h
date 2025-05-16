@@ -278,7 +278,7 @@ template <typename T> class table_reader {
     const std::vector<std::string>& colnames() const { return colnames_; }
     // parsing function
     void parse(
-      const char* filename, bool header = true, char sep = ',', bool index_col = false, bool skip_quote = true,
+      const char* filename, bool header = true, char sep = ',', bool index_col = true, bool skip_quote = true,
       std::size_t chunksize = 4) {
         std::string filename_ = std::filesystem::current_path().string() + "/" + filename;
         if (!std::filesystem::exists(filename_))
@@ -287,6 +287,7 @@ template <typename T> class table_reader {
         bool header_ = header;
 	std::size_t col_id = 0;
         std::string last_token;
+	std::size_t n_file_cols = 0;
 
         while (stream) {
             stream.read();
@@ -302,13 +303,18 @@ template <typename T> class table_reader {
                     header_ = false;
                     while (line.has_token()) {
                         std::string_view& token = skipquote_(skip_quote, line.get_token());
-                        if (index_col == false && n_cols_ != 0) { colnames_.push_back(std::string(token)); }
-                        n_cols_++;
+                        if (index_col == true) {
+                            if (n_cols_ != 0) colnames_.push_back(std::string(token));
+                        } else {
+                            colnames_.push_back(std::string(token));
+                        }
+                        n_file_cols++;
                         ++line;
                     }
+		    n_cols_ = n_file_cols - (index_col == true ? 1 : 0);
                 } else {   // data parsing logic
                     while (line.has_token()) {
-                        if (index_col == false && col_id == 0) {   // skip first column
+                        if (index_col == true && col_id == 0) {   // skip first column
                         } else {
                             std::string_view& token = skipquote_(skip_quote, line.get_token());
                             if (line.eof()) {   // skip parsing and wait for next block
@@ -323,7 +329,7 @@ template <typename T> class table_reader {
                                 }
                             }
                         }
-                        if (!line.eof() ) { col_id = (col_id + 1) % n_cols_; }
+                        if (!line.eof() ) { col_id = (col_id + 1) % n_file_cols; }
                         ++line;
                     }
                 }
@@ -338,7 +344,7 @@ template <typename T> class table_reader {
     }
 };
 
-}   // namespace internals
+}   // namespace internals  
 }   // namespace fdapde
 
 #endif   // __FDAPDE_PARSING_H__

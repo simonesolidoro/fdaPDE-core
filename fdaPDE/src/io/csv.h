@@ -21,11 +21,9 @@
 
 namespace fdapde {
   
-// TODO: bug with index_col == true
-
 // parser for CSV, Comma Separated Values (RFC 4180 compliant)
 template <typename T>
-internals::table_reader<T> read_csv(const std::string& filename, bool header = true, bool index_col = false) {
+internals::table_reader<T> read_csv(const std::string& filename, bool header = true, bool index_col = true) {
     internals::table_reader<T> csv(
       filename.c_str(), header, /* sep = */ ',', index_col, /* skip_quote = */ true, /* chunksize = */ 100000);
     return csv;

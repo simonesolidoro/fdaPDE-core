@@ -23,7 +23,7 @@ namespace fdapde {
 
 // space separated table of values of type T
 template <typename T>
-internals::table_reader<T> read_txt(const std::string& filename, bool header = true, bool index_col = false) {
+internals::table_reader<T> read_txt(const std::string& filename, bool header = true, bool index_col = true) {
     internals::table_reader<T> txt(
       filename.c_str(), header, /* sep = */ ' ', index_col, /* skip_quote = */ true, /* chunksize = */ 1000);
     return txt;

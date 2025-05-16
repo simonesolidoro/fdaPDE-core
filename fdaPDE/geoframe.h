@@ -19,21 +19,11 @@
 
 // clang-format off
 
-#include <charconv>
-#include <filesystem>
-#include <fstream>
-
 // include required modules
 #include "linear_algebra.h"    // pull Eigen first
 #include "utility.h"
 #include "geometry.h"
-
-// input/outupt
-#include "src/geoframe/batched_istream.h"
-#include "src/geoframe/parsing.h"
-#include "src/geoframe/csv.h"
-#include "src/geoframe/shp.h"
-#include "src/geoframe/txt.h"
+#include "io.h"
 
 // define basic symbols
 namespace fdapde {
@@ -107,7 +97,6 @@ template <typename F_, typename... Args> void foreach_dtype(F_&& f, Args&&... ar
 #include "src/geoframe/point_layer.h"
 #include "src/geoframe/geo_layer.h"
 #include "src/geoframe/geoframe.h"
-
 
 // clang-format on
 

@@ -35,6 +35,8 @@ template <typename Triangulation> struct BoundaryIterator : public Triangulation
   
 template <int LocalDim, int EmbedDim> class Triangulation;
 template <int LocalDim, int EmbedDim, typename Derived> class TriangulationBase {
+    using dbl_matrix_t = Eigen::Matrix<double, Dynamic, Dynamic>;
+    using int_matrix_t = Eigen::Matrix<int, Dynamic, Dynamic>;
    public:
     static constexpr int local_dim = LocalDim;
     static constexpr int embed_dim = EmbedDim;
@@ -56,14 +58,14 @@ template <int LocalDim, int EmbedDim, typename Derived> class TriangulationBase 
     };
 
     TriangulationBase() = default;
-    TriangulationBase(
-      const Eigen::Matrix<double, Dynamic, Dynamic>& nodes, const Eigen::Matrix<int, Dynamic, Dynamic>& cells,
-      const Eigen::Matrix<int, Dynamic, Dynamic>& boundary, int flags) :
+    TriangulationBase(const dbl_matrix_t& nodes, const int_matrix_t& cells, const int_matrix_t& boundary, int flags) :
         nodes_(nodes), cells_(cells), boundary_markers_(boundary), flags_(flags) {
         fdapde_assert(
           nodes.rows() > 0 && nodes.cols() == embed_dim && cells.rows() > 0 && cells.cols() == n_nodes_per_cell &&
           boundary.rows() == nodes.rows() && boundary.cols() == 1);
-        fdapde_assert(cells.minCoeff() == 0);
+        fdapde_assert(cells.minCoeff() >= 0);
+	int min = cells.minCoeff();
+        if (min != 0) { cells_ = cells_.array() - min; }   // scale cell numbering to start from zero
         // store number of nodes and number of cells
         n_nodes_ = nodes_.rows();
         n_cells_ = cells_.rows();
@@ -71,10 +73,15 @@ template <int LocalDim, int EmbedDim, typename Derived> class TriangulationBase 
         range_.row(0) = nodes_.colwise().minCoeff();
         range_.row(1) = nodes_.colwise().maxCoeff();
     }
-    TriangulationBase(
-      const Eigen::Matrix<double, Dynamic, Dynamic>& nodes, const Eigen::Matrix<int, Dynamic, Dynamic>& cells,
-      const Eigen::Matrix<int, Dynamic, Dynamic>& boundary) :
+    TriangulationBase(const dbl_matrix_t& nodes, const int_matrix_t& cells, const int_matrix_t& boundary) :
         TriangulationBase(nodes, cells, boundary, /* flags = */ 0) { }
+    TriangulationBase(const std::string& nodes, const std::string& cells, const std::string& boundary, int flags) :
+        TriangulationBase(
+          read_table<double>(nodes).as_matrix(), read_table<int>(cells).as_matrix(),
+          read_table<int>(boundary).as_matrix(), flags) { }
+    TriangulationBase(const std::string& nodes, const std::string& cells, const std::string& boundary) :
+        TriangulationBase(nodes, cells, boundary, /* flags = */ 0) { }
+
     // getters
     Eigen::Matrix<double, embed_dim, 1> node(int id) const { return nodes_.row(id); }
     bool is_node_on_boundary(int id) const { return boundary_markers_[id]; }
@@ -321,6 +328,10 @@ template <int N> class Triangulation<2, N> : public TriangulationBase<2, N, Tria
         boundary_edges_ = BinaryVector<Dynamic>(boundary_edges.begin(), boundary_edges.end(), n_edges_);
         return;
     }
+    Triangulation(const std::string& nodes, const std::string& cells, const std::string& boundary, int flags = 0) :
+        Triangulation(
+          read_table<double>(nodes).as_matrix(), read_table<int>(cells).as_matrix(),
+          read_table<int>(boundary).as_matrix(), flags) { }
     // static constructors
     static Triangulation<2, N>
     Rectangle(double a_x, double b_x, double a_y, double b_y, int nx, int ny, int flags = 0) {
@@ -703,6 +714,10 @@ template <> class Triangulation<3, 3> : public TriangulationBase<3, 3, Triangula
         }
         return;
     }
+    Triangulation(const std::string& nodes, const std::string& cells, const std::string& boundary, int flags = 0) :
+        Triangulation(
+          read_table<double>(nodes).as_matrix(), read_table<int>(cells).as_matrix(),
+          read_table<int>(boundary).as_matrix(), flags) { }
     // cubic mesh static constructors (nx, ny, nz: number of nodes along x,y,z axis respectively)
     static Triangulation<3, 3> Parallelepiped(
       double a_x, double b_x, double a_y, double b_y, double a_z, double b_z, int nx, int ny, int nz, int flags = 0) {
