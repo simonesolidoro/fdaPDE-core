@@ -63,8 +63,8 @@ template <> class Triangulation<1, 1> : public TriangulationBase<1, 1, Triangula
     };
     // construct from interval's bounds [a, b] and the number of equidistant nodes n used to split [a, b]
     Triangulation(double a, double b, int n) : Triangulation(Eigen::Matrix<double, Dynamic, 1>::LinSpaced(n, a, b)) { }
-    Triangulation(const std::string& nodes, int flags = 0) :
-        Triangulation(read_table<double>(nodes).as_matrix(), flags) { }
+    Triangulation(const std::string& nodes, bool header, bool index_col, int flags = 0) :
+        Triangulation(read_table<double>(nodes, header, index_col).as_matrix(), flags) { }
 
     // static constructors
     static Triangulation<1, 1> Interval(double a, double b, int n_nodes) { return Triangulation<1, 1>(a, b, n_nodes); }
