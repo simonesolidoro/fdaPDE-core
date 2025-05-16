@@ -313,18 +313,12 @@ class DofHandler<2, EmbedDim, finite_element_tag> :
         n_dofs_per_cell_ = n_dofs_per_node_ * TriangulationType::n_nodes_per_cell +
                            n_dofs_per_edge_ * TriangulationType::n_edges_per_cell + n_dofs_internal_per_cell_;
 	dof_multiplicity_ = dof_descriptor::dof_multiplicity;
-        // move geometrical markers on boundary edges to dof markers on nodes. high labeled nodes have higher priority
-        
+        // move geometrical markers on boundary edges to dof markers on nodes.
         if constexpr (dof_descriptor::n_dofs_per_node > 0) {
             for (typename TriangulationType::edge_iterator it = triangulation_->boundary_edges_begin();
                  it != triangulation_->boundary_edges_end(); ++it) {
                 int marker = it->marker();
-                
-                for (int node_id : it->node_ids()) {
-                    // give priority to highly marked edges
-                    //if (marker > Base::dofs_markers_[node_id]) { Base::dofs_markers_[node_id] = marker; }
-                }
-            
+                for (int node_id : it->node_ids()) { Base::dofs_markers_[node_id] = marker; }
             }
         }
         
@@ -514,10 +508,7 @@ class DofHandler<3, 3, finite_element_tag> :
             for (typename TriangulationType::face_iterator it = triangulation_->boundary_faces_begin();
                  it != triangulation_->boundary_faces_end(); ++it) {
                 int marker = it->marker();
-                for (int node_id : it->node_ids()) {
-                    // give priority to highly marked edges
-                    //if (marker > Base::dofs_markers_[node_id]) { Base::dofs_markers_[node_id] = marker; }
-                }
+                for (int node_id : it->node_ids()) { Base::dofs_markers_[node_id] = marker; }
             }
         }
         // insert additional dofs if requested by the finite element
