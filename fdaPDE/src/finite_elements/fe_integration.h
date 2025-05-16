@@ -376,7 +376,32 @@ template <> struct fe_quadrature_simplex<3, 24> : public fe_quadrature_simplex_b
 [[maybe_unused]] static struct QS3DP4_ : internals::fe_quadrature_simplex<3, 11> { } QS3DP4;
 [[maybe_unused]] static struct QS3DP5_ : internals::fe_quadrature_simplex<3, 15> { } QS3DP5;
 [[maybe_unused]] static struct QS3DP6_ : internals::fe_quadrature_simplex<3, 24> { } QS3DP6;
+
+// compute quadrature nodes on physical domain
+template <int LocalDim, int EmbedDim, typename Quadrature>
+Eigen::Matrix<double, Dynamic, Dynamic>
+quadrature_nodes(const Triangulation<LocalDim, EmbedDim>& triangulation, const Quadrature& quadrature) {
+    fdapde_static_assert(
+      internals::is_fe_quadrature_simplex_v<Quadrature>, THIS_METHOD_IS_FOR_FE_QUADRATURE_SIMPLEX_ONLY);
+    constexpr int n_quadrature_nodes = Quadrature::order;
   
+    Eigen::Matrix<double, Dynamic, Dynamic> quad_nodes;
+    Eigen::Map<const Eigen::Matrix<
+      double, n_quadrature_nodes, Quadrature::local_dim,
+      Quadrature::local_dim != 1 ? Eigen::RowMajor : Eigen::ColMajor>>
+      ref_quad_nodes(quadrature.nodes.data());
+    quad_nodes.resize(n_quadrature_nodes * triangulation.n_cells(), EmbedDim);
+    int local_cell_id = 0;
+    for (auto it = triangulation.cells_begin(); it != triangulation.cells_end(); ++it) {
+        for (int q_k = 0; q_k < n_quadrature_nodes; ++q_k) {
+            quad_nodes.row(local_cell_id * n_quadrature_nodes + q_k) =
+              it->J() * ref_quad_nodes.row(q_k).transpose() + it->node(0);
+        }
+        local_cell_id++;
+    }
+    return quad_nodes;
+}
+
 }   // namespace fdapde
 
 #endif   // __FDAPDE_FE_INTEGRATION_H__
