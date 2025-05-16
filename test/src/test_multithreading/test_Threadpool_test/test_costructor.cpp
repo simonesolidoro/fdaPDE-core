@@ -23,7 +23,7 @@ A incrementaA(A& aa){
     return aa;
 }
 void printnum(){
-    //std::cout<<std::this_thread::get_id()<<std::endl;
+    std::cout<<std::this_thread::get_id()<<std::endl;
     std::this_thread::sleep_for(std::chrono::microseconds(10000));
 }
 bool fun(){
@@ -47,6 +47,8 @@ bool count (int n){
 int main(){
     using job = std::function<void()>;
     fdapde::Threadpool<fdapde::steal::most_busy> tp;
+    fdapde::Threadpool<fdapde::steal::most_busy> tp2(100);
+{
     std::vector<std::optional<std::future<void>>> futs;
     std::vector<job> jobs;
     int n_jobs = 64;
@@ -59,8 +61,21 @@ int main(){
         else 
             std::cout<<"noninviato"<<std::endl;
     }
-
-
+}
+{
+    std::vector<std::optional<std::future<void>>> futs;
+    std::vector<job> jobs;
+    int n_jobs = 64;
+    for (int i = 0; i<n_jobs; i++){
+        futs.push_back(std::move(tp2.send_task_round(printnum)));
+    }
+    for (int i = 0; i<n_jobs; i++){
+        if(futs[i]){
+            futs[i].value().get();}
+        else 
+            std::cout<<"noninviato"<<std::endl;
+    }
+}
     std::this_thread::sleep_for(std::chrono::milliseconds(1000)); //per aspettare esecuzione di tutti 
     return 0;
 }

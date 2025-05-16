@@ -83,11 +83,9 @@ namespace fdapde{
 
             };
         private:
-            std::vector<std::shared_ptr<Worker>> workers_; //vettore di putatori perche non movable e copiable synchro_queue per via di mutex. ???=meglio usare array ???
-            std::deque<std::atomic<int>> count_job_; //oss: sarebbe meglio atomic int ma non e movable e quindi non si puo fare vector<atomic<>>.-> deque si perche non rialloca non serve sia mouvable 
-            //?TODO: possibile rendere Threadpool template class e passargli come parametro del template n_worker cosi da poter usare array[] al posto di deque e loop per calcolo total job sarebbe cache freindly :)
-            //OSS: avere atomic int non evita cache corruption (lettura rimane non affidabile senza memory_order o mutex) ma scrittura sicura (prima possibile 100 push e count era 77, ora se 100 push count 100. problema rimane che alcuni thread potrebbero vederlo non aggiornato)
-            int n_worker_ ; //TODO: per ora lasciato cosi dopo sostituire n_worker con N in implementazione classe. anzi lasciamo come alyas
+            std::vector<std::shared_ptr<Worker>> workers_; //vettore di putatori perche non movable e copiable synchro_queue per via di mutex
+            std::deque<std::atomic<int>> count_job_; //deque perché atomic<int> non movable e quindi non si puo fare vector
+            int n_worker_ ;
             int queue_size_; // forse non costante poi
             int threadpool_volume_; //oss: se queue_size non costante fai funzione get thteadpool volume che lo calcola
             indx_worker indxw_; 
@@ -112,9 +110,23 @@ namespace fdapde{
             };
             //default constructor
             Threadpool(){
-                n_worker_ = std::thread::hardware_concurrency();
+                n_worker_ = std::thread::hardware_concurrency(); //OSS: forse n_worker_ = std::thread::hardware_concurrency()-1; perche un thread è quello del main
                 queue_size_ = 256*n_worker_;
                  std::unique_lock<std::shared_mutex> loc(m_threadpool_,std::defer_lock);
+                loc.lock();
+                //if(k> std::thread::hardware_concurrency()){std::cout<<"thread richiesti > thread supportati: "<<std::thread::hardware_concurrency()<<std::endl; }
+                workers_.reserve(n_worker_);
+                for(int i=0; i<n_worker_; i++){
+                    workers_.emplace_back(std::make_shared<Worker> (queue_size_,&Threadpool::worker_loop,this,i));
+                    count_job_.emplace_back(0);
+                }
+                active_ = true;
+                cv_threadpool_.notify_all();
+            }
+            //constructor default numero di worker ma specifica size code
+            Threadpool(int n):queue_size_(n){
+                n_worker_ = std::thread::hardware_concurrency(); //OSS: forse n_worker_ = std::thread::hardware_concurrency()-1; perche un thread è quello del main
+                std::unique_lock<std::shared_mutex> loc(m_threadpool_,std::defer_lock);
                 loc.lock();
                 //if(k> std::thread::hardware_concurrency()){std::cout<<"thread richiesti > thread supportati: "<<std::thread::hardware_concurrency()<<std::endl; }
                 workers_.reserve(n_worker_);
@@ -184,7 +196,7 @@ namespace fdapde{
                             if constexpr(T == steal::random_half_most_busy){
                                 steal_random_from_most_busy_and_do();
                             } 
-                            std::cout<<"furtooooo"<<std::endl;
+                            //std::cout<<"furtooooo"<<std::endl;
                                 //oss: steal_random_from_most_busy_and_do() ha senso solo per N > 5 (perche dimezza i worker con job tra cui sceglie random)
                             
                         }                             
@@ -442,14 +454,14 @@ namespace fdapde{
 
             //PARALLEL_FOR
             //2 tipi a seconda di body function in for loop:
-            //      1)body fuction dipendente da i.     body function passate come wrap di funzioni in lambda e quindi unico parametro i: [&](int i){retur fun(arg,i);}
+            //      1)body fuction dipendente da i.     body function passate come wrap di funzioni in lambda e quindi unico parametro i: [args](int i){retur fun(args,i);}
             //      2)body fuction INdipendente da i.   niente wrap in lamda, passata direttamente funzione e argomenti 
             //TODO: ci sara modo per poter passare direttamente la funzione senza wrap e separare args ed i cosi da avere un unica funzione parallel_for per tutti i casi
             //TODO: capire se necessario perfect forwarding
 
 
             //1
-            //OSS: diverso return e void perche void non serve faccia vector da ritornare quindi piu veloce
+            //OSS: diversificato caso return e void perche void non serve faccia vector da ritornare quindi piu veloce
             //senza return
             template<typename F>
             requires std::is_same_v<std::invoke_result_t<F, int>, void>
