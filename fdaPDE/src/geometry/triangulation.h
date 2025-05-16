@@ -544,14 +544,18 @@ template <int N> class Triangulation<2, N> : public TriangulationBase<2, N, Tria
         fdapde_assert(marker >= 0);
         edges_markers_.resize(n_edges_);
         for (boundary_edge_iterator it = boundary_edges_begin(); it != boundary_edges_end(); ++it) {
-            edges_markers_[it->id()] = lambda(*it) ? marker : Unmarked;
+            if (lambda(*it)) {
+                edges_markers_[it->id()] = marker;
+            }
         }
     }
     template <int Rows, typename XprType> void mark_boundary(const BinMtxBase<Rows, 1, XprType>& mask) {
         fdapde_assert(mask.rows() == n_edges_);
-        edges_markers_.resize(n_edges_);
+        edges_markers_.resize(n_edges_,0);
         for (boundary_edge_iterator it = boundary_edges_begin(); it != boundary_edges_end(); ++it) {
-            edges_markers_[it->id()] = mask[it->id()] ? 1 : 0;
+            if(mask[it->id()]){
+                edges_markers_[it->id()] = 1;
+            }  
         }
     }
     template <typename Iterator> void mark_boundary(Iterator first, Iterator last) {
