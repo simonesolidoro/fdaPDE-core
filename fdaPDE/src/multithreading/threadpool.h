@@ -439,12 +439,56 @@ namespace fdapde{
                 unlock_tutti(std::ref(vett_locks));
                 return std::nullopt;
             };
+
+            //PARALLEL_FOR
+            //2 tipi a seconda di body function in for loop:
+            //      1)body fuction dipendente da i.     body function passate come wrap di funzioni in lambda e quindi unico parametro i: [&](int i){retur fun(arg,i);}
+            //      2)body fuction INdipendente da i.   niente wrap in lamda, passata direttamente funzione e argomenti 
+            //TODO: ci sara modo per poter passare direttamente la funzione senza wrap e separare args ed i cosi da avere un unica funzione parallel_for per tutti i casi
+            //TODO: capire se necessario perfect forwarding
+
+
+            //1
+            //OSS: diverso return e void perche void non serve faccia vector da ritornare quindi piu veloce
+            //senza return
             template<typename F>
-            void parallel_for(int start, int end, int n, F&& f){
+            requires std::is_same_v<std::invoke_result_t<F, int>, void>
+            void parallel_for(int start, int end, F&& f){
                 for(int j=start; j<end; j++){
-                    //std::function<void(int)> body=  [fun = std::forward<F>(f)](int jj)mutable{return fun(jj);};
-                    this->send_task_round(f,j);
+                    this->send_task_round(std::forward<F>(f),j);
                 }
+            }   
+            //con return
+            template<typename F>
+            requires (!std::is_same_v<std::invoke_result_t<F, int>, void>)
+            auto parallel_for(int start, int end, F&& f)-> std::vector<std::optional<std::future<std::invoke_result_t<F, int>>>>{
+                using return_type = std::invoke_result_t<F, int>;
+                std::vector<std::optional<std::future<return_type>>> ret;
+                for(int j=start; j<end; j++){
+                    ret.push_back(this->send_task_round(std::forward<F>(f),j));
+                }
+                return ret;
+            }   
+
+            //2
+            //senza return
+            template<typename F, typename... Args>
+            requires std::is_same_v<std::invoke_result_t<F,Args...>, void>
+            void parallel_for(int start, int end, F&& f, Args... args){
+                for(int j=start; j<end; j++){
+                    this->send_task_round(std::forward<F>(f),std::forward<Args>(args)...);
+                }
+            }
+            //con return
+            template<typename F, typename... Args>
+            requires (!std::is_same_v<std::invoke_result_t<F,Args...>, void>)
+            auto parallel_for(int start, int end, F&& f, Args... args)-> std::vector<std::optional<std::future<decltype(f(args...))>>>{
+                using return_type = decltype(f(args...));
+                std::vector<std::optional<std::future<return_type>>> ret;
+                for(int j=start; j<end; j++){
+                    ret.push_back(this->send_task_round(std::forward<F>(f),std::forward<Args>(args)...));
+                }
+                return ret;
             }
         };
     }

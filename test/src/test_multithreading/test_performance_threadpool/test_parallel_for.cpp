@@ -22,15 +22,58 @@ void printnum(int i){
     std::cout<<std::this_thread::get_id()<<"A : "<<a<<std::endl;
     std::this_thread::sleep_for(std::chrono::microseconds(10000));
 }
-
+void printnumb(int i){
+    thread_local int b;
+    b++;
+    std::cout<<std::this_thread::get_id()<<"B : "<<b<<std::endl;
+    std::this_thread::sleep_for(std::chrono::microseconds(10000));
+}
+void fun_con_i_e_void(int a){
+    std::cout<<std::this_thread::get_id()<<"fun_con_i_e_void"<<std::endl;
+}
+int fun_con_i_e_return(int a){
+    std::cout<<std::this_thread::get_id()<<"fun_con_i_e_return"<<std::endl;
+    return a;
+}
+void fun_con_args_e_void(int a,int b){
+    std::cout<<std::this_thread::get_id()<<"fun_con_args_e_void"<<std::endl;
+}
+int fun_con_args_e_return(int a,int b){
+    std::cout<<std::this_thread::get_id()<<"fun_con_args_e_return"<<std::endl;
+    return a+b;
+}
 int main(){
-    
+{   
     fdapde::Threadpool<fdapde::steal::random> tp(64,4);
-    std::vector<std::optional<std::future<bool>>> futs;
-    //lambda = [&](){}/
-    tp.parallel_for(0,16,1,[&](int i){printnum(i);});
+    tp.parallel_for(0,16,[&](int i){printnum(i);});
+    tp.parallel_for(0,8,printnumb,7);
+}
+{
+    fdapde::Threadpool<fdapde::steal::random> tp(64,4);
+    std::vector<std::optional<std::future<int>>> futs1;
+    std::vector<std::optional<std::future<int>>> futs2;
 
+    tp.parallel_for(0,8,fun_con_i_e_void);
+    futs1 = tp.parallel_for(0,8,fun_con_i_e_return);
 
-    std::this_thread::sleep_for(std::chrono::milliseconds(1000)); //per aspettare esecuzione di tutti 
+    tp.parallel_for(0,8,fun_con_args_e_void,4,5);
+    futs2 = tp.parallel_for(0,8,fun_con_args_e_return,4,5);
+
+    std::this_thread::sleep_for(std::chrono::microseconds(10000));
+    std::cout<<"return di fun_con_i_e_return"<<std::endl;
+    for(size_t k = 0; k<futs1.size(); k++){
+        if(futs1[k]){
+            std::cout<<futs1[k].value().get()<<std::endl;
+        }
+    }
+    std::cout<<"return di fun_con_args_e_return"<<std::endl;
+    for(size_t k = 0; k<futs2.size(); k++){
+        if(futs2[k]){
+            std::cout<<futs2[k].value().get()<<std::endl;
+        }
+    }
+
+}
+    std::this_thread::sleep_for(std::chrono::milliseconds(1000)); //per aspettare esecuzione di tutti /
     return 0;
 }
