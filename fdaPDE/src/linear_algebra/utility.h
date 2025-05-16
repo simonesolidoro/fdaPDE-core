@@ -57,12 +57,17 @@ symm_matrix_apply(const Eigen::MatrixBase<Derived>& m, Functor&& f) {
 
 // matrix logarithm
 template <typename Derived> auto logm(const Eigen::MatrixBase<Derived>& m) {
-    return symm_matrix_apply(m, [](double x) { return std::log(x); });
+    return internals::symm_matrix_apply(m, [](double x) { return std::log(x); });
 }
 // matrix exponential
 template <typename Derived> auto expm(const Eigen::MatrixBase<Derived>& m) {
-    return symm_matrix_apply(m, [](double x) { return std::exp(x); });
+    return internals::symm_matrix_apply(m, [](double x) { return std::exp(x); });
 }
+// matrix power
+template <typename Derived> auto powm(const Eigen::MatrixBase<Derived>& m, int i) {
+    return internals::symm_matrix_apply(m, [&](double x) { return std::pow(x, i); });
+}
+template <typename Derived> auto sqrtm(const Eigen::MatrixBase<Derived>& m) { return powm(m, 0.5); }
 
 }   // namespace fdapde
 

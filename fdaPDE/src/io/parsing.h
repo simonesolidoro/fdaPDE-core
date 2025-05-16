@@ -304,7 +304,7 @@ template <typename T> class table_reader {
                     while (line.has_token()) {
                         std::string_view& token = skipquote_(skip_quote, line.get_token());
                         if (index_col == true) {
-                            if (n_cols_ != 0) colnames_.push_back(std::string(token));
+                            if (n_file_cols != 0) colnames_.push_back(std::string(token));
                         } else {
                             colnames_.push_back(std::string(token));
                         }

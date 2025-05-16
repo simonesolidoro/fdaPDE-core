@@ -738,7 +738,7 @@ struct GeoLayer {
         if (n_rows_ == 0) { n_rows_ = coords.rows(); }
         return;
     }
-    void load_geometry_(const std::string& filename, bool header = true, bool index_col = false) {
+    void load_geometry_(const std::string& filename, bool header = true, bool index_col = true) {
         fdapde_static_assert(
           Order == 1 || is_full_geo_point, THIS_METHOD_IS_FOR_ORDER_ONE_OR_FULL_POINT_GEOFRAMES_ONLY);
         if constexpr (is_full_geo_point) {
@@ -779,7 +779,7 @@ struct GeoLayer {
         return;
     }
     template <int N>
-    void load_geometry_index_(const std::string& filename, bool header = true, bool index_col = false) {
+    void load_geometry_index_(const std::string& filename, bool header = true, bool index_col = true) {
         if constexpr (is_geo_v<N, POINT>) {
             load_geometry_index_<N>(parse_file_<double>(filename, header, index_col));
         } else {
