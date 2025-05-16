@@ -318,7 +318,9 @@ class DofHandler<2, EmbedDim, finite_element_tag> :
             for (typename TriangulationType::edge_iterator it = triangulation_->boundary_edges_begin();
                  it != triangulation_->boundary_edges_end(); ++it) {
                 int marker = it->marker();
-                for (int node_id : it->node_ids()) { Base::dofs_markers_[node_id] = marker; }
+                for (int node_id : it->node_ids()) { 
+                    if (marker > Base::dofs_markers_[node_id]) { Base::dofs_markers_[node_id] = marker; }    
+                }
             }
         }
         
@@ -508,7 +510,9 @@ class DofHandler<3, 3, finite_element_tag> :
             for (typename TriangulationType::face_iterator it = triangulation_->boundary_faces_begin();
                  it != triangulation_->boundary_faces_end(); ++it) {
                 int marker = it->marker();
-                for (int node_id : it->node_ids()) { Base::dofs_markers_[node_id] = marker; }
+                for (int node_id : it->node_ids()) { 
+                    if (marker > Base::dofs_markers_[node_id]) { Base::dofs_markers_[node_id] = marker; } 
+                }
             }
         }
         // insert additional dofs if requested by the finite element
