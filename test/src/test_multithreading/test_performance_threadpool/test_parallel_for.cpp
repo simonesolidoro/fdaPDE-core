@@ -49,7 +49,7 @@ int main(){
     tp.parallel_for(0,8,printnumb,7);
 }
 {
-    fdapde::Threadpool<fdapde::steal::random> tp(64,4);
+    fdapde::Threadpool<fdapde::steal::random> tp(64,8);
     std::vector<std::optional<std::future<int>>> futs1;
     std::vector<std::optional<std::future<int>>> futs2;
 
@@ -74,6 +74,34 @@ int main(){
     }
 
 }
-    std::this_thread::sleep_for(std::chrono::milliseconds(1000)); //per aspettare esecuzione di tutti /
+{
+    fdapde::Threadpool<fdapde::steal::random> tp(64,8);
+        //std::atomic<int> a = 0;
+    tp.parallel_for(1,100,[](){
+        thread_local int a;
+        std::cout<<std::this_thread::get_id()<<"incrementa a:"<<++a<<std::endl;
+        std::this_thread::sleep_for(std::chrono::microseconds(10));
+    });
+}
+{//parallel_for_iteartor  
+    std::cout<<"test scrorrere conteiner con iterator"<<std::endl;
+    fdapde::Threadpool<fdapde::steal::random> tp(64,3);
+    std::vector<int> V;
+    for (int i=0; i<10; i++){
+        V.push_back(i);
+    }
+    tp.parallel_for_iterator(V.begin(),V.end(),[](int a){
+        std::cout<<std::this_thread::get_id()<<"printa: "<<a<<std::endl;
+    });
+    std::vector<std::optional<std::future<int>>> ret = tp.parallel_for_iterator(V.begin(),V.end(),[](int a){return a+100;});
+    for (size_t i=0; i<ret.size(); i++){
+        if(ret[i]){
+            std::cout<<ret[i].value().get()<<" : "<<std::endl;
+        }
+    }
+
+
+}
+    
     return 0;
 }

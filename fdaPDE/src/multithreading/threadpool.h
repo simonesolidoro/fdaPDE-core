@@ -502,6 +502,27 @@ namespace fdapde{
                 }
                 return ret;
             }
+
+            //parallel_for_iterator: for_loop scorre cotainer con iterator it e applica funzione a tutti elementi di container f(*it)
+            //void 
+            template<typename Iterator, typename F> 
+            requires std::is_same_v<std::invoke_result_t<F,typename Iterator::value_type>, void> //TODO: da aggiugere vicolo che iteartor abbia membro value_type
+            void parallel_for_iterator(Iterator begin, Iterator end,F&& f){
+                for (auto it = begin; it!=end; it++){
+                    this->send_task_round(std::forward<F>(f),*it);
+                }
+            }
+            //return
+            template<typename Iterator, typename F> 
+            requires (!std::is_same_v<std::invoke_result_t<F,typename Iterator::value_type>, void>) //TODO: da aggiugere vicolo che iteartor abbia membro value_type
+            auto parallel_for_iterator(Iterator begin, Iterator end,F&& f)->std::vector<std::optional<std::future<std::invoke_result_t<F,typename Iterator::value_type>>>>{
+                using return_type = std::invoke_result_t<F,typename Iterator::value_type>;
+                std::vector<std::optional<std::future<return_type>>> ret;
+                for (auto it = begin; it!=end; it++){
+                    ret.push_back(this->send_task_round(std::forward<F>(f),*it));
+                }
+                return ret;
+            }
         };
     }
 #endif
