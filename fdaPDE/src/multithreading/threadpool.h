@@ -141,14 +141,16 @@ namespace fdapde{
                 //std::unique_lock<std::mutex> loc_t(m_threadpool_);
                 //active_= false;
                 //loc_t.unlock();
-                while(get_count_all_job()>0){}; //aspetta finche count_job[] di tutti non a zero
+                while(get_count_all_job()>0){
+                    std::this_thread::yield(); //per dare piu tempo a worker di finire e ridurre esecuzione cicli while a vuoto.
+                }; //aspetta finche count_job[] di tutti non a zero
                 //aspetta che code siano vuote una per volta, messo dopo count_job perche questo chiama empty e quindi locca interventi su coda e rallenta tutto, dopo while con get_count_all_job elemeti in coda dovreero essere zero o quasi quindi empty rallenta ma molto meno
                 for (int i =0; i<n_worker_; i++){
                     while(!workers_[i]->sync_queue_.empty()){}
                 }
 
                 //TODO: ora deve aspettare che worker abbiano effettivamente finito i job dopo averli pop da coda
-                //RISPOSTA: i realta ora sicuro che che code sono vuote quindi eseguito pop su tutte, dopo viene messo stop_ = true ma dato che siamo dopo il pop prima di check su stop_ cronologicamente i workerloop avviene esecuzioe job :)
+                //RISPOSTA: i realta ora sicuro che che code sono vuote quindi eseguito pop su tutte, dopo viene messo stop_ = true ma dato che siamo dopo il pop prima di check su stop_ cronologicamente in workerloop avviene esecuzioe job :)
 
                 //facciamo terminare tutti worker_loop cosi che nessun worker acceda a worker distrutti o a threadpool (perche quando il resto del distruttore di threadpool verra chiamato, cioe finito il corpo di questo distruttore, tutti i worker avranno terminato worker_loop grazie a join())
                 for(int j = 0; j<n_worker_; j++){
@@ -168,7 +170,7 @@ namespace fdapde{
                 cv_threadpool_.wait(m_threadpool_,[this](){return active_;});
                 m_threadpool_.unlock_shared();
                 while(!workers_[i]->stop_){
-                    //TODO è meglio fare unico thread_local job per ogni thread e riusare sempre quello ? 
+                    //TODO è meglio fare unico thread_local job per ogni thread e riusare sempre quello ?. forse si perche tanto std::fuction<> ha membro operator = quindi permesso copia assegazione non solo inizializzazione
                     std::optional<job> try_j = workers_[i]->pop_front();
                     if(try_j){//esegue se non è nullopt
                         count_job_[i]--;
@@ -176,8 +178,8 @@ namespace fdapde{
                     }
                     else{
                         std::unique_lock<std::mutex> loc(workers_[i]->m_); //OSS: empty() gia sincronizzato con push grazie a mtex dentro Synchro_queue, mutex in Worker serve solo per avere cv che manda a dormire. get_count_job_all() invece vede sincronizzati solo i count_job[i]++ perche avvengono in mutex con push, pro: se ce push chi non lha ricevuto si sveglia per rubare, contro: possibile svegliarsi e invece non ce niente da rubare perche count_job[i]-- gia fatto ma non letto perche non sincornizzato 
-                        //std::cout<<"mutexInWorkerloop, get count all job: "<<get_count_all_job()<<std::endl;
-                        workers_[i]->cv_.wait(loc,[&](){return get_count_all_job()>0 || !workers_[i]->sync_queue_.empty() || workers_[i]->stop_ ;}); //oss: spostato get_count_job() per primo cosi si riduce chiamata a empty() che blocca push e pop su coda. //OSS: magari get_cout_jo()>N cosi da evitare sveglia se steal non necessario (logica da coordinare con send)
+                        //TODO: migliorare condizioni sveglia. vedi oss fine riga successiva
+                        workers_[i]->cv_.wait(loc,[&](){return get_count_all_job()>0 || !workers_[i]->sync_queue_.empty() || workers_[i]->stop_ ;}); //oss: spostato get_count_job() per primo cosi si riduce chiamata a empty() che blocca push e pop su coda. //OSS: magari get_cout_jo()>N cosi da evitare sveglia se steal non necessario (logica da coordinare con send) //TODO: empty() inutile basta get_count_al_job. se get_count_all_job()>N mettere has_job = count_job[i]>0 al posto di empty() cosi chi ha suo si sveglia e ladri si svegliano solo se ognuno ne ha piu di uno (oss: get_count_all_job()>n_worker <-> ogni worker ha 1 job, se usato send_round e nemmeno certo)
                         loc.unlock();
                         if(workers_[i]->stop_){return;}
                         std::optional<job> j = workers_[i]->pop_front();
@@ -278,7 +280,7 @@ namespace fdapde{
                 switch (size)
                 {
                 case 1:
-                    indx = indxs[0].first;
+                    indx = indxs[0].first; //evita chiamata a geerazioe random number inutile
                     break;
                 default: 
                     indx = indxs[random_indx(size/2)].first; //sceglie a caso tra i primi size/2 con count_job maggiore. //TODO: per ora size/2, sarebbe meglio aggiungere dipendenza da N-size (N-size = numero worker ladri) o simile. 
@@ -362,6 +364,7 @@ namespace fdapde{
             }
            //TODO: tutti i send uguali cambia solo scelta indice, ma non si puo fare template<typename F, typename... Args, typename tipo_send> perche templeta parameter deduction è un tutto o niente, come fare allora per semplificare ?
            //lock di tutti i mutex cosi notifica a tutti sara sincronizzata con push e  count++, OSSERVAZIONE: lock di mutex non interrompe worker_loop di chi ha gia job in coda grazie a nuovo worker_loop con try_j all inizio di while 
+           //OSS:ora che i distruttore si aspetta esecuzioen di tutti i job non servono piu i future<void> per assivurare esecuzione di job, si potrebbe pensare di ritornare  aversioni conn return=void che nnon perdono tempo a creare vector<future<void>>, PERO' meglio lasciarli perche con future<void> in main con get si puo specificare entro quando vuoi che un job sia eseguito
             template<typename F, typename... Args>
             auto send_task(F&& f,Args... args) -> std::optional<std::future<decltype(f(args...))>>{
                 //wrap 
@@ -461,18 +464,10 @@ namespace fdapde{
 
 
             //1
-            //OSS: diversificato caso return e void perche void non serve faccia vector da ritornare quindi piu veloce
-            //senza return
+            //OSS: diversificato caso return e void perche void non serve faccia vector da ritornare quindi piu veloce. NO! vedi oss sotto 
+            //OSS: meglio return vettore di future void cosi in main si puo garantire con get entro quando si vuole che un job void venga eseguito
+             
             template<typename F>
-            requires std::is_same_v<std::invoke_result_t<F, int>, void>
-            void parallel_for(int start, int end, F&& f){
-                for(int j=start; j<end; j++){
-                    this->send_task_round(std::forward<F>(f),j);
-                }
-            }   
-            //con return
-            template<typename F>
-            requires (!std::is_same_v<std::invoke_result_t<F, int>, void>)
             auto parallel_for(int start, int end, F&& f)-> std::vector<std::optional<std::future<std::invoke_result_t<F, int>>>>{
                 using return_type = std::invoke_result_t<F, int>;
                 std::vector<std::optional<std::future<return_type>>> ret;
@@ -483,17 +478,7 @@ namespace fdapde{
             }   
 
             //2
-            //senza return
             template<typename F, typename... Args>
-            requires std::is_same_v<std::invoke_result_t<F,Args...>, void>
-            void parallel_for(int start, int end, F&& f, Args... args){
-                for(int j=start; j<end; j++){
-                    this->send_task_round(std::forward<F>(f),std::forward<Args>(args)...);
-                }
-            }
-            //con return
-            template<typename F, typename... Args>
-            requires (!std::is_same_v<std::invoke_result_t<F,Args...>, void>)
             auto parallel_for(int start, int end, F&& f, Args... args)-> std::vector<std::optional<std::future<decltype(f(args...))>>>{
                 using return_type = decltype(f(args...));
                 std::vector<std::optional<std::future<return_type>>> ret;
@@ -503,18 +488,10 @@ namespace fdapde{
                 return ret;
             }
 
+            //PARALLEL_FOR_ITERATOR
             //parallel_for_iterator: for_loop scorre cotainer con iterator it e applica funzione a tutti elementi di container f(*it)
-            //void 
             template<typename Iterator, typename F> 
-            requires std::is_same_v<std::invoke_result_t<F,typename Iterator::value_type>, void> //TODO: da aggiugere vicolo che iteartor abbia membro value_type
-            void parallel_for_iterator(Iterator begin, Iterator end,F&& f){
-                for (auto it = begin; it!=end; it++){
-                    this->send_task_round(std::forward<F>(f),*it);
-                }
-            }
-            //return
-            template<typename Iterator, typename F> 
-            requires (!std::is_same_v<std::invoke_result_t<F,typename Iterator::value_type>, void>) //TODO: da aggiugere vicolo che iteartor abbia membro value_type
+            //TODO: da aggiugere vicolo che iteartor abbia membro value_type
             auto parallel_for_iterator(Iterator begin, Iterator end,F&& f)->std::vector<std::optional<std::future<std::invoke_result_t<F,typename Iterator::value_type>>>>{
                 using return_type = std::invoke_result_t<F,typename Iterator::value_type>;
                 std::vector<std::optional<std::future<return_type>>> ret;

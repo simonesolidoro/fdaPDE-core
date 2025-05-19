@@ -52,11 +52,13 @@ int main(){
     fdapde::Threadpool<fdapde::steal::random> tp(64,8);
     std::vector<std::optional<std::future<int>>> futs1;
     std::vector<std::optional<std::future<int>>> futs2;
-
-    tp.parallel_for(0,8,fun_con_i_e_void);
+    std::vector<std::optional<std::future<void>>> futs3;
+    std::vector<std::optional<std::future<void>>> futs4;
+    futs3 = tp.parallel_for(0,8,fun_con_i_e_void);
     futs1 = tp.parallel_for(0,8,fun_con_i_e_return);
+    
 
-    tp.parallel_for(0,8,fun_con_args_e_void,4,5);
+    futs4 = tp.parallel_for(0,8,fun_con_args_e_void,4,5);
     futs2 = tp.parallel_for(0,8,fun_con_args_e_return,4,5);
 
     std::this_thread::sleep_for(std::chrono::microseconds(10000));
@@ -64,6 +66,22 @@ int main(){
     for(size_t k = 0; k<futs1.size(); k++){
         if(futs1[k]){
             std::cout<<futs1[k].value().get()<<std::endl;
+        }
+    }
+    std::this_thread::sleep_for(std::chrono::microseconds(10000));
+    std::cout<<"return di fun_con_i_e_void"<<std::endl;
+    for(size_t k = 0; k<futs1.size(); k++){
+        if(futs3[k]){
+            futs3[k].value().get();
+            std::cout<<"futs3[k].value().get()"<<std::endl;
+        }
+    }
+
+    std::cout<<"return di fun_con_args_e_void"<<std::endl;
+    for(size_t k = 0; k<futs2.size(); k++){
+        if(futs4[k]){
+            futs4[k].value().get();
+            std::cout<<"futs4[k].value().get()"<<std::endl;
         }
     }
     std::cout<<"return di fun_con_args_e_return"<<std::endl;
@@ -97,6 +115,13 @@ int main(){
     for (size_t i=0; i<ret.size(); i++){
         if(ret[i]){
             std::cout<<ret[i].value().get()<<" : "<<std::endl;
+        }
+    }
+    std::vector<std::optional<std::future<void>>> ret_void = tp.parallel_for_iterator(V.begin(),V.end(),[](int a){a+100;});
+    for (size_t i=0; i<ret_void.size(); i++){
+        if(ret_void[i]){
+            ret_void[i].value().get();
+            std::cout<<"ret_void[i].value().get() : "<<std::endl;
         }
     }
 
