@@ -46,7 +46,7 @@ int main(){
 {   
     fdapde::Threadpool<fdapde::steal::random> tp(64,4);
     tp.parallel_for(0,16,[&](int i){printnum(i);});
-    tp.parallel_for(0,8,printnumb,7);
+    tp.parallel_for(9,printnumb,7);
 }
 {
     fdapde::Threadpool<fdapde::steal::random> tp(64,8);
@@ -58,8 +58,8 @@ int main(){
     futs1 = tp.parallel_for(0,8,fun_con_i_e_return);
     
 
-    futs4 = tp.parallel_for(0,8,fun_con_args_e_void,4,5);
-    futs2 = tp.parallel_for(0,8,fun_con_args_e_return,4,5);
+    futs4 = tp.parallel_for(9,fun_con_args_e_void,4,5);
+    futs2 = tp.parallel_for(9,fun_con_args_e_return,4,5);
 
     std::this_thread::sleep_for(std::chrono::microseconds(10000));
     std::cout<<"return di fun_con_i_e_return"<<std::endl;
@@ -95,7 +95,7 @@ int main(){
 {
     fdapde::Threadpool<fdapde::steal::random> tp(64,8);
         //std::atomic<int> a = 0;
-    tp.parallel_for(1,100,[](){
+    tp.parallel_for(100,[](){
         thread_local int a;
         std::cout<<std::this_thread::get_id()<<"incrementa a:"<<++a<<std::endl;
         std::this_thread::sleep_for(std::chrono::microseconds(10));

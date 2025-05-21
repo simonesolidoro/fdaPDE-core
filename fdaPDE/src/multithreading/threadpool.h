@@ -479,10 +479,10 @@ namespace fdapde{
 
             //2
             template<typename F, typename... Args>
-            auto parallel_for(int start, int end, F&& f, Args... args)-> std::vector<std::optional<std::future<decltype(f(args...))>>>{
+            auto parallel_for(int n, F&& f, Args... args)-> std::vector<std::optional<std::future<decltype(f(args...))>>>{
                 using return_type = decltype(f(args...));
                 std::vector<std::optional<std::future<return_type>>> ret;
-                for(int j=start; j<end; j++){
+                for(int j=0; j<n; j++){
                     ret.push_back(this->send_task_round(std::forward<F>(f),std::forward<Args>(args)...));
                 }
                 return ret;
