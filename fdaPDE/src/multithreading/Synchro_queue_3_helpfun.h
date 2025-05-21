@@ -31,7 +31,7 @@ namespace fdapde{
             S.empty_queue_ = false; //magari gia false quindi ridondante,ma evita if(empty_queue_) {empty_queue_ = false;} non so quale piu efficiente. 
         }
         int h = S.head_; //index dove inserira elemento
-        if constexpr(std::is_same_v<M,relax_nowait>){
+        if constexpr(std::is_same_v<M,relax_nowait>){//OSS: non atomico lettura e modifica di stato con compare_exchange perchè tanto è gia dentro al mutex. oss fuori da mutex unico cambiamento è da busy->empty/full e qui la scrittura viene fatta solo se la lettura da !=busy quindi ce garanzia che tra lettura e scrittura non cambi niente nel mentre
             if(S.queue_[h].state_.load(std::memory_order_acquire) != Synchro_queue<T,relax_nowait>::Empty)
                 return -1;
             S.queue_[h].state_.store(Synchro_queue<T,relax_nowait>::Busy, std::memory_order_release); //TODO: capire se forse dato che dentro mutex memory order superfluo. forse ottimale  memory_order_relax
