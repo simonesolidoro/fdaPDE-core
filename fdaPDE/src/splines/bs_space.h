@@ -61,7 +61,7 @@ template <typename Triangulation_> class BsSpace {
         dof_handler_(interval),
         physical_basis_(interval, order),
         order_(order) {
-        a_ = triangulation_->range()[0], b_ = triangulation_->range()[1];   // store interval range
+        a_ = triangulation_->bbox()[0], b_ = triangulation_->bbox()[1];   // store interval range
         dof_handler_.enumerate(BasisType(interval, order));
 	// build reference [-1, 1] interval with nodes mapped from physical interval [a, b]
         Eigen::Matrix<double, Dynamic, 1> ref_nodes(triangulation_->n_nodes());
@@ -119,7 +119,7 @@ template <typename Triangulation_> class BsSpace {
         } else {
             p_ = p;
         }
-        if (p_ < triangulation_->range()[0] || p_ > triangulation_->range()[1]) {
+        if (p_ < triangulation_->bbox()[0] || p_ > triangulation_->bbox()[1]) {
             return std::numeric_limits<double>::quiet_NaN();   // return NaN if point lies outside domain
         }
         return eval_shape_value(i, Matrix<double, embed_dim, 1>(map_to_reference(p_)));
