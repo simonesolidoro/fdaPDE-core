@@ -466,8 +466,11 @@ namespace fdapde{
                 return ret;
             }
 
+            //OSS: probabilmente inutile perche basterebbe catturare container in lamda nel main e poi nella lambda usare accesso tramite i
+            //     ES: [& V](int i){ ...V[i]...}
+            //     OSS: unico pro di scorrere con iteartor direttamente è che evita di dover catturare ref a V.
             //PARALLEL_FOR_ITERATOR
-            //parallel_for_iterator: for_loop scorre cotainer con iterator it e applica funzione a tutti elementi di container f(*it)
+            //parallel_for_iterator: for_loop scorre cotainer con iterator it e applica funzione con tutti elementi di container f(*it)
             template<typename Iterator, typename F> 
             //TODO: da aggiugere vicolo che iteartor abbia membro value_type
             auto parallel_for_iterator(Iterator begin, Iterator end,F&& f)->std::vector<std::optional<std::future<std::invoke_result_t<F,typename Iterator::value_type>>>>{
@@ -475,6 +478,18 @@ namespace fdapde{
                 std::vector<std::optional<std::future<return_type>>> ret;
                 for (auto it = begin; it!=end; it++){
                     ret.push_back(this->send_task_round(std::forward<F>(f),*it));
+                }
+                return ret;
+            }
+
+            //parallel_for_iterator_ref: for_loop scorre cotainer con iterator it e applica funzione con tutti elementi di container tramite reference f(std::ref(*it))
+            template<typename Iterator, typename F> 
+            //TODO: da aggiugere vicolo che iteartor abbia membro value_type
+            auto parallel_for_iterator_ref(Iterator begin, Iterator end,F&& f)->std::vector<std::optional<std::future<std::invoke_result_t<F,typename Iterator::value_type&>>>>{
+                using return_type = std::invoke_result_t<F,typename Iterator::value_type&>;
+                std::vector<std::optional<std::future<return_type>>> ret;
+                for (auto it = begin; it!=end; it++){
+                    ret.push_back(this->send_task_round(std::forward<F>(f),std::ref(*it)));
                 }
                 return ret;
             }
