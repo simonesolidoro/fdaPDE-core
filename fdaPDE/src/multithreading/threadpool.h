@@ -108,35 +108,13 @@ namespace fdapde{
                 active_ = true;
                 cv_threadpool_.notify_all();
             };
-            //default constructor
-            Threadpool(){
-                n_worker_ = std::thread::hardware_concurrency(); //OSS: forse n_worker_ = std::thread::hardware_concurrency()-1; perche un thread è quello del main
-                queue_size_ = 256*n_worker_;
-                 std::unique_lock<std::shared_mutex> loc(m_threadpool_,std::defer_lock);
-                loc.lock();
-                //if(k> std::thread::hardware_concurrency()){std::cout<<"thread richiesti > thread supportati: "<<std::thread::hardware_concurrency()<<std::endl; }
-                workers_.reserve(n_worker_);
-                for(int i=0; i<n_worker_; i++){
-                    workers_.emplace_back(std::make_shared<Worker> (queue_size_,&Threadpool::worker_loop,this,i));
-                    count_job_.emplace_back(0);
-                }
-                active_ = true;
-                cv_threadpool_.notify_all();
-            }
+
             //constructor default numero di worker ma specifica size code
-            Threadpool(int n):queue_size_(n){
-                n_worker_ = std::thread::hardware_concurrency(); //OSS: forse n_worker_ = std::thread::hardware_concurrency()-1; perche un thread è quello del main
-                std::unique_lock<std::shared_mutex> loc(m_threadpool_,std::defer_lock);
-                loc.lock();
-                //if(k> std::thread::hardware_concurrency()){std::cout<<"thread richiesti > thread supportati: "<<std::thread::hardware_concurrency()<<std::endl; }
-                workers_.reserve(n_worker_);
-                for(int i=0; i<n_worker_; i++){
-                    workers_.emplace_back(std::make_shared<Worker> (queue_size_,&Threadpool::worker_loop,this,i));
-                    count_job_.emplace_back(0);
-                }
-                active_ = true;
-                cv_threadpool_.notify_all();
-            }
+            Threadpool(int n): Threadpool(n, std::thread::hardware_concurrency()){}
+
+            //default constructor
+            Threadpool(): Threadpool(256){}
+
             ~Threadpool(){
                 //std::unique_lock<std::mutex> loc_t(m_threadpool_);
                 //active_= false;
