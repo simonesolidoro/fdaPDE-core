@@ -69,9 +69,12 @@ template <int LocalDim, int EmbedDim, typename Derived> class TriangulationBase 
         // store number of nodes and number of cells
         n_nodes_ = nodes_.rows();
         n_cells_ = cells_.rows();
-        // compute mesh limits
-        range_.row(0) = nodes_.colwise().minCoeff();
-        range_.row(1) = nodes_.colwise().maxCoeff();
+        // compute mesh bounding box
+        bbox_.row(0) = nodes_.colwise().minCoeff();
+        bbox_.row(1) = nodes_.colwise().maxCoeff();
+	// set-up markers
+	cells_markers_.resize(n_cells_, Unmarked);
+	nodes_markers_.resize(n_nodes_, Unmarked);
     }
     TriangulationBase(const dbl_matrix_t& nodes, const int_matrix_t& cells, const int_matrix_t& boundary) :
         TriangulationBase(nodes, cells, boundary, /* flags = */ 0) { }
@@ -95,7 +98,7 @@ template <int LocalDim, int EmbedDim, typename Derived> class TriangulationBase 
     int n_cells() const { return n_cells_; }
     int n_nodes() const { return n_nodes_; }
     int n_boundary_nodes() const { return boundary_markers_.count(); }
-    Eigen::Matrix<double, 2, embed_dim> range() const { return range_; }
+    Eigen::Matrix<double, 2, embed_dim> bbox() const { return bbox_; }
     double measure() const {
         return std::accumulate(
           cells_begin(), cells_end(), 0.0, [](double v, const auto& e) { return v + e.measure(); });
@@ -142,14 +145,14 @@ template <int LocalDim, int EmbedDim, typename Derived> class TriangulationBase 
             { lambda(c) } -> std::same_as<bool>;
         }) {
         fdapde_assert(marker >= 0);
-        cells_markers_.resize(n_cells_);
+        cells_markers_.resize(n_cells_, Unmarked);
         for (cell_iterator it = cells_begin(); it != cells_end(); ++it) {
             cells_markers_[it->id()] = lambda(*it) ? marker : Unmarked;
         }
     }
     template <int Rows, typename XprType> void mark_cells(const BinMtxBase<Rows, 1, XprType>& mask) {
         fdapde_assert(mask.rows() == n_cells_);
-        cells_markers_.resize(n_cells_);
+        cells_markers_.resize(n_cells_, Unmarked);
         for (cell_iterator it = cells_begin(); it != cells_end(); ++it) {
             cells_markers_[it->id()] = mask[it->id()] ? 1 : 0;
         }
@@ -242,7 +245,7 @@ template <int LocalDim, int EmbedDim, typename Derived> class TriangulationBase 
     Eigen::Matrix<double, Dynamic, Dynamic> nodes_ {};                 // physical coordinates of mesh's vertices
     Eigen::Matrix<int, Dynamic, Dynamic, Eigen::RowMajor> cells_ {};   // nodes composing each cell
     BinaryVector<Dynamic> boundary_markers_ {};                        // j-th element is 1 \iff node j is on boundary
-    Eigen::Matrix<double, 2, embed_dim> range_ {};   // mesh bounding box (column i maps to the i-th dimension)
+    Eigen::Matrix<double, 2, embed_dim> bbox_ {};   // mesh bounding box (column i maps to the i-th dimension)
     int n_nodes_ = 0, n_cells_ = 0;
     int flags_ = 0;
     std::vector<int> cells_markers_;   // marker associated to i-th cell

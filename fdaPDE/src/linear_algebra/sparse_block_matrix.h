@@ -283,8 +283,7 @@ struct traits<SparseBlockMatrix<Scalar_, Rows_, Cols_, Options_, StorageIndex_>>
         ColsAtCompileTime = Dynamic,
         MaxRowsAtCompileTime = Dynamic,
         MaxColsAtCompileTime = Dynamic,
-        Flags = Options_ |   // inherits supplied stoarge mode, defaulted to ColMajor storage
-                LvalueBit,   // the expression has a coeffRef() method, i.e. it is writable
+        Flags = Options_ | LvalueBit | NestByRefBit,   // the expression has a coeffRef() method and it is writable
         IsVectorAtCompileTime = 0,
         IsColMajor = Options_ & Eigen::RowMajorBit ? 0 : 1
     };
@@ -298,60 +297,62 @@ struct evaluator<SparseBlockMatrix<Scalar_, Rows_, Cols_, Options_, StorageIndex
     typedef Scalar_ Scalar;
     enum {   // required compile time constants
         CoeffReadCost = NumTraits<Scalar_>::ReadCost,
-        Flags         = Options_ | LvalueBit
+        Flags         = Options_ | LvalueBit | NestByRefBit
     };
-    // InnerIterator defines the SparseBlockMatrix itself
     class InnerIterator {
        public:
         typedef typename traits<XprType>::Scalar Scalar;
         typedef typename traits<XprType>::StorageIndex StorageIndex;
         typedef typename SparseMatrix<Scalar>::InnerIterator IteratorType;
-        // costructor (outer is the index of the column over which we are iterating, for ColMajor storage).
+        // costructor (for ColMajor storage, outer is the index of the column over which we are iterating)
+        InnerIterator() : m_mat(0) { }
         InnerIterator(const evaluator<XprType>& eval, Index outer) :
             m_mat(eval.xpr_),
             outer_(outer),
             innerBlockIndex(0),
-            outerBlockIndex(m_mat.outerBlockIndex(outer)),
+            outerBlockIndex(m_mat->outerBlockIndex(outer)),
             innerOffset(0),
-            outerOffset(m_mat.indexToBlockOuter(outer)) {
-            inner_ = IteratorType(m_mat.block(0, outerBlockIndex), outerOffset);
+            outerOffset(m_mat->indexToBlockOuter(outer)) {
+            inner_ = IteratorType(const_cast<XprType&>(*m_mat).block(0, outerBlockIndex), outerOffset);
             this->operator++();   // init iterator
         };
         InnerIterator& operator++() {
             while (!inner_) {   // current block is over, search for next not-empty block, if any
-                if (innerBlockIndex == m_mat.blockRows() - 1) {
+                if (innerBlockIndex == m_mat->blockRows() - 1) {
                     m_index = -1;
                     return *this;
                 }   // end of iterator
-                inner_ = IteratorType(m_mat.block(++innerBlockIndex, outerBlockIndex), outerOffset);
-                innerOffset += m_mat.block(0, outerBlockIndex).rows();   // increase innerOffset
+                inner_ =
+                  IteratorType(const_cast<XprType&>(*m_mat).block(++innerBlockIndex, outerBlockIndex), outerOffset);
+                innerOffset += m_mat->block(0, outerBlockIndex).rows();   // increase innerOffset
             }
-            m_value = inner_.value();
+            m_value = std::addressof(inner_.valueRef());
             m_index = innerOffset + inner_.index();
             ++inner_;
             return *this;
         };
         // access methods
-        inline Scalar value() const { return m_value; }         // value pointed by the iterator
+        inline const Scalar& value() const { return *m_value; }
+        inline Scalar& valueRef() { return const_cast<Scalar&>(*m_value); }
         inline Index col() const { return outer_; }             // current column (assume ColMajor order)
         inline Index row() const { return index(); }            // current row (assume ColMajor order)
         inline Index outer() const { return outer_; }           // outer index
         inline StorageIndex index() const { return m_index; }   // inner index
         operator bool() const { return m_index >= 0; }          // false when the iterator is over
        protected:
-        IteratorType inner_;    // current block inner iterator
-        const XprType& m_mat;   // SparseBlockMatrix to evaluate
-        Scalar m_value;         // value pointed by the iterator
-        StorageIndex m_index;   // current inner index
-        Index outer_;           // outer index as received from the constructor
+        IteratorType inner_;     // current block InnerIterator
+        const XprType* m_mat;
+        const Scalar* m_value;   // current value
+        StorageIndex m_index;    // current inner index
+        Index outer_;            // outer index as received from the constructor
         // internals
         Index innerBlockIndex, outerBlockIndex;   // indexes of block where iterator is iterating
         Index innerOffset, outerOffset;
     };
-    evaluator(const XprType& xpr) : xpr_(xpr) {};
-    inline Index nonZerosEstimate() const { return xpr_.nonZerosEstimate(); }
+    evaluator(const XprType& xpr) : xpr_(std::addressof(xpr)) { }
+    inline Index nonZerosEstimate() const { return xpr_->nonZerosEstimate(); }
     // SparseBlockMatrix to evaluate
-    const SparseBlockMatrix<Scalar_, Rows_, Cols_, Options_, StorageIndex_>& xpr_;
+    const SparseBlockMatrix<Scalar_, Rows_, Cols_, Options_, StorageIndex_>* xpr_;
 };
 
 }   // namespace internal

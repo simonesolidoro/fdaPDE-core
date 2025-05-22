@@ -66,8 +66,8 @@ template <> class Triangulation<1, 2> : public TriangulationBase<1, 2, Triangula
             for (int i = 0; i < n_cells_; ++i) { cell_cache_.emplace_back(i, this); }
         }
         // compute mesh limits
-        range_.row(0) = nodes_.colwise().minCoeff();
-        range_.row(1) = nodes_.colwise().maxCoeff();
+        bbox_.row(0) = nodes_.colwise().minCoeff();
+        bbox_.row(1) = nodes_.colwise().maxCoeff();
         neighbors_.resize(n_cells_, n_cells_);
         // compute node to cells boundings
         for (int i = 0; i < n_cells_; ++i) {

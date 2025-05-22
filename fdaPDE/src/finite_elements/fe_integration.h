@@ -380,7 +380,7 @@ template <> struct fe_quadrature_simplex<3, 24> : public fe_quadrature_simplex_b
 // compute quadrature nodes on physical domain
 template <int LocalDim, int EmbedDim, typename Quadrature>
 Eigen::Matrix<double, Dynamic, Dynamic>
-quadrature_nodes(const Triangulation<LocalDim, EmbedDim>& triangulation, const Quadrature& quadrature) {
+simplex_quadrature_nodes(const Triangulation<LocalDim, EmbedDim>& triangulation, const Quadrature& quadrature) {
     fdapde_static_assert(
       internals::is_fe_quadrature_simplex_v<Quadrature>, THIS_METHOD_IS_FOR_FE_QUADRATURE_SIMPLEX_ONLY);
     constexpr int n_quadrature_nodes = Quadrature::order;

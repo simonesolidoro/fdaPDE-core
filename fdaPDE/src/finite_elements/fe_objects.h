@@ -612,15 +612,15 @@ class FeFunction :
     }
     VectorFeFunctionComponent operator()(int i, [[maybe_unused]] int j) const { return operator[](i); }
     // norms of fe functions
-    double l2_squared_norm() {
-        internals::fe_mass_assembly_loop<typename FeSpace::FeType> assembler(fe_space_->dof_handler());
+    double l2_squared_norm() const {
+        internals::fe_mass_assembly_loop<FeSpace_> assembler(fe_space_);
         return coeff_.dot(assembler.assemble() * coeff_);
     }
-    double l2_norm() { return std::sqrt(l2_squared_norm()); }
+    double l2_norm() const { return std::sqrt(l2_squared_norm()); }
     double h1_squared_norm() const {   // Sobolev H^1 norm of finite element function
         TrialFunction u(*fe_space_);
         TestFunction  v(*fe_space_);
-        auto a = integrate(fe_space_->triangulation())(inner(grad(u), grad(v)) + u * v);
+        auto a = integral(fe_space_->triangulation())(dot(grad(u), grad(v)) + u * v);
         return coeff_.dot(a.assemble() * coeff_);
     }
     double h1_norm() const { return std::sqrt(h1_squared_norm()); }

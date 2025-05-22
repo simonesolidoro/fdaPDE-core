@@ -129,12 +129,22 @@ template <typename Triangulation_, typename FeType_> class FeSpace {
         if (cell_id == -1) return std::numeric_limits<double>::quiet_NaN();
 	return eval_cell_value(i, cell_id, p);
     }
-    // return i-th basis function on physical domain
+    // access i-th basis function on physical domain
     FeFunction<FeSpace<Triangulation_, FeType_>> operator[](int i) {
         fdapde_assert(i < dof_handler_.n_dofs());
 	Eigen::Matrix<double, Dynamic, 1> coeff = Eigen::Matrix<double, Dynamic, 1>::Zero(dof_handler_.n_dofs());
 	coeff[i] = 1;
         return FeFunction<FeSpace<Triangulation_, FeType_>>(*this, coeff);
+    }
+    // boundary conditions
+    template <typename... Data> void impose_dirichlet_constraint(int on, Data&&... g) {
+        dof_handler_.set_dirichlet_constraint(on, g...);
+    }
+    template <typename Iterable, typename... Data> void impose_dirichlet_constraint(const Iterable& on, Data&&... g) {
+	for(auto it = on.begin(); it != on.end(); ++it) { dof_handler_.set_dirichlet_constraint(*it, g...); }
+    }
+    template <typename... Data> void impose_dirichlet_constaint(Data&&... g) {
+        impose_dirichlet_constraint(BoundaryAll, g...);
     }
    private:
     const Triangulation* triangulation_;

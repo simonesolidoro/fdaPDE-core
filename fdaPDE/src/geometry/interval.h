@@ -41,8 +41,8 @@ template <> class Triangulation<1, 1> : public TriangulationBase<1, 1, Triangula
         n_nodes_ = nodes_.rows();
         n_cells_ = n_nodes_ - 1;
         // compute mesh limits
-        Base::range_[0] = nodes[0];
-        Base::range_[1] = nodes[n_nodes_ - 1];
+        Base::bbox_[0] = nodes[0];
+        Base::bbox_[1] = nodes[n_nodes_ - 1];
         // build elements and neighboring structure
         cells_.resize(n_cells_, 2);
         for (int i = 0; i < n_nodes_ - 1; ++i) {
@@ -82,7 +82,7 @@ template <> class Triangulation<1, 1> : public TriangulationBase<1, 1, Triangula
     }
     bool is_node_on_boundary(int id) const { return (id == 0 || id == (n_nodes_ - 1)); }
     constexpr int n_boundary_nodes() const { return 2; }
-    double measure() const { return std::abs(range_[1] - range_[0]); }
+    double measure() const { return std::abs(bbox_[1] - bbox_[0]); }
     // boundary iterator
     using boundary_iterator = Base::boundary_node_iterator;
     BoundaryIterator<Triangulation<1, 1>> boundary_begin(int marker = BoundaryAll) const {
@@ -126,7 +126,7 @@ template <> class Triangulation<1, 1> : public TriangulationBase<1, 1, Triangula
     // localize element containing point using a O(log(n)) binary search strategy
     int locate_(double p) const {
         // check if point is inside
-        if (p < range_[0] || p > range_[1]) {
+        if (p < bbox_[0] || p > bbox_[1]) {
             return -1;
         } else {
             // binary search strategy
