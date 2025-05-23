@@ -613,7 +613,7 @@ class FeFunction :
     VectorFeFunctionComponent operator()(int i, [[maybe_unused]] int j) const { return operator[](i); }
     // norms of fe functions
     double l2_squared_norm() const {
-        internals::fe_mass_assembly_loop<FeSpace_> assembler(fe_space_);
+        internals::fe_mass_assembly_loop<FeSpace> assembler(*fe_space_);
         return coeff_.dot(assembler.assemble() * coeff_);
     }
     double l2_norm() const { return std::sqrt(l2_squared_norm()); }
@@ -642,12 +642,12 @@ class FeFunction :
             typename DofHandlerType::CellType cell = fe_space_->dof_handler().cell(it->id());
             Eigen::Matrix<int, Dynamic, 1> active_dofs = cell.dofs();
 	    // integral approximation on cell (skip point location)
-            for (int q_k = 0; q_k < n_quadrature_nodes; ++q_k) {
-                for (int i = 0, n = fe_space_->n_shape_functions(); i < n; ++i) {
+            for (int i = 0, n = fe_space_->n_shape_functions(); i < n; ++i) {
+                for (int q_k = 0; q_k < n_quadrature_nodes; ++q_k) {
                     partial +=
-                      coeff_[active_dofs[i]] * fe_space_->eval_shape_value(i, ref_quad_nodes.row(q_k).transpose());
+                      (coeff_[active_dofs[i]] * fe_space_->eval_shape_value(i, ref_quad_nodes.row(q_k).transpose())) *
+                      quadrature.weights[q_k];
                 }
-                partial *= quadrature.weights[q_k];
             }
             integral += partial * it->measure();
         }
