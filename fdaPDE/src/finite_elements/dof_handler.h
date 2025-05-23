@@ -167,6 +167,9 @@ template <int LocalDim, int EmbedDim, typename Derived> class fe_dof_handler_bas
         fdapde_assert(sizeof...(Data) == derived().dof_multiplicity());
         dof_constraints_.set_dirichlet_constraint(on, g...);
     }
+    template <typename... Data> void set_dirichlet_constraint(const std::initializer_list<int>& on, Data&&... g) {
+        set_dirichlet_constraint(std::vector<int> {on}, std::forward<Data>(g)...);
+    }
     template <typename Iterable, typename... Data> void set_dirichlet_constraint(const Iterable& on, Data&&... g) {
         fdapde_assert(sizeof...(Data) == derived().dof_multiplicity());
 	for(auto it = on.begin(); it != on.end(); ++it) { dof_constraints_.set_dirichlet_constraint(*it, g...); }

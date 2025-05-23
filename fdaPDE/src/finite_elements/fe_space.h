@@ -143,6 +143,9 @@ template <typename Triangulation_, typename FeType_> class FeSpace {
     template <typename Iterable, typename... Data> void impose_dirichlet_constraint(const Iterable& on, Data&&... g) {
 	for(auto it = on.begin(); it != on.end(); ++it) { dof_handler_.set_dirichlet_constraint(*it, g...); }
     }
+    template <typename... Data> void impose_dirichlet_constraint(const std::initializer_list<int>& on, Data&&... g) {
+        impose_dirichlet_constraint(std::vector<int> {on}, std::forward<Data>(g)...);
+    }
     template <typename... Data> void impose_dirichlet_constaint(Data&&... g) {
         impose_dirichlet_constraint(BoundaryAll, g...);
     }
