@@ -503,7 +503,7 @@ class SHPFile {
     }
 };
 
-SHPFile read_shp(const std::string& filename) {
+inline SHPFile read_shp(const std::string& filename) {
     SHPFile shp(filename);
     return shp;
 }

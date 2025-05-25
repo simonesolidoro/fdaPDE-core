@@ -143,7 +143,7 @@ class fe_bilinear_form_assembly_loop :
         for (iterator it = begin; it != end; ++it) {
             // update fe_packet content based on form requests
             fe_packet.cell_measure = it->measure();
-            if constexpr (Form::XprBits & int(fe_assembler_flags::compute_cell_id)) { fe_packet.cell_id = it->id(); }
+            if constexpr (Form::XprBits & int(geo_assembler_flags::compute_cell_id)) { fe_packet.cell_id = it->id(); }
             if constexpr (Form::XprBits & int(fe_assembler_flags::compute_shape_grad)) {
                 Base::eval_shape_grads_on_cell(it, test_shape_grads_, test_grads);
                 if constexpr (is_petrov_galerkin) Base::eval_shape_grads_on_cell(it, trial_shape_grads_, trial_grads);

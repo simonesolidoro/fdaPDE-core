@@ -67,7 +67,7 @@ class fe_linear_form_assembly_loop :
 	int local_cell_id = 0;
         for (iterator it = begin; it != end; ++it) {
             fe_packet.cell_measure = it->measure();
-            if constexpr (Form::XprBits & int(fe_assembler_flags::compute_cell_id)) { fe_packet.cell_id = it->id(); }
+            if constexpr (Form::XprBits & int(geo_assembler_flags::compute_cell_id)) { fe_packet.cell_id = it->id(); }
             if constexpr (Form::XprBits & int(fe_assembler_flags::compute_shape_grad)) {
                 Base::eval_shape_grads_on_cell(it, Base::test_shape_grads_, test_grads);
             }

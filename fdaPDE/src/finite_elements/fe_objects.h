@@ -853,31 +853,6 @@ class FeCoeff :
     DataT data_;
 };
 
-template <typename Triangulation_>
-struct CellDiameter :
-    ScalarFieldBase<Triangulation_::embed_dim, CellDiameter<Triangulation_>> {
-    using Base = ScalarFieldBase<Triangulation_::embed_dim, CellDiameter<Triangulation_>>;
-    using Triangulation = std::decay_t<Triangulation_>;
-    using InputType = internals::fe_assembler_packet<Triangulation::embed_dim>;
-    using Scalar = double;
-    static constexpr int StaticInputSize = Triangulation::embed_dim;
-    static constexpr int NestAsRef = 0;
-    static constexpr int XprBits = 0 | int(fe_assembler_flags::compute_cell_id);
-
-    constexpr CellDiameter() noexcept : triangulation_(nullptr) { }
-    constexpr CellDiameter(const Triangulation_& triangulation) noexcept :
-        triangulation_(std::addressof(triangulation)) {
-        fdapde_assert(triangulation_->n_nodes() != 0 && triangulation_->n_cells() != 0);
-    }
-    // fe assembly evaluation
-    constexpr Scalar operator()(const InputType& fe_packet) const {
-        return std::sqrt(triangulation_->cell(fe_packet.cell_id).measure() * 2);
-    }
-    constexpr int input_size() const { return StaticInputSize; }
-   private:
-    const Triangulation* triangulation_;
-};
-
 }   // namespace fdapde
 
 #endif   // __FDAPDE_FE_OBJECTS_H__

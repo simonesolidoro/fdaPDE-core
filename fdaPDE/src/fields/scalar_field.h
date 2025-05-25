@@ -93,7 +93,9 @@ class ScalarFieldBinOp : public ScalarFieldBase<Lhs_::StaticInputSize, ScalarFie
     template <typename T1, typename T2> using Meta = ScalarFieldBinOp<T1, T2, BinaryOperation>;
     using Base =
       ScalarFieldBase<LhsDerived::StaticInputSize, ScalarFieldBinOp<LhsDerived, RhsDerived, BinaryOperation>>;
-    using InputType = typename LhsDerived::InputType;
+    using LhsInputType = typename LhsDerived::InputType;
+    using RhsInputType = typename RhsDerived::InputType;
+    using InputType = internals::prefer_most_derived_t<LhsInputType, RhsInputType>;
     using Scalar = typename LhsDerived::Scalar;
     static constexpr int StaticInputSize = LhsDerived::StaticInputSize;
     static constexpr int NestAsRef = 0;
@@ -109,8 +111,9 @@ class ScalarFieldBinOp : public ScalarFieldBase<Lhs_::StaticInputSize, ScalarFie
     constexpr ScalarFieldBinOp(const Lhs_& lhs, const Rhs_& rhs) : ScalarFieldBinOp(lhs, rhs, BinaryOperation {}) { }
     constexpr Scalar operator()(const InputType& p) const {
         fdapde_static_assert(
-          std::is_same_v<typename Lhs_::InputType FDAPDE_COMMA typename Rhs_::InputType>,
-          YOU_MIXED_SCALAR_FIELDS_WITH_DIFFERENT_INPUT_VECTOR_TYPES);
+          std::is_same_v<LhsInputType FDAPDE_COMMA RhsInputType> ||
+            internals::are_related_by_inheritance_v<LhsInputType FDAPDE_COMMA RhsInputType>,
+          YOU_MIXED_SCALAR_FIELDS_WITH_INCOMPATIBLE_INPUT_VECTOR_TYPES);
         if constexpr (StaticInputSize == Dynamic) { fdapde_assert(p.rows() == Base::input_size()); }
         return op_(lhs_(p), rhs_(p));
     }

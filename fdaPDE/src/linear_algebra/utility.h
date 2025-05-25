@@ -23,7 +23,7 @@ namespace fdapde {
 namespace internals {
     
 // builds gaussian matrix
-Eigen::Matrix<double, Dynamic, Dynamic>
+inline Eigen::Matrix<double, Dynamic, Dynamic>
 gaussian_matrix(std::size_t rows, std::size_t cols, double std = 1.0, int seed = fdapde::random_seed) {
     // set up random number generation
     int seed_ = (seed == fdapde::random_seed) ? std::random_device()() : seed;

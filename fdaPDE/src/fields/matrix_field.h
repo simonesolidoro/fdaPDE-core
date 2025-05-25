@@ -43,7 +43,9 @@ class MatrixFieldProduct : public MatrixFieldBase<Lhs::StaticInputSize, MatrixFi
     using RhsDerived = Rhs;
     template <typename T1, typename T2> using Meta = MatrixFieldProduct<T1, T2>;
     using Base = MatrixFieldBase<Lhs::StaticInputSize, MatrixFieldProduct<Lhs, Rhs>>;
-    using InputType = typename Lhs::InputType;
+    using LhsInputType = typename LhsDerived::InputType;
+    using RhsInputType = typename RhsDerived::InputType;
+    using InputType = internals::prefer_most_derived_t<LhsInputType, RhsInputType>;
     using Scalar = decltype(std::declval<typename Lhs::Scalar>() * std::declval<typename Rhs::Scalar>());
     static constexpr int StaticInputSize = Lhs::StaticInputSize;
     static constexpr int Rows = Lhs::Rows;
@@ -270,7 +272,9 @@ class MatrixFieldBinOp : public MatrixFieldBase<Lhs::StaticInputSize, MatrixFiel
     using RhsDerived = Rhs;
     template <typename T1, typename T2> using Meta = MatrixFieldBinOp<T1, T2, BinaryOperation>;
     using Base = MatrixFieldBase<Lhs::StaticInputSize, MatrixFieldBinOp<Lhs, Rhs, BinaryOperation>>;
-    using InputType = typename Lhs::InputType;
+    using LhsInputType = typename LhsDerived::InputType;
+    using RhsInputType = typename RhsDerived::InputType;
+    using InputType = internals::prefer_most_derived_t<LhsInputType, RhsInputType>;
     using Scalar = decltype(std::declval<BinaryOperation>().operator()(
       std::declval<typename Lhs::Scalar>(), std::declval<typename Rhs::Scalar>()));
     static constexpr int StaticInputSize = Lhs::StaticInputSize;

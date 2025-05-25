@@ -42,7 +42,9 @@ class DotProduct : public ScalarFieldBase<Lhs::StaticInputSize, DotProduct<Lhs, 
     using RhsDerived = Rhs;
     template <typename T1, typename T2> using Meta = DotProduct<T1, T2>;
     using Base = ScalarFieldBase<LhsDerived::StaticInputSize, DotProduct<Lhs, Rhs>>;
-    using InputType = typename LhsDerived::InputType;
+    using LhsInputType = typename LhsDerived::InputType;
+    using RhsInputType = typename RhsDerived::InputType;
+    using InputType = internals::prefer_most_derived_t<LhsInputType, RhsInputType>;
     using Scalar = decltype(std::declval<typename LhsDerived::Scalar>() * std::declval<typename RhsDerived::Scalar>());
     static constexpr int StaticInputSize = LhsDerived::StaticInputSize;
     static constexpr int NestAsRef = 0;

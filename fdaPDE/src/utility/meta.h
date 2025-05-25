@@ -328,6 +328,18 @@ const auto& select_one_between(const Arg1& arg1, const Arg2& arg2, F&& f) {
     }
 }
 
+// check if two types are related by inheritance
+template <typename T, typename W> struct are_related_by_inheritance {
+    static constexpr bool value = std::is_base_of_v<T, W> || std::is_base_of_v<W, T>;
+};
+template <typename T, typename W> constexpr bool are_related_by_inheritance_v = are_related_by_inheritance<T, W>::value;
+
+// returns the most derived type between T and W, or T otherwise
+template <typename T, typename W> struct prefer_most_derived {
+    using type = std::conditional_t<std::is_same_v<T, W>, T, std::conditional_t<std::is_base_of_v<T, W>, W, T>>;
+};
+template <typename T, typename W> using prefer_most_derived_t = typename prefer_most_derived<T, W>::type;
+
 }   // namespace internals
 }   // namespace fdapde
 

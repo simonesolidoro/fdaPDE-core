@@ -274,6 +274,54 @@ auto integral(
       range.first, range.second, quadrature...);
 }
 
+// geometric object operators
+
+enum class geo_assembler_flags {   // reserved bits 5-7
+    compute_cell_id = 0x10000
+};
+  
+namespace internals {
+
+template <int LocalDim> struct geo_assembler_packet {
+    static constexpr int local_dim = LocalDim;
+    geo_assembler_packet() : cell_id(0), cell_measure(0), normal() { }
+    geo_assembler_packet(geo_assembler_packet&&) noexcept = default;
+    geo_assembler_packet(const geo_assembler_packet&) noexcept = default;
+
+    // geometric informations
+    int cell_id;           // active cell identifier
+    double cell_measure;   // active cell measure
+    MdArray<double, MdExtents<local_dim, 1>> normal;
+};
+
+}   // namespace internals
+
+template <typename Triangulation_>
+struct CellDiameter :
+    ScalarFieldBase<Triangulation_::embed_dim, CellDiameter<Triangulation_>> {
+    using Base = ScalarFieldBase<Triangulation_::embed_dim, CellDiameter<Triangulation_>>;
+    using Triangulation = std::decay_t<Triangulation_>;
+    using InputType = internals::geo_assembler_packet<Triangulation::embed_dim>;
+    using Scalar = double;
+    static constexpr int StaticInputSize = Triangulation::embed_dim;
+    static constexpr int NestAsRef = 0;
+    static constexpr int XprBits = 0 | int(geo_assembler_flags::compute_cell_id);
+
+    constexpr CellDiameter() noexcept : triangulation_(nullptr) { }
+    constexpr CellDiameter(const Triangulation_& triangulation) noexcept :
+        triangulation_(std::addressof(triangulation)) {
+        fdapde_assert(triangulation_->n_nodes() != 0 && triangulation_->n_cells() != 0);
+    }
+    // assembly evaluation
+    constexpr Scalar operator()(const InputType& geo_packet) const {
+        return std::sqrt(triangulation_->cell(geo_packet.cell_id).measure() * 2);
+    }
+    constexpr int input_size() const { return StaticInputSize; }
+   private:
+    const Triangulation* triangulation_;
+};
+
+  
 }   // namespace fdapde
 
 #endif   // __FDAPDE_ASSEMBLY_H__
