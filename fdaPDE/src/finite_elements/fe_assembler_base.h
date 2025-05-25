@@ -75,6 +75,10 @@ template <typename FeSpace_, typename... Quadrature_> struct fe_face_assembler_t
         if constexpr (sizeof...(Quadrature_) == 0) {
             return typename FeType::template face_quadrature_t<local_dim> {};
         } else {
+            using UserQuadrature = std::tuple_element_t<0, std::tuple<Quadrature_...>>;
+            fdapde_static_assert(
+              UserQuadrature::local_dim == (local_dim - 1),
+              SUPPLIED_QUADRATURE_DIMENSION_DOES_NOT_MATCH_FACE_DIMENSION);
             return std::get<0>(std::tuple<Quadrature_...>());
         }
     }());
@@ -99,6 +103,9 @@ template <typename FeSpace_, typename... Quadrature_> struct fe_cell_assembler_t
         if constexpr (sizeof...(Quadrature_) == 0) {
             return typename FeType::template cell_quadrature_t<local_dim> {};
         } else {
+            using UserQuadrature = std::tuple_element_t<0, std::tuple<Quadrature_...>>;
+            fdapde_static_assert(
+              UserQuadrature::local_dim == local_dim, SUPPLIED_QUADRATURE_DIMENSION_DOES_NOT_MATCH_PROBLEM_DIMENSION);
             return std::get<0>(std::tuple<Quadrature_...>());
         }
     }());
@@ -175,8 +182,9 @@ struct fe_assembler_base {
     static consteval MdArray<
       double, MdExtents<fe_traits__::n_basis, Quadrature__::order, fe_traits__::n_components>>
     eval_shape_values() {
-        fdapde_static_assert(
-          Quadrature__::local_dim == local_dim, QUADRATURE_DIMENSION_DOES_NOT_MATCH_PROBLEM_DIMENSION);
+        fdapde_static_assert(   // check dimensions only for user-provided quadrature
+          std::is_same_v<Quadrature__ FDAPDE_COMMA Quadrature> || Quadrature__::local_dim == local_dim,
+          SUPPLIED_QUADRATURE_DIMENSION_DOES_NOT_MATCH_PROBLEM_DIMENSION);
         using BasisType = typename fe_traits__::BasisType;
 	using dof_descriptor = typename fe_traits__::dof_descriptor;
         constexpr int n_basis = BasisType::n_basis;
@@ -203,8 +211,9 @@ struct fe_assembler_base {
     static consteval MdArray<
       double, MdExtents<fe_traits__::n_basis, Quadrature__::order, fe_traits__::n_components, local_dim>>
     eval_shape_grads() {
-        fdapde_static_assert(
-          Quadrature__::local_dim == local_dim, QUADRATURE_DIMENSION_DOES_NOT_MATCH_PROBLEM_DIMENSION);
+        fdapde_static_assert(   // check dimensions only for user-provided quadrature
+          std::is_same_v<Quadrature__ FDAPDE_COMMA Quadrature> || Quadrature__::local_dim == local_dim,
+          SUPPLIED_QUADRATURE_DIMENSION_DOES_NOT_MATCH_PROBLEM_DIMENSION);
         using BasisType = typename fe_traits__::BasisType;
 	using dof_descriptor = typename fe_traits__::dof_descriptor;
         constexpr int n_basis = BasisType::n_basis;
@@ -229,8 +238,9 @@ struct fe_assembler_base {
     static consteval MdArray<
       double, MdExtents<fe_traits__::n_basis, Quadrature__::order, fe_traits__::n_components, local_dim, local_dim>>
     eval_shape_hess() {
-        fdapde_static_assert(
-          Quadrature__::local_dim == local_dim, QUADRATURE_DIMENSION_DOES_NOT_MATCH_PROBLEM_DIMENSION);
+        fdapde_static_assert(   // check dimensions only for user-provided quadrature
+          std::is_same_v<Quadrature__ FDAPDE_COMMA Quadrature> || Quadrature__::local_dim == local_dim,
+          SUPPLIED_QUADRATURE_DIMENSION_DOES_NOT_MATCH_PROBLEM_DIMENSION);
         using BasisType = typename fe_traits__::BasisType;
 	using dof_descriptor = typename fe_traits__::dof_descriptor;
         constexpr int n_basis = BasisType::n_basis;
