@@ -276,22 +276,22 @@ auto integral(
 
 // geometric object operators
 
-enum class geo_assembler_flags {   // reserved bits 5-7
-    compute_cell_id = 0x10000
+enum class geo_assembler_flags {
+    compute_geo_id      = 0x10000,
+    compute_face_normal = 0x20000
 };
   
 namespace internals {
 
-template <int LocalDim> struct geo_assembler_packet {
-    static constexpr int local_dim = LocalDim;
-    geo_assembler_packet() : cell_id(0), cell_measure(0), normal() { }
+template <int EmbedDim> struct geo_assembler_packet {
+    static constexpr int embed_dim = EmbedDim;
+    geo_assembler_packet() : geo_id(0), measure(0), normal() { }
     geo_assembler_packet(geo_assembler_packet&&) noexcept = default;
     geo_assembler_packet(const geo_assembler_packet&) noexcept = default;
 
-    // geometric informations
-    int cell_id;           // active cell identifier
-    double cell_measure;   // active cell measure
-    MdArray<double, MdExtents<local_dim, 1>> normal;
+    int geo_id;   // active geo identifier
+    double measure;
+    MdArray<double, MdExtents<embed_dim, 1>> normal;
 };
 
 }   // namespace internals
@@ -305,7 +305,7 @@ struct CellDiameter :
     using Scalar = double;
     static constexpr int StaticInputSize = Triangulation::embed_dim;
     static constexpr int NestAsRef = 0;
-    static constexpr int XprBits = 0 | int(geo_assembler_flags::compute_cell_id);
+    static constexpr int XprBits = 0 | int(geo_assembler_flags::compute_geo_id);
 
     constexpr CellDiameter() noexcept : triangulation_(nullptr) { }
     constexpr CellDiameter(const Triangulation_& triangulation) noexcept :
@@ -314,13 +314,42 @@ struct CellDiameter :
     }
     // assembly evaluation
     constexpr Scalar operator()(const InputType& geo_packet) const {
-        return std::sqrt(triangulation_->cell(geo_packet.cell_id).measure() * 2);
+        return std::sqrt(triangulation_->cell(geo_packet.geo_id).measure() * 2);
     }
     constexpr int input_size() const { return StaticInputSize; }
    private:
     const Triangulation* triangulation_;
 };
 
+template <typename Triangulation_>
+struct FaceNormal :
+    MatrixFieldBase<Triangulation_::embed_dim, FaceNormal<Triangulation_>> {
+    using Base = MatrixFieldBase<Triangulation_::embed_dim, FaceNormal<Triangulation_>>;
+    using Triangulation = std::decay_t<Triangulation_>;
+    using InputType = internals::geo_assembler_packet<Triangulation::embed_dim>;
+    using Scalar = double;
+    static constexpr int StaticInputSize = Triangulation::embed_dim;
+    static constexpr int Rows = Triangulation::embed_dim;
+    static constexpr int Cols = 1;
+    static constexpr int NestAsRef = 0;
+    static constexpr int XprBits = 0 | int(geo_assembler_flags::compute_face_normal);
+
+    constexpr FaceNormal() noexcept : triangulation_(nullptr) { }
+    constexpr FaceNormal(const Triangulation_& triangulation) noexcept :
+        triangulation_(std::addressof(triangulation)) {
+        fdapde_assert(triangulation_->n_nodes() != 0 && triangulation_->n_cells() != 0);
+    }
+    // assembly evaluation
+    constexpr Eigen::Matrix<double, Rows, Cols> operator()(const InputType& geo_packet) const {
+        return geo_packet.normal;
+    }
+    constexpr Scalar eval(int i, const InputType& geo_packet) const { return geo_packet.normal[i]; }
+    constexpr int rows() const { return Rows; }
+    constexpr int cols() const { return Cols; }
+    constexpr int input_size() const { return StaticInputSize; }
+   private:
+    const Triangulation* triangulation_;
+};  
   
 }   // namespace fdapde
 

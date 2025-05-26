@@ -63,8 +63,9 @@ class DotProduct : public ScalarFieldBase<Lhs::StaticInputSize, DotProduct<Lhs, 
     }
     constexpr Scalar operator()(const InputType& p) const {
         fdapde_static_assert(
-          std::is_same_v<typename Lhs::InputType FDAPDE_COMMA typename Rhs::InputType>,
-          YOU_MIXED_FIELDS_WITH_DIFFERENT_INPUT_VECTOR_TYPES);
+          std::is_same_v<LhsInputType FDAPDE_COMMA RhsInputType> ||
+            internals::are_related_by_inheritance_v<LhsInputType FDAPDE_COMMA RhsInputType>,
+          YOU_MIXED_FIELDS_WITH_INCOMPATIBLE_INPUT_VECTOR_TYPES);
         if constexpr (internals::is_scalar_field_v<Lhs> && internals::is_scalar_field_v<Rhs>) {
             // scalar-scalar case, just plain multiplication
             return lhs_(p) * rhs_(p);

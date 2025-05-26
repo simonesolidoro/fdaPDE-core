@@ -48,7 +48,7 @@ template <int LocalDim> struct fe_assembler_packet : geo_assembler_packet<LocalD
     fe_assembler_packet(fe_assembler_packet&&) noexcept = default;
     fe_assembler_packet(const fe_assembler_packet&) noexcept = default;
 
-    int quad_node_id;   // active physical quadrature node index
+    int quad_node_id;
     // functional informations (Dynamic stands for number of components)
     MdArray<double, MdExtents<Dynamic>> trial_value, test_value;            // \psi_i(q_k), \psi_j(q_k)
     MdArray<double, MdExtents<Dynamic, local_dim>> trial_grad, test_grad;   // \nabla{\psi_i}(q_k), \nabla{\psi_j}(q_k)

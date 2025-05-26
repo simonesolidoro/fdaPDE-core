@@ -66,8 +66,12 @@ class fe_linear_form_assembly_loop :
         internals::fe_assembler_packet<embed_dim> fe_packet(Base::n_components);
 	int local_cell_id = 0;
         for (iterator it = begin; it != end; ++it) {
-            fe_packet.cell_measure = it->measure();
-            if constexpr (Form::XprBits & int(geo_assembler_flags::compute_cell_id)) { fe_packet.cell_id = it->id(); }
+            fe_packet.measure = it->measure();
+            if constexpr (Form::XprBits & int(geo_assembler_flags::compute_geo_id)) { fe_packet.geo_id = it->id(); }
+            if constexpr (Form::XprBits & int(geo_assembler_flags::compute_face_normal)) {
+                fdapde_static_assert(Options_ == FaceMajor, LINEAR_FORM_REQUIRES_A_FACE_MAJOR_ASSEMBLY_LOOP);
+                fe_packet.normal = it->normal();
+            }
             if constexpr (Form::XprBits & int(fe_assembler_flags::compute_shape_grad)) {
                 Base::eval_shape_grads_on_cell(it, Base::test_shape_grads_, test_grads);
             }
@@ -87,7 +91,7 @@ class fe_linear_form_assembly_loop :
                     }
                     value += Base::Quadrature::weights[q_k] * form_(fe_packet);
                 }
-                assembled_vec[active_dofs[i]] += value * fe_packet.cell_measure;
+                assembled_vec[active_dofs[i]] += value * fe_packet.measure;
             }
 	    local_cell_id++;
         }

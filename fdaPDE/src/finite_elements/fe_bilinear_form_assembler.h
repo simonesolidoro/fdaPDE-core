@@ -142,8 +142,12 @@ class fe_bilinear_form_assembly_loop :
         int local_cell_id = 0;
         for (iterator it = begin; it != end; ++it) {
             // update fe_packet content based on form requests
-            fe_packet.cell_measure = it->measure();
-            if constexpr (Form::XprBits & int(geo_assembler_flags::compute_cell_id)) { fe_packet.cell_id = it->id(); }
+            fe_packet.measure = it->measure();
+            if constexpr (Form::XprBits & int(geo_assembler_flags::compute_geo_id)) { fe_packet.geo_id = it->id(); }
+            if constexpr (Form::XprBits & int(geo_assembler_flags::compute_face_normal)) {
+                fdapde_static_assert(Options_ == FaceMajor, BILINEAR_FORM_REQUIRES_A_FACE_MAJOR_ASSEMBLY_LOOP);
+                fe_packet.normal.assign_inplace_from(it->normal());
+            }
             if constexpr (Form::XprBits & int(fe_assembler_flags::compute_shape_grad)) {
                 Base::eval_shape_grads_on_cell(it, test_shape_grads_, test_grads);
                 if constexpr (is_petrov_galerkin) Base::eval_shape_grads_on_cell(it, trial_shape_grads_, trial_grads);
@@ -197,7 +201,7 @@ class fe_bilinear_form_assembly_loop :
                     }
                     triplet_list.emplace_back(
                       test_active_dofs[j], is_galerkin ? test_active_dofs[i] : trial_active_dofs[i],
-                      value * fe_packet.cell_measure);
+                      value * fe_packet.measure);
                 }
             }
             local_cell_id++;

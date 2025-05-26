@@ -554,7 +554,7 @@ template <int N> class Triangulation<2, N> : public TriangulationBase<2, N, Tria
     }
     template <int Rows, typename XprType> void mark_boundary(const BinMtxBase<Rows, 1, XprType>& mask) {
         fdapde_assert(mask.rows() == n_edges_);
-        edges_markers_.resize(n_edges_,0);
+        edges_markers_.resize(n_edges_, 0);
         for (boundary_edge_iterator it = boundary_edges_begin(); it != boundary_edges_end(); ++it) {
             if(mask[it->id()]){
                 edges_markers_[it->id()] = 1;
