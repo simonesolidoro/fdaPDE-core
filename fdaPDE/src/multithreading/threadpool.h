@@ -433,6 +433,58 @@ namespace fdapde{
                 return std::nullopt;
             };
 
+            //parallel_for 
+            template<typename F> //F = body_function di loop, function con input indice i di loop. firma: return_type (int i)
+            requires (!std::is_same_v<std::invoke_result_t<F,int>, void>)
+            auto parallel_for_sure(int start, int end, F&& f)-> std::vector<std::invoke_result_t<F, int>>{
+                using return_type = std::invoke_result_t<F, int>;
+                std::vector<std::optional<std::future<return_type>>> ret_opt;
+                std::vector<return_type> ret;
+                int j = start;
+                //while con controllo se job send, se non inviato elimina nullopt e non aggiorna j cosi da riprovare finche non lo invia
+                //molto costoso ma necessario per avere certezza send all job
+                //OSS: se push in syncro_queue fosse garantito (es push_or_wait di hold_wait version) non sarebbe necessario while(){if()} ma basterebbe for
+                //TODO: scrivere diverso parallel_for a seconda di tipo coda in threadpool 
+                while(j<end){
+                    ret_opt.push_back(this->send_task_round(std::forward<F>(f),j));
+                    if(ret_opt[j]){
+                        j++;
+                    }
+                    else{
+                        ret_opt.pop_back();
+                    }
+                }
+                // get di tutti i future cosi da assicurarsi che tutte le body_function di ciclo for siano eseguite prima di termine funzione parallel_for
+                // e copia di return di ogni body_function per return vector<return_type> di parallel_for
+                //TODO se void le body_function non serve copia per return, vale la pena fare una seconda versione per parallel_for con body_function void
+                for (size_t k= 0; k<ret_opt.size(); k++){
+                    ret.push_back(ret_opt[k].value().get());
+                }
+                return ret;
+            } 
+            //void body_function
+            template<typename F> //F = body_function di loop, function con input indice i di loop. firma: return_type (int i)
+            requires std::is_same_v<std::invoke_result_t<F,int>, void>
+            void parallel_for_sure(int start, int end, F&& f){
+                using return_type = std::invoke_result_t<F, int>;
+                std::vector<std::optional<std::future<return_type>>> ret_opt;
+                int j = start;
+                while(j<end){
+                    ret_opt.push_back(this->send_task_round(std::forward<F>(f),j));
+                    if(ret_opt[j]){
+                        j++;
+                    }
+                    else{
+                        ret_opt.pop_back();
+                    }
+                }
+                for (size_t k= 0; k<ret_opt.size(); k++){
+                    ret_opt[k].value().get(); //get per aasicurarsi esecuzione completata
+                }
+                return;
+            } 
+
+            //TODO: da mettere il get dei future dentro i parallel_for, come in parallel_for_sure
             //PARALLEL_FOR
             //2 tipi a seconda di body function in for loop:
             //      1)body fuction dipendente da i.     body function passate come wrap di funzioni in lambda e quindi unico parametro i: [args](int i){retur fun(args,i);}
