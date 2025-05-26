@@ -42,7 +42,40 @@ constexpr void for_each_index_and_args(F_&& f, Args_&&... args) {
         (f.template operator()<Ns_, Args_>(std::forward<Args_>(args)), ...);
     }(std::make_integer_sequence<int, N_> {});
 }
-  
+
+// a tuple of pairs {{0, T_0}, {1, T_1}, ..., {N, T_N}}
+template <typename... Ts> struct indexed_tuple {
+   private:
+    template <std::size_t N_, typename T_>
+        requires(std::is_default_constructible_v<T_>)
+    struct pair_t {
+        static constexpr int index = N_;
+        using type = T_;
+
+        pair_t() : value() { }
+        pair_t(const T_& value_) : value(value_) { }
+        T_ value;
+    };
+    template <typename IdxList> struct idx_list;
+    template <std::size_t... Idxs> struct idx_list<std::index_sequence<Idxs...>> {
+        using type = std::tuple<pair_t<Idxs, Ts>...>;
+    };
+   public:
+    using type = typename idx_list<std::make_index_sequence<sizeof...(Ts)>>::type;
+
+    indexed_tuple(const Ts&... ts) : value(ts...) { }
+    type value;
+};
+template <typename... Ts> auto make_indexed_tuple(Ts&&... ts) { return indexed_tuple(std::forward<Ts>(ts)...).value; }
+// apply functor F to tuple of indexed pairs
+template <int N_, typename F_, typename... Args_>
+    requires(sizeof...(Args_) == N_)
+constexpr decltype(auto) apply_index_pack_and_args(F_&& f, Args_&&... args) {
+    return [&]<typename... Ts_>(const std::tuple<Ts_...>& tuple) -> decltype(auto) {
+        return f.template operator()<Ts_...>(std::get<Ts_::index>(tuple).value...);
+    }(make_indexed_tuple(args...));
+}
+
 // detect if type is integer-like
 template <typename T> class is_integer {
     using T_ = std::decay_t<T>;
@@ -327,18 +360,6 @@ const auto& select_one_between(const Arg1& arg1, const Arg2& arg2, F&& f) {
         return arg2;
     }
 }
-
-// check if two types are related by inheritance
-template <typename T, typename W> struct are_related_by_inheritance {
-    static constexpr bool value = std::is_base_of_v<T, W> || std::is_base_of_v<W, T>;
-};
-template <typename T, typename W> constexpr bool are_related_by_inheritance_v = are_related_by_inheritance<T, W>::value;
-
-// returns the most derived type between T and W, or T otherwise
-template <typename T, typename W> struct prefer_most_derived {
-    using type = std::conditional_t<std::is_same_v<T, W>, T, std::conditional_t<std::is_base_of_v<T, W>, W, T>>;
-};
-template <typename T, typename W> using prefer_most_derived_t = typename prefer_most_derived<T, W>::type;
 
 }   // namespace internals
 }   // namespace fdapde
