@@ -22,6 +22,8 @@ namespace fdapde{
 
     enum class steal {no_steal, random, most_busy, random_half_most_busy};
 
+    enum class op {sum,mult,sub,div};
+
     template <steal T> class Threadpool{
         using job = std::function<void()>;
         //usato per send_task_round 
@@ -545,6 +547,26 @@ namespace fdapde{
                 }
                 return ret;
             }
+
+            template<typename F, typename... Args, op Op>
+            auto parallel_reduce(int n, F&& f, Args... args)-> std::optional<std::future<decltype(f(args...))>>{
+                using return_type = decltype(f(args...));
+                std::optional<std::future<return_type>> ret = this->send_task_round(std::forward<F>(f),std::forward<Args>(args)...);
+                for(int j=1; j<n; j++){
+                    if constexpr(Op == fdapde::op::sum)
+                        ret += this->send_task_round(std::forward<F>(f),std::forward<Args>(args)...);
+
+                    if constexpr(Op == fdapde::op::mult)
+                        ret *= this->send_task_round(std::forward<F>(f),std::forward<Args>(args)...);
+                    
+                    if constexpr(Op == fdapde::op::sub)
+                        ret -= this->send_task_round(std::forward<F>(f),std::forward<Args>(args)...);
+
+                    if constexpr(Op == fdapde::op::div)
+                        ret /= this->send_task_round(std::forward<F>(f),std::forward<Args>(args)...);
+                }
+                return ret;
+            }
         };
 
         //threadpool senza steal job
@@ -828,6 +850,26 @@ namespace fdapde{
                 std::vector<std::optional<std::future<return_type>>> ret;
                 for (auto it = begin; it!=end; it++){
                     ret.push_back(this->send_task_round(std::forward<F>(f),std::ref(*it)));
+                }
+                return ret;
+            }
+
+            template<typename F, typename... Args, op Op>
+            auto parallel_reduce(int n, F&& f, Args... args)-> std::optional<std::future<decltype(f(args...))>>{
+                using return_type = decltype(f(args...));
+                std::optional<std::future<return_type>> ret = this->send_task_round(std::forward<F>(f),std::forward<Args>(args)...);
+                for(int j=1; j<n; j++){
+                    if constexpr(Op == fdapde::op::sum)
+                        ret += this->send_task_round(std::forward<F>(f),std::forward<Args>(args)...);
+
+                    if constexpr(Op == fdapde::op::mult)
+                        ret *= this->send_task_round(std::forward<F>(f),std::forward<Args>(args)...);
+                    
+                    if constexpr(Op == fdapde::op::sub)
+                        ret -= this->send_task_round(std::forward<F>(f),std::forward<Args>(args)...);
+
+                    if constexpr(Op == fdapde::op::div)
+                        ret /= this->send_task_round(std::forward<F>(f),std::forward<Args>(args)...);
                 }
                 return ret;
             }
