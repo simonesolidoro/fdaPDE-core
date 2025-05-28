@@ -17,16 +17,15 @@
 #include<fdaPDE/multithreading.h>
 
 int main(){
-{
     fdapde::Threadpool<fdapde::steal::random> tp(16,4);
 
-    int out = tp.parallel_reduce<fdapde::op::sum, std::function<int(int)>>(0,5,[&](int i){return i;});
+    int out = tp.parallel_reduce<fdapde::op::sum, std::function<int(int)>>(0,10000,[&](int i){return i;});
 
     std::cout << out << std::endl;
 
-    out = tp.parallel_reduce<fdapde::op::sum, std::function<int()>>(100,[&](){return 1;});
+    out = tp.parallel_reduce<fdapde::op::sum, std::function<int()>>(10000,[&](){return 1;});
 
     std::cout << out << std::endl;
-} 
+ 
     return 0;
 }

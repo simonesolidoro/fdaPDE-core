@@ -463,7 +463,37 @@ namespace fdapde{
                     ret.push_back(ret_opt[k].value().get());
                 }
                 return ret;
-            } 
+            }
+
+            template<typename F, typename... Args> //F = body_function di loop, function indipendente dall'indice del loop. firma: return_type (Args...)
+            requires (!std::is_same_v<std::invoke_result_t<F,Args...>, void>)
+            auto parallel_for_sure(int n, F&& f, Args... args)-> std::vector<decltype(f(args...))>{
+                using return_type = decltype(f(args...));
+                std::vector<std::optional<std::future<return_type>>> ret_opt;
+                std::vector<return_type> ret;
+                int j = 0;
+                //while con controllo se job send, se non inviato elimina nullopt e non aggiorna j cosi da riprovare finche non lo invia
+                //molto costoso ma necessario per avere certezza send all job
+                //OSS: se push in syncro_queue fosse garantito (es push_or_wait di hold_wait version) non sarebbe necessario while(){if()} ma basterebbe for
+                //TODO: scrivere diverso parallel_for a seconda di tipo coda in threadpool 
+                while(j<n){
+                    ret_opt.push_back(this->send_task_round(std::forward<F>(f),std::forward<Args>(args)...));
+                    if(ret_opt[j]){
+                        j++;
+                    }
+                    else{
+                        ret_opt.pop_back();
+                    }
+                }
+                // get di tutti i future cosi da assicurarsi che tutte le body_function di ciclo for siano eseguite prima di termine funzione parallel_for
+                // e copia di return di ogni body_function per return vector<return_type> di parallel_for
+                //TODO se void le body_function non serve copia per return, vale la pena fare una seconda versione per parallel_for con body_function void
+                for (size_t k= 0; k<ret_opt.size(); k++){
+                    ret.push_back(ret_opt[k].value().get());
+                }
+                return ret;
+            }
+
             //void body_function
             template<typename F> //F = body_function di loop, function con input indice i di loop. firma: return_type (int i)
             requires std::is_same_v<std::invoke_result_t<F,int>, void>
@@ -554,6 +584,30 @@ namespace fdapde{
                 using return_type = std::invoke_result_t<F, int>;
 
                 auto results = parallel_for_sure(start,end,f);
+
+                return_type ret = results[0];
+                
+                if constexpr(Op == fdapde::op::sum){
+                    for(auto it = results.begin()+1; it < results.end(); it++){
+                        ret += *it;
+                    }
+                }
+
+                if constexpr(Op == fdapde::op::mult){
+                    for(auto it = results.begin()+1; it < results.end(); it++){
+                        ret *= *it;
+                    }
+                }
+                    
+                return ret;
+            }
+
+            //parallel reduce con funzioni indipendenti da j
+            template<op Op, typename F, typename... Args>
+            auto parallel_reduce(int n, F&& f, Args... args)-> decltype(f(args...)){
+                using return_type = decltype(f(args...));
+
+                auto results = parallel_for_sure(n,f, args...);
 
                 return_type ret = results[0];
                 
