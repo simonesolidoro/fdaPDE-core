@@ -25,6 +25,7 @@ namespace fdapde{
     template <steal T> class Threadpool{
         using job = std::function<void()>;
         //usato per send_task_round 
+        //OSS: non thread-safe perché unico thread a modificarlo é main-thread che fa send, se poi implementate funzioni per cui job() eseguito da worker consiste in send() altri job a threadpool allora va reso thread-safe 
         struct indx_worker{
             int indx_ = 0;
             //TODO:lasciato con parametro perche usato in send_round parziale, se poi non serve mettere N
@@ -456,14 +457,13 @@ namespace fdapde{
                 }
                 // get di tutti i future cosi da assicurarsi che tutte le body_function di ciclo for siano eseguite prima di termine funzione parallel_for
                 // e copia di return di ogni body_function per return vector<return_type> di parallel_for
-                //TODO se void le body_function non serve copia per return, vale la pena fare una seconda versione per parallel_for con body_function void
                 for (size_t k= 0; k<ret_opt.size(); k++){
                     ret.push_back(ret_opt[k].value().get());
                 }
                 return ret;
             } 
             //void body_function
-            template<typename F> //F = body_function di loop, function con input indice i di loop. firma: return_type (int i)
+            template<typename F> //F = body_function di loop, function con input indice i di loop. firma: void (int i)
             requires std::is_same_v<std::invoke_result_t<F,int>, void>
             void parallel_for_sure(int start, int end, F&& f){
                 using return_type = std::invoke_result_t<F, int>;
@@ -480,11 +480,12 @@ namespace fdapde{
                 }
                 for (size_t k= 0; k<ret_opt.size(); k++){
                     ret_opt[k].value().get(); //get per aasicurarsi esecuzione completata
+                    //TODO: capire se ha senso parallelizzare i get()--> NON SI PUO, poi si dovrebbe fare get() dei get()
                 }
                 return;
             } 
 
-            //TODO: da mettere il get dei future dentro i parallel_for, come in parallel_for_sure
+            //TODO: da mettere il get dei future dentro i parallel_for, come in parallel_for_sure for void
             //PARALLEL_FOR
             //2 tipi a seconda di body function in for loop:
             //      1)body fuction dipendente da i.     body function passate come wrap di funzioni in lambda e quindi unico parametro i: [args](int i){retur fun(args,i);}
@@ -547,6 +548,11 @@ namespace fdapde{
             }
         };
 
+
+
+
+
+        
         //threadpool senza steal job
         class Threadpool_nosteal{
         using job = std::function<void()>;
