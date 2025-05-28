@@ -22,7 +22,7 @@ namespace fdapde{
 
     enum class steal {no_steal, random, most_busy, random_half_most_busy};
 
-    enum class op {sum,mult,sub,div};
+    enum class op {sum,mult};
 
     template <steal T> class Threadpool{
         using job = std::function<void()>;
@@ -552,43 +552,23 @@ namespace fdapde{
             template<op Op, typename F>
             auto parallel_reduce(int start, int end, F&& f)-> std::invoke_result_t<F, int>{
                 using return_type = std::invoke_result_t<F, int>;
-                auto ret = this->send_task_round(std::forward<F>(f),start).value().get();
-                //TODO: questa cosa è terribile
 
-                for(int j=start+1; j<end; j++){
-                    if constexpr(Op == fdapde::op::sum)
-                        ret += this->send_task_round(std::forward<F>(f),j).value().get();
+                auto results = parallel_for_sure(start,end,f);
 
-                    if constexpr(Op == fdapde::op::mult)
-                        ret *= this->send_task_round(std::forward<F>(f),j).value().get();
-                    
-                    if constexpr(Op == fdapde::op::sub)
-                        ret -= this->send_task_round(std::forward<F>(f),j).value().get();
-
-                    if constexpr(Op == fdapde::op::div)
-                        ret /= this->send_task_round(std::forward<F>(f),j).value().get();
+                return_type ret = results[0];
+                
+                if constexpr(Op == fdapde::op::sum){
+                    for(auto it = results.begin()+1; it < results.end(); it++){
+                        ret += *it;
+                    }
                 }
-                return ret;
-            }
-            
-            //parallel reduce con funzioni indipendenti da j
-            template<op Op,typename F, typename... Args>
-            auto parallel_reduce(int n, F&& f, Args... args)-> decltype(f(args...)){
-                using return_type = decltype(f(args...));
-                auto ret = this->send_task_round(std::forward<F>(f),std::forward<Args>(args)...).value().get();
-                for(int j=1; j<n; j++){
-                    if constexpr(Op == fdapde::op::sum)
-                        ret += this->send_task_round(std::forward<F>(f),std::forward<Args>(args)...).value().get();
 
-                    if constexpr(Op == fdapde::op::mult)
-                        ret *= this->send_task_round(std::forward<F>(f),std::forward<Args>(args)...).value().get();
-                    
-                    if constexpr(Op == fdapde::op::sub)
-                        ret -= this->send_task_round(std::forward<F>(f),std::forward<Args>(args)...).value().get();
-
-                    if constexpr(Op == fdapde::op::div)
-                        ret /= this->send_task_round(std::forward<F>(f),std::forward<Args>(args)...).value().get();
+                if constexpr(Op == fdapde::op::mult){
+                    for(auto it = results.begin()+1; it < results.end(); it++){
+                        ret *= *it;
+                    }
                 }
+                    
                 return ret;
             }
         };
@@ -874,50 +854,6 @@ namespace fdapde{
                 std::vector<std::optional<std::future<return_type>>> ret;
                 for (auto it = begin; it!=end; it++){
                     ret.push_back(this->send_task_round(std::forward<F>(f),std::ref(*it)));
-                }
-                return ret;
-            }
-
-            //parallel reduce con funzioni dipendenti da j
-            template<op Op, typename F>
-            auto parallel_reduce(int start, int end, F&& f)-> std::invoke_result_t<F, int>{
-                using return_type = std::invoke_result_t<F, int>;
-                auto ret = this->send_task_round(std::forward<F>(f),start).value().get();
-                //TODO: questa cosa è terribile
-
-                for(int j=start+1; j<end; j++){
-                    if constexpr(Op == fdapde::op::sum)
-                        ret += this->send_task_round(std::forward<F>(f),j).value().get();
-
-                    if constexpr(Op == fdapde::op::mult)
-                        ret *= this->send_task_round(std::forward<F>(f),j).value().get();
-                    
-                    if constexpr(Op == fdapde::op::sub)
-                        ret -= this->send_task_round(std::forward<F>(f),j).value().get();
-
-                    if constexpr(Op == fdapde::op::div)
-                        ret /= this->send_task_round(std::forward<F>(f),j).value().get();
-                }
-                return ret;
-            }
-            
-            //parallel reduce con funzioni indipendenti da j
-            template<op Op,typename F, typename... Args>
-            auto parallel_reduce(int n, F&& f, Args... args)-> decltype(f(args...)){
-                using return_type = decltype(f(args...));
-                auto ret = this->send_task_round(std::forward<F>(f),std::forward<Args>(args)...).value().get();
-                for(int j=1; j<n; j++){
-                    if constexpr(Op == fdapde::op::sum)
-                        ret += this->send_task_round(std::forward<F>(f),std::forward<Args>(args)...).value().get();
-
-                    if constexpr(Op == fdapde::op::mult)
-                        ret *= this->send_task_round(std::forward<F>(f),std::forward<Args>(args)...).value().get();
-                    
-                    if constexpr(Op == fdapde::op::sub)
-                        ret -= this->send_task_round(std::forward<F>(f),std::forward<Args>(args)...).value().get();
-
-                    if constexpr(Op == fdapde::op::div)
-                        ret /= this->send_task_round(std::forward<F>(f),std::forward<Args>(args)...).value().get();
                 }
                 return ret;
             }
