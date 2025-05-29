@@ -517,6 +517,40 @@ namespace fdapde{
                 return;
             } 
 
+            //versione che parallelizza dividendo il range iniziale in n parti.
+            //il senso potrebbe essere ridurre i send e poter controllare quanto parallelizzare, non c'è probelma di steal perchè i job() non sono l' esecuzione della singola body function f(i) ma sono for(k in subset_of_({start-end})){f(k)}
+            template<typename F> 
+            requires std::is_same_v<std::invoke_result_t<F,int>, void>
+            void parallel_for_sure_n(int start, int end,int n, F&& f){
+                using return_type = std::invoke_result_t<F, int>;
+                //range va da start a end-1--> end-start= dimensione range
+                if((end-start) % n != 0){
+                    std::cerr<<"n deve essere divisore di end-start";
+                    return;
+                }
+                int n_job = (end-start) / n;
+                std::vector<std::optional<std::future<return_type>>> ret_opt;
+                int j = 0;
+                while(j< n_job){
+                    ret_opt.push_back(this->send_task_round([&](){
+                        for(int k=j*n; k<(j+1)*n; k++ ){
+                            f(k);
+                        }
+                    }));
+                    if(ret_opt[j]){
+                        j++;
+                    }
+                    else{
+                        ret_opt.pop_back();
+                    }
+                }
+                for (size_t k= 0; k<ret_opt.size(); k++){
+                    ret_opt[k].value().get(); //get per aasicurarsi esecuzione completata
+                    //TODO: capire se ha senso parallelizzare i get()--> NON SI PUO, poi si dovrebbe fare get() dei get()
+                }
+                return;
+            } 
+
             //TODO: da mettere il get dei future dentro i parallel_for, come in parallel_for_sure for void
             //PARALLEL_FOR
             //2 tipi a seconda di body function in for loop:
@@ -626,6 +660,9 @@ namespace fdapde{
                     
                 return ret;
             }
+            
+
+           
         };
 
 
