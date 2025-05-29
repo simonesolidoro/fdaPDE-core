@@ -34,9 +34,9 @@ int main(){
 } 
 {
     fdapde::Threadpool<fdapde::steal::random> tp(32,2);
-    std::atomic<int> a=0;
-    tp.parallel_for_sure_n(0,20,4,[&](int i){a++;});
-    std::cout<<"sure a:"<<a.load()<<std::endl;
+    std::atomic<int> b=0;
+    tp.parallel_for_sure_n(0,10000,10,[&](int i){b++;});
+    std::cout<<"sure b:"<<b.load()<<std::endl;
 
 }
 

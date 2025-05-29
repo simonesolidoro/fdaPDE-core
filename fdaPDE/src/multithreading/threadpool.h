@@ -532,7 +532,7 @@ namespace fdapde{
                 std::vector<std::optional<std::future<return_type>>> ret_opt;
                 int j = 0;
                 while(j< n_job){
-                    ret_opt.push_back(this->send_task_round([&](){
+                    ret_opt.push_back(this->send_task_round([&,j](){
                         for(int k=j*n; k<(j+1)*n; k++ ){
                             f(k);
                         }
