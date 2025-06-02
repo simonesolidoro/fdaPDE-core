@@ -37,15 +37,17 @@ template <typename Derived_> class Gradient : public MatrixFieldBase<Derived_::S
     static constexpr int XprBits = FunctorType::XprBits;
 
     explicit constexpr Gradient(const Derived& xpr) : Base(), xpr_(xpr) {
-        if constexpr (StaticInputSize == Dynamic) data_.resize(xpr_.input_size());
-        for (int i = 0; i < xpr_.input_size(); ++i) { data_[i] = PartialDerivative<std::decay_t<Derived>, 1>(xpr_, i); }
+        if constexpr (StaticInputSize == Dynamic) data_.reserve(xpr_.input_size());
+        for (int i = 0; i < xpr_.input_size(); ++i) {
+            data_.push_back(PartialDerivative<std::decay_t<Derived>, 1>(xpr_, i));
+        }
     }
     // getters
     constexpr const FunctorType& operator()(int i, int j) { return data_[i * cols() + j]; }
     constexpr const FunctorType& operator[](int i) { return data_[i]; }
     constexpr Scalar eval(int i, int j, const InputType& p) const { return data_[i * cols() + j](p); }
     constexpr Scalar eval(int i, const InputType& p) const { return data_[i](p); }
-    constexpr int rows() const { return Rows; }
+    constexpr int rows() const { return xpr_.input_size(); }
     constexpr int cols() const { return Cols; }
     constexpr int input_size() const { return xpr_.input_size(); }
     constexpr int size() const { return Rows; }

@@ -68,8 +68,8 @@ template <int N, typename... Args> class Newton {
         h = step_;
 	n_iter_ = 0;
         x_old = x0, x_new = x0;
-	auto grad = objective.derive();
-	auto hess = objective.derive_twice();
+	auto grad = objective.gradient();
+	auto hess = objective.hessian();
 	
         while (n_iter_ < max_iter_ && error > tol_ && !stop) {
             // compute update direction

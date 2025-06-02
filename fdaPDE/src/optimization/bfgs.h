@@ -66,7 +66,7 @@ template <int N, typename... Args> class BFGS {
         bool stop = false;   // asserted true in case of forced stop
         vector_t zero;
         double error = 0;
-	auto grad = objective.derive();
+	auto grad = objective.gradient();
 	n_iter_ = 0;
         h = step_;
         x_old = x0, x_new = x0;
@@ -77,7 +77,9 @@ template <int N, typename... Args> class BFGS {
             inv_hessian = matrix_t::Identity();
 	    zero = vector_t::Zero();
 	}
+		  std::cout << ":)" << std::endl;
         grad_old = grad(x_old);
+		  std::cout << ":)" << std::endl;
         if (grad_old.isApprox(zero)) {   // already at stationary point
             optimum_ = x_old;
             value_ = objective(optimum_);

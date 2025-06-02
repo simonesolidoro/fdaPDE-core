@@ -21,7 +21,11 @@
 
 namespace fdapde {
 
+// forward decl
 template <int StaticInputSize, typename Derived> struct ScalarFieldBase;
+template <typename Derived> class Gradient;
+template <typename Derived> class Hessian;
+template <typename Derived> class Laplacian;
 
 template <typename Derived_, typename UnaryFunctor>
 struct ScalarFieldUnaryOp :
