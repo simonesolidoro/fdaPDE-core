@@ -64,6 +64,26 @@ constexpr Gradient<XprType> grad(const XprType& xpr) requires(internals::is_scal
     return Gradient<XprType>(xpr);
 }
 
+// symbolic function objects
+// 1D spaces
+template <typename XprType> constexpr decltype(auto) dx(const XprType& xpr) {
+    fdapde_static_assert(
+      XprType::StaticInputSize >= 1, THIS_FUNCTION_IS_FOR_ONE_DIMENSIONAL_OR_HIGHER_INPUT_SPACES_ONLY);
+    return Gradient<XprType>(xpr)[0];
+}
+// 2D spaces
+template <typename XprType> constexpr decltype(auto) dy(const XprType& xpr) {
+    fdapde_static_assert(
+      XprType::StaticInputSize >= 2, THIS_FUNCTION_IS_FOR_TWO_DIMENSIONAL_OR_HIGHER_INPUT_SPACES_ONLY);
+    return Gradient<XprType>(xpr)[1];
+}
+// 3D spaces
+template <typename XprType> constexpr decltype(auto) dz(const XprType& xpr) {
+    fdapde_static_assert(XprType::StaticInputSize == 3, THIS_FUNCTION_IS_FOR_THREE_DIMENSIONAL_INPUT_SPACES_ONLY);
+    return Gradient<XprType>(xpr)[2];
+}
+
+  
 }   // namespace fdapde
 
 #endif // __FDAPDE_GRADIENT_H__
