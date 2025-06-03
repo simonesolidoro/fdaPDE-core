@@ -37,7 +37,7 @@ template <typename Derived_> class Hessian : public MatrixFieldBase<Derived_::St
     static constexpr int XprBits = Derived::XprBits;
 
     explicit constexpr Hessian(const Derived_& xpr) : Base(), derived_(xpr), xpr_(), data_() {
-        if constexpr (StaticInputSize == Dynamic) data_.resize(xpr_.input_size(), xpr_.input_size(), xpr_.input_size());
+        if constexpr (StaticInputSize == Dynamic) data_.resize(xpr.input_size(), xpr.input_size(), xpr.input_size());
         for (int i = 0; i < xpr.input_size(); ++i) {
             for (int j = 0; j <= i; ++j) { data_(i, j) = PartialDerivative<std::decay_t<Derived_>, 2>(xpr, i, j); }
         }
