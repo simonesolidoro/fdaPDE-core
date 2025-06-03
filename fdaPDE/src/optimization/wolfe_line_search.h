@@ -48,7 +48,7 @@ class WolfeLineSearch {
                 + c1 * alpha * m < 0) {
                 alpha_max = alpha;
                 alpha = (alpha_min + alpha_max) * 0.5;
-            } else if (obj.derive()(opt.x_old + alpha * opt.update).dot(opt.update) < c2 * m) {   // curvature condition
+            } else if (obj.gradient()(opt.x_old + alpha * opt.update).dot(opt.update) < c2 * m) {   // curvature condition
                 alpha_min = alpha;
                 alpha = (std::isinf(alpha_max)) ? 2 * alpha_min : (alpha_min + alpha_max) * 0.5;
             } else {

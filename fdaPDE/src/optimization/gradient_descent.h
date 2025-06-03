@@ -67,7 +67,7 @@ template <int N, typename... Args> class GradientDescent {
         h = step_;
         n_iter_ = 0;
         x_old = x0, x_new = x0;
-	auto grad = objective.derive();
+	auto grad = objective.gradient();
         grad_old = grad(x_old);
 
         while (n_iter_ < max_iter_ && error > tol_ && !stop) {

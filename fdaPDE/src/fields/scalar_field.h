@@ -239,8 +239,9 @@ class ScalarField : public ScalarFieldBase<Size, ScalarField<Size, FunctorType_>
     static constexpr int NestAsRef = 0;               // whether to store the node by reference of by copy
     static constexpr int XprBits = 0;                 // bits which carries implementation specific informations
 
-    constexpr ScalarField() requires(StaticInputSize != Dynamic) : f_() { }
-    explicit ScalarField(int n) requires(StaticInputSize == Dynamic)
+    constexpr ScalarField() : f_() { }
+    constexpr explicit ScalarField(int n)
+        requires(StaticInputSize == Dynamic)
         : Base(), f_(), dynamic_input_size_(n) { }
     constexpr explicit ScalarField(const FunctorType& f) : f_(f) {};
     template <typename Expr> ScalarField(const ScalarFieldBase<Size, Expr>& f) {
@@ -292,7 +293,6 @@ class ScalarField : public ScalarFieldBase<Size, ScalarField<Size, FunctorType_>
         for (int i = 0; i < points.rows(); ++i) { evals[i] = f_(points.row(i)); }
         return evals;
     }
-
     void resize(int dynamic_input_size) {
         fdapde_static_assert(StaticInputSize == Dynamic, YOU_CALLED_A_DYNAMIC_METHOD_ON_A_STATIC_SIZED_FIELD);
         dynamic_input_size_ = dynamic_input_size;
