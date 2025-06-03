@@ -819,10 +819,7 @@ struct MatrixFieldSymmetricView :
 template <int StaticInputSize, typename Derived> struct MatrixFieldBase {
    private:
     template <typename InputType_> constexpr auto call_(const InputType_& p) const {
-        typename std::conditional<
-          Derived::Rows == Dynamic || Derived::Cols == Dynamic,
-          Eigen ::Matrix<typename Derived::Scalar, Dynamic, Dynamic>,
-          Matrix<typename Derived::Scalar, Derived::Rows, Derived::Cols>>::type out;
+        InputType_ out;
         if constexpr (Derived::StaticInputSize == Dynamic) { fdapde_assert(p.size() == derived().input_size()); }
         if constexpr (Derived::Rows == Dynamic || Derived::Cols == Dynamic) {
             out.resize(derived().rows(), derived().cols());

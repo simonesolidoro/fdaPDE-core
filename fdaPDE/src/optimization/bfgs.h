@@ -77,9 +77,7 @@ template <int N, typename... Args> class BFGS {
             inv_hessian = matrix_t::Identity();
 	    zero = vector_t::Zero();
 	}
-		  std::cout << ":)" << std::endl;
         grad_old = grad(x_old);
-		  std::cout << ":)" << std::endl;
         if (grad_old.isApprox(zero)) {   // already at stationary point
             optimum_ = x_old;
             value_ = objective(optimum_);
