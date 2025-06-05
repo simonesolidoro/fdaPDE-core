@@ -337,7 +337,6 @@ template <typename T> class table_reader {
         }
         // process evantual last token of the last block of the stream
         if (!last_token.empty()) { data_.push_back(parse_value_(last_token)); }
-        if (index_col == false) n_cols_ = n_cols_ - 1;		
         if (data_.size() % n_cols_ != 0) throw std::invalid_argument("parsing error.");
         n_rows_ = data_.size() / n_cols_;
         return;

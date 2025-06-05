@@ -310,6 +310,13 @@ class MatrixBlock : public MatrixBase<BlockRows_, BlockCols_, MatrixBlock<BlockR
         if constexpr (Rows == 1) return xpr_(start_row_, start_col_ + i);
         if constexpr (Cols == 1) return xpr_(start_row_ + i, start_col_);
     }
+    constexpr Scalar& operator()(int i, int j) { return xpr_(start_row_ + i, start_col_ + j); }
+    constexpr Scalar& operator[](int i) {
+        fdapde_static_assert(
+          BlockRows_ == 1 || BlockCols_ == 1, THIS_METHOD_IS_ONLY_FOR_CONSTEXPR_ROW_OR_COLUMN_BLOCKS);
+        if constexpr (Rows == 1) return xpr_(start_row_, start_col_ + i);
+        if constexpr (Cols == 1) return xpr_(start_row_ + i, start_col_);
+    }
     // block assignment
     constexpr MatrixBlock& operator=(const MatrixBlock& other) {
         fdapde_static_assert(Derived::ReadOnly == 0, BLOCK_ASSIGNMENT_TO_A_READ_ONLY_EXPRESSION_IS_INVALID);
@@ -624,6 +631,22 @@ template <int Rows, int Cols, typename Derived> struct MatrixBase {
             }
         }
 	return;
+    }
+    template <int OtherRows, int OtherCols, typename OtherDerived>
+    constexpr Derived& operator+=(const MatrixBase<OtherRows, OtherCols, OtherDerived>& other) {
+        fdapde_static_assert(Rows == OtherRows && Cols == OtherCols, YOU_MIXED_MATRICES_OF_DIFFERENT_SIZES);
+        for (int i = 0; i < Rows; ++i) {
+            for (int j = 0; j < Cols; ++j) { derived().operator()(i, j) += other.derived()(i, j); }
+        }
+        return derived();
+    }
+    template <int OtherRows, int OtherCols, typename OtherDerived>
+    constexpr Derived& operator-=(const MatrixBase<OtherRows, OtherCols, OtherDerived>& other) {
+        fdapde_static_assert(Rows == OtherRows && Cols == OtherCols, YOU_MIXED_MATRICES_OF_DIFFERENT_SIZES);
+        for (int i = 0; i < Rows; ++i) {
+            for (int j = 0; j < Cols; ++j) { derived().operator()(i, j) -= other.derived()(i, j); }
+        }
+        return derived();
     }
 #ifdef __FDAPDE_HAS_EIGEN__
     // conversion to Eigen matrix

@@ -1117,11 +1117,11 @@ template <typename Derived> class md_handler_base {
             constexpr int storage_layout =
               std::is_same_v<typename mapping_t::layout_type, internals::layout_right> ? ColMajor : RowMajor;
             Map<const Scalar, static_extents[0], static_extents[1], storage_layout> map(
-              derived().data(), extents(0), extents(1));
+              derived().data(), extent(0), extent(1));
             return map;
         } else {
             fdapde_static_assert(static_extents[0] != Dynamic, THIS_METHOD_IS_FOR_STATIC_EXTENTS_ONLY);
-            Map<const Scalar, static_extents[0], 1, RowMajor> map(derived().data(), extents(0), 1);
+            Map<const Scalar, static_extents[0], 1, RowMajor> map(derived().data(), extent(0), 1);
             return map;
         }
     }
@@ -1325,10 +1325,11 @@ class MdArray : public internals::md_handler_base<MdArray<Scalar_, Extents_, Lay
                   extents_t::static_extents[i] == block_t::static_extents[i]);
             }
         }
+	int i = 0;
         if constexpr (extents_t::DynamicOrder > 0) {
             // to avoid aliasing, first copy data, then update mapping
             if (Base::size() != other.size()) { data_.resize(other.size()); }
-            for (auto it = other.begin(); it != other.end(); ++it) { data_[it.mapped_index()] = *it; }
+            for (auto it = other.begin(); it != other.end(); ++it) { data_[i++] = *it; }
 
             if (Base::size() != other.size()) {
                 internals::apply_index_pack<Order>(
@@ -1336,10 +1337,9 @@ class MdArray : public internals::md_handler_base<MdArray<Scalar_, Extents_, Lay
             }
             mapping_ = mapping_t(extents_);	    
         } else {
-            int i = 0;
-            for (auto it = other.begin(); it != other.end(); ++it) { data_[it.mapped_index()] = *it; }
+            for (auto it = other.begin(); it != other.end(); ++it) { data_[i++] = *it; }
             extents_ = other.extents();
-            mapping_ = other.mapping();
+            mapping_ = mapping_t(extents_);
         }
     }
     storage_t data_ {};
