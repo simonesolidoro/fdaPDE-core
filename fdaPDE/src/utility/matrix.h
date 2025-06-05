@@ -514,6 +514,10 @@ struct DiagonalBlock : public MatrixBase<Derived::Rows, Derived::Cols, DiagonalB
 };
 
 template <int Rows, int Cols, typename Derived> struct MatrixBase {
+#ifdef __FDAPDE_HAS_EIGEN__ // compatibility with Eigen types
+    static constexpr int RowsAtCompileTime = Rows;
+    static constexpr int ColsAtCompileTime = Cols;
+#endif
     constexpr int size() const { return derived().rows() * derived().cols(); }
     constexpr const Derived& derived() const { return static_cast<const Derived&>(*this); }
     constexpr Derived& derived() { return static_cast<Derived&>(*this); }

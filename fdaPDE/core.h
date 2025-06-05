@@ -24,6 +24,7 @@
 #include "utility.h"
 #include "fields.h"
 #include "geometry.h"
+#include "io.h"
 #include "finite_elements.h"
 #include "splines.h"
 #include "optimization.h"
