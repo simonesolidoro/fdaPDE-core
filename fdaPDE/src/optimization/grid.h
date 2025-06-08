@@ -74,7 +74,7 @@ template <int N, typename... Args> class GridOptimizer {
         values_.push_back(value_);
         optimum_ = x_current;
         // optimize field over supplied grid
-        for (int i = 1; i < grid_.rows() && !stop; ++i) {
+        for (std::size_t i = 1; i < grid_.rows() && !stop; ++i) {
             grid_.row(i).assign_to(x_current);
             double x = objective(x_current);
             values_.push_back(x);

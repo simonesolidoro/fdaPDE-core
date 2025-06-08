@@ -261,6 +261,7 @@ template <int N> class Triangulation<2, N> : public TriangulationBase<2, N, Tria
     static constexpr int n_edges_per_cell = 3;
     static constexpr int n_faces_per_edge = 2;
     static constexpr int n_neighbors_per_cell = 3;
+    static constexpr int n_facets_per_cell = n_edges_per_cell;
     using EdgeType = typename Base::CellType::EdgeType;
     using LocationPolicy = TreeSearch<Triangulation<2, N>>;
     using Base::cells_;      // N \times 3 matrix of node identifiers for each triangle
@@ -271,6 +272,7 @@ template <int N> class Triangulation<2, N> : public TriangulationBase<2, N, Tria
     static constexpr auto edge_pattern =
       Matrix<int, binomial_coefficient(n_nodes_per_cell, n_nodes_per_edge), n_nodes_per_edge>(
         combinations(n_nodes_per_edge, n_nodes_per_cell));
+    static constexpr auto facet_pattern = edge_pattern;
 
     Triangulation() = default;
     Triangulation(
@@ -393,11 +395,10 @@ template <int N> class Triangulation<2, N> : public TriangulationBase<2, N, Tria
 	   3, 7, 10, 3, 10,  1, 3, 1,  8, 1, 10, 6, 6, 11, 10, 10, 11, 7, 7, 11, 2,
 	   7, 2,  5, 2,  5,  9, 9, 5,  8, 9,  4, 8, 4,  8,  1,  4,  1, 6};
         // normalize to unit sphere
-        constexpr double norm = std::sqrt(a * a + b * b);
+        constexpr double norm = fdapde::sqrt(a * a + b * b);
         std::for_each(ico_nodes.begin(), ico_nodes.end(), [](double& v) { v /= norm; });
 
 	// refinment
-        using vec_t = Eigen::Matrix<double, embed_dim, 1>;
         using edge_t = std::array<int, n_nodes_per_edge>;
         using hash_t = internals::std_array_hash<int, n_nodes_per_edge>;
         std::unordered_map<edge_t, int, hash_t> edges_map;   // for each edge, the ID of its midpoint
@@ -623,6 +624,7 @@ template <> class Triangulation<3, 3> : public TriangulationBase<3, 3, Triangula
     static constexpr int n_faces_per_cell = 4;
     static constexpr int n_edges_per_cell = 6;
     static constexpr int n_neighbors_per_cell = 4;
+    static constexpr int n_facets_per_cell = n_faces_per_cell;
     using FaceType = typename Base::CellType::FaceType;
     using EdgeType = typename Base::CellType::EdgeType;
     using LocationPolicy = TreeSearch<Triangulation<3, 3>>;
@@ -632,10 +634,11 @@ template <> class Triangulation<3, 3> : public TriangulationBase<3, 3, Triangula
     static constexpr auto face_pattern =
       Matrix<int, binomial_coefficient(n_nodes_per_cell, n_nodes_per_face), n_nodes_per_face>(
         combinations(n_nodes_per_face, n_nodes_per_cell));
+    static constexpr auto facet_pattern = face_pattern;
     static constexpr auto edge_pattern =
       Matrix<int, binomial_coefficient(n_nodes_per_face, n_nodes_per_edge), n_nodes_per_edge>(
         combinations(n_nodes_per_edge, n_nodes_per_face));
-
+  
     Triangulation() = default;
     Triangulation(
       const Eigen::Matrix<double, Dynamic, Dynamic>& nodes, const Eigen::Matrix<int, Dynamic, Dynamic>& cells,

@@ -54,7 +54,8 @@ template <typename Triangulation> class Triangle : public Simplex<Triangulation:
         int id() const { return edge_id_; }
         Eigen::Matrix<int, Dynamic, 1> adjacent_cells() const { return mesh_->edge_to_cells().row(edge_id_); }
         int marker() const {   // mesh edge's marker
-            return mesh_->edges_markers().size() > edge_id_ ? mesh_->edges_markers()[edge_id_] : Unmarked;
+            return std::cmp_greater(mesh_->edges_markers().size(), edge_id_) ? mesh_->edges_markers()[edge_id_] :
+                                                                               Unmarked;
         }
     };
 

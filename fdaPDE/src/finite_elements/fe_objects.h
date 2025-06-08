@@ -75,8 +75,8 @@ struct fe_scalar_test_function_impl :
         constexpr const TestSpace& function_space() const { return xpr_.function_space(); }
         constexpr Scalar operator()(const InputType& fe_packet) const { return fe_packet.test_grad[i_]; }
        protected:
-        int i_;
         Derived xpr_;
+        int i_;
     };
     // second mixed partial derivative functor
     template <typename Derived_>
@@ -102,8 +102,8 @@ struct fe_scalar_test_function_impl :
         constexpr const TestSpace& function_space() const { return xpr_.function_space(); }
         constexpr Scalar operator()(const InputType& fe_packet) const { return fe_packet.test_hess(0, i_, j_); }
        protected:
-        int i_, j_;
         Derived xpr_;
+        int i_, j_;
     };
     // accessors
     constexpr const TestSpace& function_space() const { return *fe_space_; }
@@ -164,8 +164,8 @@ struct fe_scalar_trial_function_impl :
         constexpr const TrialSpace& function_space() const { return xpr_.function_space(); }
         constexpr Scalar operator()(const InputType& fe_packet) const { return fe_packet.trial_grad[i_]; }
        protected:
-        int i_;
         Derived xpr_;
+        int i_;
     };
     // second mixed partial derivative functor
     template <typename Derived_>
@@ -191,8 +191,8 @@ struct fe_scalar_trial_function_impl :
         constexpr const TrialSpace& function_space() const { return xpr_.function_space(); }
         constexpr Scalar operator()(const InputType& fe_packet) const { return fe_packet.trial_hess(0, i_, j_); }
        protected:
-        int i_, j_;
         Derived xpr_;
+        int i_, j_;
     };
     // accessors
     constexpr const TrialSpace& function_space() const { return *fe_space_; }
@@ -231,8 +231,8 @@ struct fe_vector_test_function_impl :
             fe_space_ = std::addressof(fe_space);
         }
     }
-    constexpr Scalar eval(int i, const typename Base::InputType& fe_packet) const { return fe_packet.test_value(i); }
-    constexpr Scalar eval(int i, [[maybe_unused]] int j, const typename Base::InputType& fe_packet) const {
+    constexpr Scalar eval(int i, const InputType& fe_packet) const { return fe_packet.test_value(i); }
+    constexpr Scalar eval(int i, [[maybe_unused]] int j, const InputType& fe_packet) const {
         return fe_packet.test_value(i);
     }
 
@@ -322,8 +322,8 @@ struct fe_vector_trial_function_impl :
             fe_space_ = std::addressof(fe_space);
         }
     }
-    constexpr Scalar eval(int i, const typename Base::InputType& fe_packet) const { return fe_packet.trial_value(i); }
-    constexpr Scalar eval(int i, [[maybe_unused]] int j, const typename Base::InputType& fe_packet) const {
+    constexpr Scalar eval(int i, const InputType& fe_packet) const { return fe_packet.trial_value(i); }
+    constexpr Scalar eval(int i, [[maybe_unused]] int j, const InputType& fe_packet) const {
         return fe_packet.trial_value(i);
     }
 
@@ -601,7 +601,7 @@ class FeFunction :
 
         VectorFeFunctionComponent() = default;
         VectorFeFunctionComponent(const FeFunction<FeSpace_>* fe_function, int i) : fe_function_(fe_function), i_(i) { }
-        Scalar operator()(const InputType& p) const { return fe_function_.eval(i_, p); }
+        Scalar operator()(const InputType& p) const { return fe_function_->eval(i_, p); }
        private:
         const FeFunction<FeSpace_>* fe_function_;
         int i_;

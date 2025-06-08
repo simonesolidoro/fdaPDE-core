@@ -53,8 +53,9 @@ template <typename Derived_> class Gradient : public MatrixFieldBase<Derived_::S
     // evaluation at point
     constexpr auto operator()(const InputType& p) const { return Base::call_(p); }
    private:
-    using StorageType = typename std::conditional_t<
-      Derived::StaticInputSize == Dynamic, std::vector<FunctorType>, std::array<FunctorType, StaticInputSize>>;
+    using StorageType = std::conditional_t<
+      StaticInputSize == Dynamic, std::vector<FunctorType>,
+      std::array<FunctorType, StaticInputSize >= 0 ? StaticInputSize : 0>>;   // avoid -Wc++11-narrowing
     StorageType data_;
     internals::ref_select_t<Derived> xpr_;
 };
@@ -66,19 +67,19 @@ constexpr Gradient<XprType> grad(const XprType& xpr) requires(internals::is_scal
 
 // symbolic function objects
 // 1D spaces
-template <typename XprType> constexpr decltype(auto) dx(const XprType& xpr) {
+template <typename XprType> constexpr auto dx(const XprType& xpr) {
     fdapde_static_assert(
       XprType::StaticInputSize >= 1, THIS_FUNCTION_IS_FOR_ONE_DIMENSIONAL_OR_HIGHER_INPUT_SPACES_ONLY);
     return Gradient<XprType>(xpr)[0];
 }
 // 2D spaces
-template <typename XprType> constexpr decltype(auto) dy(const XprType& xpr) {
+template <typename XprType> constexpr auto dy(const XprType& xpr) {
     fdapde_static_assert(
       XprType::StaticInputSize >= 2, THIS_FUNCTION_IS_FOR_TWO_DIMENSIONAL_OR_HIGHER_INPUT_SPACES_ONLY);
     return Gradient<XprType>(xpr)[1];
 }
 // 3D spaces
-template <typename XprType> constexpr decltype(auto) dz(const XprType& xpr) {
+template <typename XprType> constexpr auto dz(const XprType& xpr) {
     fdapde_static_assert(XprType::StaticInputSize == 3, THIS_FUNCTION_IS_FOR_THREE_DIMENSIONAL_INPUT_SPACES_ONLY);
     return Gradient<XprType>(xpr)[2];
 }

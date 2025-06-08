@@ -298,8 +298,8 @@ class ScalarField : public ScalarFieldBase<Size, ScalarField<Size, FunctorType_>
         dynamic_input_size_ = dynamic_input_size;
     }
    protected:
-    int dynamic_input_size_ = 0;   // run-time base space dimension
     FunctorType f_ {};
+    int dynamic_input_size_ = 0;   // run-time base space dimension
 };
 
 template <typename Derived, int Order> struct PartialDerivative;
@@ -426,7 +426,7 @@ template <int Size, typename Derived> struct ScalarFieldBase {
 #ifdef __FDAPDE_HAS_EIGEN__
 // special fields
 template <int StaticInputSize>
-struct ZeroField : public ScalarField<StaticInputSize, decltype([](const Eigen::Matrix<double, StaticInputSize, 1>& p) {
+struct ZeroField : public ScalarField<StaticInputSize, decltype([](const Eigen::Matrix<double, StaticInputSize, 1>&) {
                                           return 0.0;
                                       })> { };
 #endif
@@ -453,7 +453,7 @@ class xpr_scalar_wrap : ScalarFieldBase<StaticInputSize_, xpr_scalar_wrap<Static
     constexpr xpr_scalar_wrap() noexcept : f_() { }
     constexpr xpr_scalar_wrap(const Functor_& f) noexcept : f_(f) { }
     // accessors
-    constexpr Scalar operator()(const InputType& p) const { return xpr_(p); }
+    constexpr Scalar operator()(const InputType& p) const { return f_(p); }
     constexpr int input_size() const { return StaticInputSize; }
 };
 template <typename Xpr_, int StaticInputSize_, typename Functor_, int Bits_ = 0>

@@ -113,7 +113,7 @@ class Polynomial : public ScalarFieldBase<StaticInputSize_, Polynomial<StaticInp
                         Scalar tmp = 1;
                         for (int n = 0; n < StaticInputSize; ++n) {
                             int grad_exp = poly_grad_table_(i_, m, n);
-                            if (grad_exp) tmp *= std::pow(p[n], grad_exp);
+                            if (grad_exp) tmp *= fdapde::pow(p[n], grad_exp);
                         }
                         value += coeff_vector_[m] * exp * tmp;
                     }
@@ -154,7 +154,7 @@ class Polynomial : public ScalarFieldBase<StaticInputSize_, Polynomial<StaticInp
                         Scalar tmp = 1;
                         for (int n = 0; n < StaticInputSize; ++n) {
                             int hess_exp = (n == j_ ? (exp - 1) : poly_grad_table_(i_, m, n));
-                            if (hess_exp) tmp *= std::pow(p[n], hess_exp);
+                            if (hess_exp) tmp *= fdapde::pow(p[n], hess_exp);
                         }
                         value += coeff_vector_[m] * poly_table_(m, i_) * exp * tmp;
                     }
@@ -171,7 +171,7 @@ class Polynomial : public ScalarFieldBase<StaticInputSize_, Polynomial<StaticInp
     using GradientType = VectorField<StaticInputSize, StaticInputSize, Derivative>;
     using HessianType  = MatrixField<StaticInputSize, StaticInputSize, StaticInputSize, MixedDerivative>;
     // constructor
-    constexpr Polynomial() = default;
+    constexpr Polynomial() : coeff_vector_(), gradient_(), hessian_() { }
     template <typename CoeffVectorType>
     explicit constexpr Polynomial(const CoeffVectorType& coeff_vector) : coeff_vector_(), gradient_() {
         fdapde_constexpr_assert(int(coeff_vector.size()) == n_monomials);
@@ -192,7 +192,7 @@ class Polynomial : public ScalarFieldBase<StaticInputSize_, Polynomial<StaticInp
                 Scalar tmp = 1;
                 for (int n = 0; n < StaticInputSize; ++n) {
                     int exp = poly_table_(m, n);
-                    if (exp) tmp *= std::pow(p[n], exp);
+                    if (exp) tmp *= fdapde::pow(p[n], exp);
                 }
                 value += coeff_vector_[m] * tmp;
             }

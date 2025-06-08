@@ -34,10 +34,10 @@ internals::table_reader<T> read_csv(const std::string& filename, bool header = t
 template <typename DataT>
     requires(internals::is_eigen_dense_xpr_v<DataT>)
 void write_csv(const std::string& filename, const DataT& data, const std::vector<std::string>& colnames) {
-    fdapde_assert(data.cols() == colnames.size());
+    fdapde_assert(data.cols() > 0 && std::cmp_equal(data.cols() FDAPDE_COMMA colnames.size()));
     const static Eigen::IOFormat CSVFormat(Eigen::FullPrecision, Eigen::DontAlignCols, ", ", "\n");
     std::ofstream file(filename);
-    for (int i = 0; i < colnames.size() - 1; ++i) { file << colnames[i] << ", "; }
+    for (std::size_t i = 0; i < colnames.size() - 1; ++i) { file << colnames[i] << ", "; }
     file << colnames.back() << "\n";
     if (file.is_open()) {
         file << data.format(CSVFormat);
@@ -59,9 +59,9 @@ template <typename DataT>
 void write_csv(
   const std::string& filename, const DataT& data, int rows, int cols, const std::vector<std::string>& colnames,
   bool by_rows = true) {
-    fdapde_assert(data.size() % (rows * cols) == 0 && cols == colnames.size());
+    fdapde_assert(data.size() % (rows * cols) == 0 && std::cmp_equal(cols FDAPDE_COMMA colnames.size()));
     std::ofstream file(filename);
-    for (int i = 0; i < colnames.size() - 1; ++i) { file << colnames[i] << ", "; }
+    for (std::size_t i = 0; i < colnames.size() - 1; ++i) { file << colnames[i] << ", "; }
     file << colnames.back() << "\n";
 
     int inner = by_rows ? cols : 1;

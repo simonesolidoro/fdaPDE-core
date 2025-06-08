@@ -63,7 +63,6 @@ template <typename Triangulation_> struct areal_layer {
         // count number of regions
         n_regions_ = regions.size();
         incidence_matrix_.resize(n_regions_, triangulation_->n_cells());
-        int j = 0;
         for (auto it = triangulation_->cells_begin(); it != triangulation_->cells_end(); ++it) {
             for (int i = 0; i < n_regions_; ++i) {
                 if (regions[i].contains(it->barycenter())) { incidence_matrix_[it->id()] = i; }

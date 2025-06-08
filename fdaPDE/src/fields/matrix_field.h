@@ -26,7 +26,7 @@ namespace fdapde {
       std::is_same_v<typename Lhs::InputType FDAPDE_COMMA typename Rhs::InputType>,                                    \
       YOU_MIXED_MATRIX_FIELDS_WITH_DIFFERENT_INPUT_VECTOR_TYPES);
 
-template <int Size, typename Derived> class MatrixFieldBase;
+template <int Size, typename Derived> struct MatrixFieldBase;
 
 template <typename Lhs, typename Rhs>
 class MatrixFieldProduct : public MatrixFieldBase<Lhs::StaticInputSize, MatrixFieldProduct<Lhs, Rhs>> {
@@ -827,13 +827,9 @@ template <int StaticInputSize, typename Derived> struct MatrixFieldBase {
           Matrix<typename Derived::Scalar, Derived::Rows, Derived::Cols>>;
         OutputType out;
         if constexpr (Derived::StaticInputSize == Dynamic) { fdapde_assert(p.size() == derived().input_size()); }
-        if constexpr (Derived::Rows == Dynamic || Derived::Cols == Dynamic || []() {
-                          if constexpr (internals::is_eigen_dense_xpr_v<InputType_>) {
-                              return InputType_::RowsAtCompileTime || InputType_::ColsAtCompileTime;
-                          } else {
-                              return false;
-                          }
-                      }()) {
+        if constexpr (
+          Derived::Rows == Dynamic || Derived::Cols == Dynamic || InputType_::RowsAtCompileTime == Dynamic ||
+          InputType_::ColsAtCompileTime == Dynamic) {
             fdapde_assert(p.rows() == derived().rows() && p.cols() == derived().cols());
             out.resize(derived().rows(), derived().cols());
         }

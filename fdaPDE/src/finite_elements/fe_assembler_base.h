@@ -34,8 +34,8 @@ enum class fe_assembler_flags {
 namespace internals {
 
 // informations sent from the assembly loop to the integrated forms
-template <int LocalDim> struct fe_assembler_packet : geo_assembler_packet<LocalDim> {
-    static constexpr int local_dim = LocalDim;
+template <int EmbedDim> struct fe_assembler_packet : geo_assembler_packet<EmbedDim> {
+    static constexpr int embed_dim = EmbedDim;
     fe_assembler_packet(int n_trial_components, int n_test_components) :
         trial_value(n_trial_components),
         test_value (n_test_components ),
@@ -51,8 +51,8 @@ template <int LocalDim> struct fe_assembler_packet : geo_assembler_packet<LocalD
     int quad_node_id;
     // functional informations (Dynamic stands for number of components)
     MdArray<double, MdExtents<Dynamic>> trial_value, test_value;            // \psi_i(q_k), \psi_j(q_k)
-    MdArray<double, MdExtents<Dynamic, local_dim>> trial_grad, test_grad;   // \nabla{\psi_i}(q_k), \nabla{\psi_j}(q_k)
-    MdArray<double, MdExtents<Dynamic, local_dim, local_dim>> trial_hess, test_hess;
+    MdArray<double, MdExtents<Dynamic, embed_dim>> trial_grad, test_grad;   // \nabla{\psi_i}(q_k), \nabla{\psi_j}(q_k)
+    MdArray<double, MdExtents<Dynamic, embed_dim, embed_dim>> trial_hess, test_hess;
     double trial_div = 0, test_div = 0;
 };
 
@@ -63,7 +63,7 @@ template <typename FeSpace_, typename... Quadrature_> struct fe_face_assembler_t
     static constexpr int embed_dim = FeSpace_::embed_dim;
     static constexpr int n_components = FeSpace_::n_components;
 
-    using dof_descriptor = FeType::template face_dof_descriptor<local_dim>;
+    using dof_descriptor = FeType::template cell_dof_descriptor<local_dim>;
     using BasisType = typename dof_descriptor::BasisType;
     static constexpr int n_basis = BasisType::n_basis;  
     using Quadrature = decltype([]() {
@@ -178,20 +178,30 @@ struct fe_assembler_base {
       double, MdExtents<fe_traits__::n_basis, Quadrature__::order, fe_traits__::n_components>>
     eval_shape_values() {
         fdapde_static_assert(   // check dimensions only for user-provided quadrature
-          std::is_same_v<Quadrature__ FDAPDE_COMMA Quadrature> || Quadrature__::local_dim == local_dim,
-          SUPPLIED_QUADRATURE_DIMENSION_DOES_NOT_MATCH_PROBLEM_DIMENSION);
+          std::is_same_v<Quadrature__ FDAPDE_COMMA Quadrature> ||
+            (Options_ == FaceMajor && Quadrature__::local_dim == local_dim - 1) ||
+            (Options_ == CellMajor && Quadrature__::local_dim == local_dim),
+          SUPPLIED_QUADRATURE_DIMENSION_DOES_NOT_MATCH_PROBLEM_DIMENSION); // revise this message
+
         using BasisType = typename fe_traits__::BasisType;
 	using dof_descriptor = typename fe_traits__::dof_descriptor;
         constexpr int n_basis = BasisType::n_basis;
-        constexpr int n_quadrature_nodes = Quadrature__::order;
-	constexpr int n_components = fe_traits__::n_components;
-	
-        MdArray<double, MdExtents<n_basis, n_quadrature_nodes, n_components>> shape_values_ {};
+        constexpr int n_quadrature_nodes =
+          Quadrature__::order * ((Options_ == CellMajor || local_dim == 1) ? 1 : Triangulation::n_facets_per_cell);
+        constexpr int n_components = fe_traits__::n_components;
+
+        Matrix<double, n_quadrature_nodes, local_dim> quad_nodes;
+        if constexpr (Options_ == CellMajor) { quad_nodes = Quadrature__::nodes; }
+        if constexpr (Options_ == FaceMajor) {
+            quad_nodes = distribute_quadrature_on_reference_faces_<Quadrature__, fe_traits__>();
+        }
+        // evaluate basis at quadrature
+        MdArray<double, MdExtents<n_basis, n_quadrature_nodes, n_components>> shape_values_ {};	
         BasisType basis {dof_descriptor().dofs_phys_coords()};
         for (int i = 0; i < n_basis; ++i) {
             // evaluation of \psi_i at q_j, j = 1, ..., n_quadrature_nodes
             for (int j = 0; j < n_quadrature_nodes; ++j) {
-                const auto value = basis[i](Quadrature__::nodes.row(j).transpose());
+                const auto value = basis[i](quad_nodes.row(j).transpose());
                 for (int k = 0; k < n_components; ++k) {
                     shape_values_(i, j, k) = scalar_or_kth_component_of(value, k);
                 }
@@ -217,6 +227,9 @@ struct fe_assembler_base {
 	
         MdArray<double, MdExtents<n_basis, n_quadrature_nodes, n_components, local_dim>> shape_grad_ {};
         BasisType basis {dof_descriptor().dofs_phys_coords()};
+
+	// TODO: handle FaceMajor assembly as in eval_shape_values_
+	
         for (int i = 0; i < n_basis; ++i) {
             // evaluation of \nabla{\psi_i} at q_j, j = 1, ..., n_quadrature_nodes
             for (int j = 0; j < n_quadrature_nodes; ++j) {
@@ -295,12 +308,28 @@ struct fe_assembler_base {
     // moves \nabla{\psi_i}(q_k) from the reference cell to physical cell pointed by it
     template <typename CellIterator, typename SrcMdArray, typename DstMdArray>
     constexpr void eval_shape_grads_on_cell(CellIterator& it, const SrcMdArray& ref_grads, DstMdArray& dst) const {
+
+      // for CellMajor, this is ok
+      // for FaceMajor, we need to understand how the face pointed by it is moved to the reference edge
+      // this will provide us with an index
+      // with this index, we can access the correct values on the table, as we can access the reference basis evaluated
+      // at those quadrature nodes
+      
         constexpr int n_basis_ = SrcMdArray::static_extents[0];
         constexpr int n_quadrature_nodes_ = SrcMdArray::static_extents[1];
+
+	// for FaceMajor, divide by number of faces per cell
+
+	// compute offset index (mapping from physical to reference)
+	
         constexpr int n_components_ = SrcMdArray::static_extents[2];
         for (int i = 0; i < n_basis_; ++i) {
             for (int j = 0; j < n_quadrature_nodes_; ++j) {
                 // get i-th reference basis gradient evaluted at j-th quadrature node
+
+	      // the index plays a role here, it will be index + j
+	      // check the transfomation here
+	      
                 auto ref_grad = ref_grads.template slice<0, 1>(i, j).as_matrix();
                 Matrix<double, embed_dim, n_components_> mapped_grad;
                 for (int k = 0; k < n_components_; ++k) {
@@ -354,12 +383,45 @@ struct fe_assembler_base {
         }
         return;
     }
-
     Form form_;
     Quadrature quadrature_ {};
     const DofHandlerType* dof_handler_;
     const TestSpace* test_space_;
     typename fe_traits::geo_iterator begin_, end_;
+   private:
+    // move quadrature nodes defined on an N-dimensional space to the faces of the (N + 1)-dimensional reference cell
+    template <typename Quadrature__, typename fe_traits__>
+    static consteval auto distribute_quadrature_on_reference_faces_() {
+        using ReferenceCell = typename fe_traits__::dof_descriptor::ReferenceCell;
+        constexpr int n_quadrature_nodes =
+          Quadrature__::order * ((Options_ == CellMajor || local_dim == 1) ? 1 : Triangulation::n_facets_per_cell);
+
+        Matrix<double, n_quadrature_nodes, local_dim> quad_nodes;
+        // move quadrature nodes to barycentric system
+        Matrix<double, Quadrature__::order, Quadrature__::local_dim + 1> bary_quadrature_nodes;
+        for (int i = 0; i < Quadrature__::order; ++i) {
+            double sum = 0;
+            for (int j = 1; j < Quadrature__::local_dim + 1; ++j) {
+                bary_quadrature_nodes(i, j) = Quadrature__::nodes(i, j - 1);
+                sum += Quadrature__::nodes(i, j - 1);
+            }
+            bary_quadrature_nodes(i, 0) = 1 - sum;
+        }
+        // build reference cell nodes
+        Matrix<double, ReferenceCell::n_nodes, local_dim> reference_nodes;
+        for (int i = 1; i < ReferenceCell::n_nodes; ++i) { reference_nodes(i, i - 1) = 1; }
+        // map quadrature nodes on reference faces
+        auto facet_pattern = Triangulation::facet_pattern;
+        for (int i = 0; i < facet_pattern.rows(); ++i) {
+            for (int j = 0; j < Quadrature__::order; ++j) {
+                for (int k = 0; k < local_dim; ++k) {
+                    quad_nodes.row(j + i * Quadrature__::order) +=
+                      reference_nodes.row(facet_pattern(i, k)) * bary_quadrature_nodes(j, k);
+                }
+            }
+        }
+        return quad_nodes;
+    }
 };
     
 }   // namespace internals

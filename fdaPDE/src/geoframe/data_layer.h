@@ -74,11 +74,12 @@ template <typename Scalar_, typename DataObj> struct plain_col_view {
         })),
         // metadata
         rows_(row_end - row_begin),
+        blk_sz_(desc.size()),
         row_begin_(row_begin),
         row_end_(row_end),
-        blk_sz_(desc.size()),
-        type_id_(desc.type_id()),
-        colname_(desc.colname()) { }
+        colname_(desc.colname()),
+        type_id_(desc.type_id()) { }
+  
     template <typename FieldDescriptor>   // column row constructor
     plain_col_view(DataObj& data, index_t row, const FieldDescriptor& desc) noexcept :
         plain_col_view(data, row, row + 1, desc) { }
@@ -136,8 +137,8 @@ template <typename Scalar_, typename DataObj> struct plain_col_view {
         return block_(index_pack);
     }
     // iterators
-    const auto begin() const { return block_.begin(); }
-    const auto end() const { return block_.end(); }
+    auto begin() const { return block_.begin(); }
+    auto end() const { return block_.end(); }
     // logical comparison
     logical_t operator==(const Scalar& rhs) const { return logical_apply_(rhs, std::equal_to<Scalar>      {}); }
     logical_t operator!=(const Scalar& rhs) const { return logical_apply_(rhs, std::not_equal_to<Scalar>  {}); }
@@ -610,8 +611,8 @@ class scalar_data_layer {
     scalar_data_layer() noexcept : rows_(0), cols_(0) { }
     // build from header
     scalar_data_layer(const std::vector<field>& header) :
-        rows_(0), cols_(header.size()), header_(header), freemem_(make_dtyped_map<std::vector<bool>>()) {
-        for (int i = 0; i < cols_; ++i) { col_idx_[header_[i].colname()] = i; }
+        header_(header), freemem_(make_dtyped_map<std::vector<bool>>()), rows_(0), cols_(header.size()) {
+        for (size_t i = 0; i < cols_; ++i) { col_idx_[header_[i].colname()] = i; }
     }
     template <typename... DataT>
         requires(
@@ -740,7 +741,7 @@ class scalar_data_layer {
         // push column descriptors
         rows_ = row_filter.rows();
 	cols_ = cols.size();
-        for (int i = 0; i < cols_; ++i) {
+        for (size_t i = 0; i < cols_; ++i) {
             auto field = row_filter.field_descriptor(cols[i]);
             dtype type_id = field.type_id();
             header_.emplace_back(cols[i], offset[type_id], field.size(), type_id);
@@ -756,7 +757,6 @@ class scalar_data_layer {
                 [&]() {
                     using T = std::decay_t<decltype(ts)>;
 		    dtype type_id = internals::dtype_from_static_type<T>().type_id;
-		    int col_id_ = 0;
                     if (type_id_map[type_id] != 0) {
                         fetch_<T>(data_).resize(rows_, offset[type_id]);
 			// take typed data from filter
@@ -767,7 +767,6 @@ class scalar_data_layer {
                                   .block(full_extent, std::pair {tmp[type_id], tmp[type_id] + desc.size() - 1})
                                   .assign_inplace_from(row_filter.template col<T>(colname).data());
                                 for (int i = 0; i < desc.size(); ++i) { freemem_[type_id].push_back(false); }
-                                col_id_++;
 				tmp[type_id] += desc.size();
                             }
                         }
@@ -1025,7 +1024,7 @@ class scalar_data_layer {
         field tmp = header_[index];
         header_[index] = header_[col_idx_[colname]];
 	col_idx_[colname] = index;
-        for (int i = index + 1; i < cols_; ++i) {
+        for (size_t i = index + 1; i < cols_; ++i) {
             field cur = header_[i];
             header_[i] = tmp;
 	    col_idx_[tmp.colname()] = i;
@@ -1162,7 +1161,7 @@ class scalar_data_layer {
         dtype type_id = dtype_from_static_type<Scalar>().type_id;
         const std::vector<bool>& freemem = freemem_[type_id];
         int j = 0;
-        for (int i = 0; i < freemem.size(); ++i) {
+        for (size_t i = 0; i < freemem.size(); ++i) {
             if (freemem[i]) {   // possible candidate point found
                 j = i;
                 size_t cnt = 0;
@@ -1185,7 +1184,7 @@ class scalar_data_layer {
     std::vector<field> header_;
     std::unordered_map<std::string, index_t> col_idx_;
     std::unordered_map<dtype, std::vector<bool>> freemem_;
-    int rows_ = 0, cols_ = 0;
+    size_t rows_ = 0, cols_ = 0;
 };
 
 // filter outstream

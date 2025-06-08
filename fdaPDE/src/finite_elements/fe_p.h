@@ -39,12 +39,13 @@ template <int LocalDim, int Order, int NComponents> struct vector_fe_p_basis_typ
             static constexpr int StaticInputSize = LocalDim;
             static constexpr int NestAsRef = 0;
             static constexpr int XprBits = 0;
+            constexpr Component() : xpr_(nullptr), i_(0) { }
             constexpr Component(const PolynomialType* xpr, int i) : xpr_(xpr), i_(i) { }
             constexpr Scalar operator()(const InputType& p) const { return xpr_->eval(i_, p); }
             constexpr int input_size() const { return StaticInputSize; }
            private:
-            int i_;
             const PolynomialType* xpr_;
+            int i_;
         };
        public:
         using Base = MatrixFieldBase<LocalDim, PolynomialType>;
@@ -75,8 +76,8 @@ template <int LocalDim, int Order, int NComponents> struct vector_fe_p_basis_typ
         constexpr int input_size() const { return StaticInputSize; }
         constexpr int size() const { return Rows * Cols; }
        private:
-        int i_;   // the i_-th vector basis function [0, \ldots, \psi_{i_ % n_basis}, \ldots, 0]
         LagrangeBasis<LocalDim, Order> basis_;
+        int i_;   // the i_-th vector basis function [0, \ldots, \psi_{i_ % n_basis}, \ldots, 0]
     };
     constexpr vector_fe_p_basis_type() = default;
     template <int n_nodes>

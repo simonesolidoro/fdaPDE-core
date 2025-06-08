@@ -75,7 +75,7 @@ constexpr auto scalar_or_kth_component_of(const T& t, std::size_t k) {
     if constexpr (std::is_floating_point_v<T>) {
         return t;
     } else {
-        fdapde_constexpr_assert(k < t.size());
+        fdapde_constexpr_assert(std::cmp_less(k FDAPDE_COMMA t.size()));
         return t[k];
     }
 }
@@ -195,7 +195,7 @@ template <typename Triangulation, int Options, typename... Quadrature> class int
     integrator_dispatch() = default;
     template <typename Iterator>
     integrator_dispatch(const Iterator& begin, const Iterator& end, const Quadrature&... quadrature) :
-        begin_(begin), end_(end), quadrature_(std::make_tuple(quadrature...)) { }
+        quadrature_(std::make_tuple(quadrature...)), begin_(begin), end_(end) { }
 
     template <typename Form> auto operator()(const Form& form) const {
         static constexpr bool trial_space_detected = xpr_any_of<
@@ -204,7 +204,6 @@ template <typename Triangulation, int Options, typename... Quadrature> class int
           decltype([]<typename Xpr_>() { return requires { typename Xpr_::TestSpace;  }; }), std::decay_t<Form>>();
 
         if constexpr (trial_space_detected && test_space_detected) {   // discretizing bilinear form
-            using TrialSpace = std::decay_t<decltype(trial_space(form))>;
             using TestSpace  = std::decay_t<decltype(test_space (form))>;
             if constexpr (sizeof...(Quadrature) == 0) {
                 return typename TestSpace::template bilinear_form_assembly_loop<Triangulation, Form, Options> {

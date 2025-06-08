@@ -153,7 +153,9 @@ class fe_bilinear_form_assembly_loop :
                 if constexpr (is_petrov_galerkin) Base::eval_shape_grads_on_cell(it, trial_shape_grads_, trial_grads);
             }
             if constexpr (Form::XprBits & int(fe_assembler_flags::compute_shape_div)) {
-                // divergence is defined only for vector elements, skeep computation for scalar element case
+                fdapde_static_assert(
+                  n_test_components != 1 || n_trial_components != 1,
+                  DIVERGENCE_OPERATOR_IS_DEFINED_ONLY_FOR_VECTOR_ELEMENTS);
                 if constexpr (n_test_components != 1) Base::eval_shape_div_on_cell(it, test_shape_grads_, test_divs);
                 if constexpr (is_petrov_galerkin && n_trial_components != 1)
                     Base::eval_shape_div_on_cell(it, trial_shape_grads_, trial_divs);

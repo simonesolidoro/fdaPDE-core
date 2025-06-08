@@ -45,8 +45,8 @@ template <> class Triangulation<1, 2> : public TriangulationBase<1, 2, Triangula
         std::vector<int> neighbors() const {
             const auto& v1 = mesh_->node_to_cells_.at(mesh_->cells()(id_, 0));
             const auto& v2 = mesh_->node_to_cells_.at(mesh_->cells()(id_, 1));
-	    std::vector<int> result(v1.size() + v2.size());
-            int i = 0;
+            std::vector<int> result(v1.size() + v2.size());
+            std::size_t i = 0;
             for (; i < v1.size(); ++i) result[i] = v1[i];
             for (; i < v1.size() + v2.size(); ++i) result[i] = v2[i];
             return result;
@@ -78,8 +78,8 @@ template <> class Triangulation<1, 2> : public TriangulationBase<1, 2, Triangula
         Eigen::SparseMatrix<int> adjoint_neighbors;
         std::vector<Eigen::Triplet<int>> triplet_list;
         for (const auto& [node, edges] : node_to_cells_) {
-            for (int i = 0; i < edges.size(); ++i) {
-                for (int j = i + 1; j < edges.size(); ++j) { triplet_list.emplace_back(edges[j], edges[i], 1); }
+            for (std::size_t i = 0; i < edges.size(); ++i) {
+                for (std::size_t j = i + 1; j < edges.size(); ++j) { triplet_list.emplace_back(edges[j], edges[i], 1); }
             }
         }
         adjoint_neighbors.resize(n_cells_, n_cells_);

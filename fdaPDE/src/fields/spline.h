@@ -116,9 +116,10 @@ class Spline : public ScalarFieldBase<1, Spline> {
                     { knots.size() } -> std::convertible_to<std::size_t>;
                 })
     Spline(KnotsVectorType&& knots, int i, int order) : i_(i), order_(order) {
-      	fdapde_assert(knots.size() >= order_ + 1 && i_ < knots.size());
+        fdapde_assert(
+          i >= 0 && order > 0 && std::cmp_greater_equal(knots.size(), order_ + 1) && std::cmp_less(i_, knots.size()));
         knots_.reserve(knots.size());
-        for (int i = 0; i < knots.size(); ++i) { knots_.push_back(knots[i]); }
+        for (std::size_t i = 0; i < knots.size(); ++i) { knots_.push_back(knots[i]); }
     };
 
     // non-recursive implementation of spline evaluation, as detailed in "Piegl, L., & Tiller, W. (2012). The NURBS

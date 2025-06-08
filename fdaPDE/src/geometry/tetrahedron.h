@@ -62,7 +62,8 @@ class Tetrahedron : public Simplex<Triangulation::local_dim, Triangulation::embe
         int id() const { return edge_id_; }
         const std::unordered_set<int>& adjacent_cells() const { return mesh_->edge_to_cells().at(edge_id_); }
         int marker() const {   // mesh edge's marker
-            return mesh_->edges_markers().size() > edge_id_ ? mesh_->edges_markers()[edge_id_] : Unmarked;
+            return std::cmp_greater(mesh_->edges_markers().size(), edge_id_) ? mesh_->edges_markers()[edge_id_] :
+                                                                               Unmarked;
         }
     };
     // a triangulation-aware view of a tetrahedron face
@@ -84,7 +85,8 @@ class Tetrahedron : public Simplex<Triangulation::local_dim, Triangulation::embe
         EdgeType edge(int n) const { return EdgeType(mesh_->face_to_edges()(face_id_, n), mesh_); }
         Eigen::Matrix<int, Dynamic, 1> adjacent_cells() const { return mesh_->face_to_cells().row(face_id_); }
         int marker() const {   // mesh face's marker
-            return mesh_->faces_markers().size() > face_id_ ? mesh_->faces_markers()[face_id_] : Unmarked;
+            return std::cmp_greater(mesh_->faces_markers().size(), face_id_) ? mesh_->faces_markers()[face_id_] :
+                                                                               Unmarked;
         }
     };
 

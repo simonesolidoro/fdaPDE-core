@@ -127,7 +127,6 @@ struct sp_assembler_base {
     template <typename BasisType__, typename IteratorType, typename DstMdArray>
     void eval_shape_values(
       BasisType__&& basis, const std::vector<int>& active_dofs, IteratorType cell, DstMdArray& dst) const {
-        using BasisType = std::decay_t<BasisType__>;
         int n_basis = active_dofs.size();
         for (int i = 0; i < n_basis; ++i) {
             // evaluation of \psi_i at q_j, j = 1, ..., n_quadrature_nodes

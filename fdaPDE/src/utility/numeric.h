@@ -99,6 +99,47 @@ constexpr T log1pexp(T x) {
     return x + std::exp(-x);
 }
 
+// constexpr square root
+template <typename T>
+    requires(std::is_floating_point_v<T>)
+constexpr T sqrt(T x) {
+    auto heron_method = [](T x) {
+        T curr = x, prev = 0;
+        while (std::abs(curr - prev) > machine_epsilon) {
+            prev = curr;
+            curr = 0.5 * (curr + x / curr);
+        }
+        return curr;
+    };
+    return x >= 0 && x < std::numeric_limits<T>::infinity() ? heron_method(x) : std::numeric_limits<T>::quiet_NaN();
+}
+
+// constexpr ceil
+template <typename T> constexpr std::conditional_t<std::is_floating_point_v<T>, T, double> ceil(T x) {
+    long int int_part = static_cast<long int>(x);
+    return (x > 0.0 && x != static_cast<T>(int_part)) ? int_part + 1.0 : int_part;
+}
+// constexpr floor
+template <typename T> constexpr std::conditional_t<std::is_floating_point_v<T>, T, double> floor(T x) {
+    long int int_part = static_cast<long int>(x);
+    return (x < 0.0 && x != static_cast<T>(int_part)) ? int_part - 1.0 : int_part;
+}
+
+// constexpr pow, only integer exponent support
+template <typename BaseT, typename ExpT>
+    requires(std::is_floating_point_v<BaseT> && internals::is_integer_v<ExpT>)
+constexpr BaseT pow(BaseT base, ExpT exp) {
+    if (exp == 0) return BaseT {1};
+    unsigned int abs_exp = static_cast<unsigned int>((exp < 0) ? -exp : exp);
+    BaseT result = BaseT {1};
+    while (abs_exp > 0) {
+        if (abs_exp % 2 == 1) result *= base;
+        base *= base;
+        abs_exp /= 2;
+    }
+    return exp < 0 ? BaseT {1} / result : result;
+}
+
 }   // namespace fdapde
 
 #endif   // __FDAPDE_NUMERIC_H__

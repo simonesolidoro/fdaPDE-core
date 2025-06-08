@@ -58,52 +58,52 @@ template <typename Derived_> class Hessian : public MatrixFieldBase<Derived_::St
     // evaluation at point
     constexpr auto operator()(const InputType& p) const { return Base::call_(p); }
    private:
-    MatrixField<StaticInputSize, Rows, Cols, FunctorType> data_;
-    MatrixFieldSymmetricView<MatrixField<StaticInputSize, Rows, Cols, FunctorType>, Lower> xpr_;
     internals::ref_select_t<Derived> derived_;
+    MatrixFieldSymmetricView<MatrixField<StaticInputSize, Rows, Cols, FunctorType>, Lower> xpr_;
+    MatrixField<StaticInputSize, Rows, Cols, FunctorType> data_;
 };
 
 // symbolic function objects
 // 1D spaces
-template <typename XprType> constexpr decltype(auto) dxx(const XprType& xpr) {
+template <typename XprType> constexpr auto dxx(const XprType& xpr) {
     fdapde_static_assert(
       XprType::StaticInputSize >= 1, THIS_FUNCTION_IS_FOR_ONE_DIMENSIONAL_OR_HIGHER_INPUT_SPACES_ONLY);
     return Hessian<XprType>(xpr)(0, 0);
 }
 // 2D spaces
-template <typename XprType> constexpr decltype(auto) dyy(const XprType& xpr) {
+template <typename XprType> constexpr auto dyy(const XprType& xpr) {
     fdapde_static_assert(
       XprType::StaticInputSize >= 2, THIS_FUNCTION_IS_FOR_TWO_DIMENSIONAL_OR_HIGHER_INPUT_SPACES_ONLY);
     return Hessian<XprType>(xpr)(1, 1);
 }
-template <typename XprType> constexpr decltype(auto) dxy(const XprType& xpr) {
+template <typename XprType> constexpr auto dxy(const XprType& xpr) {
     fdapde_static_assert(
       XprType::StaticInputSize >= 2, THIS_FUNCTION_IS_FOR_TWO_DIMENSIONAL_OR_HIGHER_INPUT_SPACES_ONLY);
     return Hessian<XprType>(xpr)(0, 1);
 }
-template <typename XprType> constexpr decltype(auto) dyx(const XprType& xpr) {
+template <typename XprType> constexpr auto dyx(const XprType& xpr) {
     fdapde_static_assert(
       XprType::StaticInputSize >= 2, THIS_FUNCTION_IS_FOR_TWO_DIMENSIONAL_OR_HIGHER_INPUT_SPACES_ONLY);
     return Hessian<XprType>(xpr)(1, 0);
 }
 // 3D spaces
-template <typename XprType> constexpr decltype(auto) dzz(const XprType& xpr) {
+template <typename XprType> constexpr auto dzz(const XprType& xpr) {
     fdapde_static_assert(XprType::StaticInputSize == 3, THIS_FUNCTION_IS_FOR_THREE_DIMENSIONAL_INPUT_SPACES_ONLY);
     return Hessian<XprType>(xpr)(2, 2);
 }
-template <typename XprType> constexpr decltype(auto) dxz(const XprType& xpr) {
+template <typename XprType> constexpr auto dxz(const XprType& xpr) {
     fdapde_static_assert(XprType::StaticInputSize == 3, THIS_FUNCTION_IS_FOR_THREE_DIMENSIONAL_INPUT_SPACES_ONLY);
     return Hessian<XprType>(xpr)(0, 2);
 }
-template <typename XprType> constexpr decltype(auto) dzx(const XprType& xpr) {
+template <typename XprType> constexpr auto dzx(const XprType& xpr) {
     fdapde_static_assert(XprType::StaticInputSize == 3, THIS_FUNCTION_IS_FOR_THREE_DIMENSIONAL_INPUT_SPACES_ONLY);
     return Hessian<XprType>(xpr)(2, 0);
 }
-template <typename XprType> constexpr decltype(auto) dyz(const XprType& xpr) {
+template <typename XprType> constexpr auto dyz(const XprType& xpr) {
     fdapde_static_assert(XprType::StaticInputSize == 3, THIS_FUNCTION_IS_FOR_THREE_DIMENSIONAL_INPUT_SPACES_ONLY);
     return Hessian<XprType>(xpr)(1, 2);
 }
-template <typename XprType> constexpr decltype(auto) dzy(const XprType& xpr) {
+template <typename XprType> constexpr auto dzy(const XprType& xpr) {
     fdapde_static_assert(XprType::StaticInputSize == 3, THIS_FUNCTION_IS_FOR_THREE_DIMENSIONAL_INPUT_SPACES_ONLY);
     return Hessian<XprType>(xpr)(2, 1);
 }

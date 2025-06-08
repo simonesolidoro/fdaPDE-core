@@ -231,14 +231,16 @@ template <typename T, typename Tuple> struct index_of;
 template <typename T, typename... Ts> struct index_of<T, std::tuple<Ts...>> {
    private:
     template <std::size_t... idx> static constexpr int find_idx(std::index_sequence<idx...>) {
-        bool found = false;
-        int count = 0;
-        ((!found ? (++count, found = std::is_same_v<T, Ts>) : 0) + ...);
-        return found ? count - 1 : -1;
+        constexpr int tuple_size = sizeof...(Ts);
+        int index = tuple_size;
+        int i = 0;
+        void(((std::is_same_v<T, Ts> ? (index = i, false) : (++i, true)) && ...));
+        fdapde_constexpr_assert(index != tuple_size);   // type not found in tuple
+        return index;
     }
    public:
     static constexpr int value = find_idx(std::index_sequence_for<Ts...> {});
-};
+};  
 
 // returns std::true_type if tuple contains type T
 template <typename T, typename Tuple> struct has_type { };

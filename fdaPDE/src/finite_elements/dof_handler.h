@@ -266,7 +266,7 @@ template <int LocalDim, int EmbedDim, typename Derived> class fe_dof_handler_bas
         n_dofs_per_cell_ = dof_descriptor::n_dofs_per_cell * dof_descriptor::dof_multiplicity;
         dofs_.resize(triangulation_->n_cells(), n_dofs_per_cell_);
 	// copy coordinates of dofs defined on reference unit simplex
-	typename FEType::cell_dof_descriptor<TriangulationType::local_dim> fe;
+	typename FEType::template cell_dof_descriptor<TriangulationType::local_dim> fe;
 	reference_dofs_barycentric_coords_.resize(fe.dofs_bary_coords().rows(), fe.dofs_bary_coords().cols());
 	fe.dofs_bary_coords().copy_to(reference_dofs_barycentric_coords_);
 	// start enumeration at geometrical nodes

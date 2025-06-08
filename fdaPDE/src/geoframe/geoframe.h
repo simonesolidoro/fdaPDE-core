@@ -145,8 +145,10 @@ template <typename... Triangulation_> struct GeoFrame {
     // indexed access
     const layer_t& operator[](int idx) const { return layers_[idx]; }
     layer_t& operator[](int idx) { return layers_[idx]; }
-    const layer_t& operator[](const std::string& colname) const { return layers_.at(layer_name_to_idx_.at(colname)); }
-    layer_t& operator[](const std::string& colname) { return layers_.at(layer_name_to_idx_.at(colname)); }
+    layer_t& operator[](const std::string& layer_name) { return layers_.at(layer_name_to_idx_.at(layer_name)); }
+    const layer_t& operator[](const std::string& layer_name) const {
+        return layers_.at(layer_name_to_idx_.at(layer_name));
+    }
   
     // iterator
     class iterator {
@@ -168,7 +170,7 @@ template <typename... Triangulation_> struct GeoFrame {
             return *this;
         }
         const std::array<ltype, Order>& category() const { return get().category(); }
-        const reference data() const { return operator*(); }
+        reference data() const { return operator*(); }
         const layer_t& get() const { return gf_->layers_[index_]; }
         friend bool operator!=(const iterator& lhs, const iterator& rhs) { return lhs.index_ != rhs.index_; }
         friend bool operator==(const iterator& lhs, const iterator& rhs) { return lhs.index_ == rhs.index_; }

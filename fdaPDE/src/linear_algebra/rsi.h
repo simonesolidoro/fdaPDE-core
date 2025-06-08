@@ -127,7 +127,6 @@ class NysRSI {
     void compute(const MatrixType& A, int rank, int block_sz) {
         rank_ = rank;
         int rows = A.rows();
-        int cols = A.cols();
         double shift = A.diagonal().sum() * std::numeric_limits<double>::epsilon();   // epsilon_shift
 	
         // subspace iteration loop initialization

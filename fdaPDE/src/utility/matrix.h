@@ -146,8 +146,8 @@ struct MatrixCoeffWiseOp :
       std::conditional_t<std::is_arithmetic_v<Lhs>, Rhs, Lhs>::Rows,
       std::conditional_t<std::is_arithmetic_v<Lhs>, Rhs, Lhs>::Cols, MatrixCoeffWiseOp<Lhs, Rhs, BinaryOperation>> {
     fdapde_static_assert(
-      std::is_arithmetic_v<Lhs> ||
-        std::is_arithmetic_v<Rhs> && !(std::is_arithmetic_v<Lhs> && std::is_arithmetic_v<Rhs>),
+      (std::is_arithmetic_v<Lhs> || std::is_arithmetic_v<Rhs>) &&
+        !(std::is_arithmetic_v<Lhs> && std::is_arithmetic_v<Rhs>),
       THIS_CLASS_MUST_HAVE_EXACTLY_ONE_BETWEEEN_LHS_AND_RHS_OF_ARITHMETIC_TYPE);
     using CoeffType_ = std::conditional_t<std::is_arithmetic_v<Lhs>, Lhs, Rhs>;
     using Lhs_ = std::decay_t<Lhs>;
@@ -324,7 +324,9 @@ class MatrixBlock : public MatrixBase<BlockRows_, BlockCols_, MatrixBlock<BlockR
             for (int j = 0; j < Cols; ++j) { xpr_(start_row_ + i, start_col_ + j) = other(i, j); }
         }
         return *this;
-    };
+    }
+    constexpr MatrixBlock(const MatrixBlock& other) :
+        start_row_(other.start_row_), start_col_(other.start_col_), xpr_(other.xpr_) { }
     template <int Rows_, int Cols_, typename RhsType>
     constexpr MatrixBlock<BlockRows_, BlockCols_, Derived>& operator=(const MatrixBase<Rows_, Cols_, RhsType>& rhs) {
         fdapde_static_assert(Derived::ReadOnly == 0, BLOCK_ASSIGNMENT_TO_A_READ_ONLY_EXPRESSION_IS_INVALID);

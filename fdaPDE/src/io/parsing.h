@@ -36,7 +36,7 @@ concept is_char_buff =
 template <typename CharBuff>
     requires(is_char_buff<CharBuff>)
 size_t next_char_(const CharBuff& buff, std::size_t begin, std::size_t end, char c) {
-    int i = begin;
+    std::size_t i = begin;
     while (i < end && buff[i] != c) { i++; }
     return i - begin;
 }
@@ -44,7 +44,7 @@ size_t next_char_(const CharBuff& buff, std::size_t begin, std::size_t end, char
 template <typename CharBuff>
     requires(is_char_buff<CharBuff>)
 size_t next_char_or_newline_(const CharBuff& buff, std::size_t begin, std::size_t end, char c) {
-    int i = begin;
+    std::size_t i = begin;
     while (i < end && buff[i] != c && (buff[i] != EOF && buff[i] != '\n' && buff[i] != '\r')) { i++; }
     return i - begin;
 }
@@ -56,9 +56,9 @@ template <typename CharT> struct token_stream {
 
     token_stream() = default;
     token_stream(CharT* buff, size_t buff_sz, char sep) :
-        buff_(buff), buff_sz_(buff_sz), head_(0), tail_(0), sep_(sep) { }
+        buff_(buff), sep_(sep), head_(0), tail_(0), buff_sz_(buff_sz) { }
     token_stream(const std::string& buff, char sep) :
-        buff_(buff.c_str()), buff_sz_(buff.size()), head_(0), tail_(0), sep_(sep) { }
+        buff_(buff.c_str()), sep_(sep), head_(0), tail_(0), buff_sz_(buff.size()) { }
 
     // a line is a contiguous portion of buffer encolsed between newline chars '\n'
     struct line_iterator {
@@ -68,7 +68,7 @@ template <typename CharT> struct token_stream {
       
         line_iterator() noexcept = default;
         line_iterator(buff_t buff, size_t buff_sz, size_t begin, size_t end, char sep) :
-            buff_(buff), token_sz_(0), buff_sz_(buff_sz), begin_(begin), end_(end), pos_(0), sep_(sep) {
+            buff_(buff), sep_(sep), token_sz_(0), buff_sz_(buff_sz), begin_(begin), end_(end), pos_(0) {
             fetch_token_();
         }
         bool has_token() const { return has_token_; }
