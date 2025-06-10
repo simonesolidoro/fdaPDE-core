@@ -72,6 +72,18 @@ template <typename Triangulation> class Triangle : public Simplex<Triangulation:
     }
     // cell marker
     int marker() const { return mesh_->cells_markers().size() > id_ ? mesh_->cells_markers()[id_] : Unmarked; }
+    // given the global id of an edge, returns its local numbering on this cell, or -1 if the edge is not part of it
+    int local_edge_id(int edge_id) const {
+        int local_id = -1;
+        for (int i = 0; i < Base::n_edges; ++i) {
+            if (mesh_->cell_to_edges()(id_, i) == edge_id) {
+                local_id = i;
+                break;
+            }
+        }
+        return local_id;
+    }
+    int local_facet_id(int edge_id) const { return local_edge_id(edge_id); }
 
     // iterator over triangle edge
     class edge_iterator : public internals::index_iterator<edge_iterator, EdgeType> {

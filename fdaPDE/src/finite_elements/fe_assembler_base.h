@@ -59,20 +59,20 @@ template <int EmbedDim> struct fe_assembler_packet : geo_assembler_packet<EmbedD
 // traits for surface integration \int_{\partial D} (...)
 template <typename FeSpace_, typename... Quadrature_> struct fe_face_assembler_traits {
     using FeType = typename FeSpace_::FeType;
-    static constexpr int local_dim = FeSpace_::local_dim;
+    static constexpr int local_dim = FeSpace_::local_dim - 1;
     static constexpr int embed_dim = FeSpace_::embed_dim;
     static constexpr int n_components = FeSpace_::n_components;
 
-    using dof_descriptor = FeType::template cell_dof_descriptor<local_dim>;
+    using dof_descriptor = FeType::template face_dof_descriptor<FeSpace_::local_dim>;
     using BasisType = typename dof_descriptor::BasisType;
     static constexpr int n_basis = BasisType::n_basis;  
     using Quadrature = decltype([]() {
         if constexpr (sizeof...(Quadrature_) == 0) {
-            return typename FeType::template face_quadrature_t<local_dim> {};
+            return typename FeType::template face_quadrature_t<FeSpace_::local_dim> {};
         } else {
             using UserQuadrature = std::tuple_element_t<0, std::tuple<Quadrature_...>>;
             fdapde_static_assert(
-              UserQuadrature::local_dim == (local_dim - 1),
+              UserQuadrature::local_dim == local_dim,
               SUPPLIED_QUADRATURE_DIMENSION_DOES_NOT_MATCH_FACE_DIMENSION);
             return std::get<0>(std::tuple<Quadrature_...>());
         }
@@ -80,8 +80,8 @@ template <typename FeSpace_, typename... Quadrature_> struct fe_face_assembler_t
     static constexpr int n_quadrature_nodes = Quadrature::degree;
     fdapde_static_assert(
       internals::is_fe_quadrature_simplex<Quadrature>, SUPPLIED_QUADRATURE_FORMULA_IS_NOT_FOR_SIMPLEX_INTEGRATION);
-    using geo_iterator = typename Triangulation<local_dim, embed_dim>::boundary_iterator;
-    using dof_iterator = typename DofHandler<local_dim, embed_dim, finite_element_tag>::boundary_iterator;
+    using geo_iterator = typename Triangulation<FeSpace_::local_dim, embed_dim>::boundary_iterator;
+    using dof_iterator = typename DofHandler<FeSpace_::local_dim, embed_dim, finite_element_tag>::boundary_iterator;
 };
 
 // traits for integration \int_D (...) over the whole domain D
@@ -174,34 +174,26 @@ struct fe_assembler_base {
    protected:
     // compile-time evaluation of \psi_i(q_j), i = 1, ..., n_basis, j = 1, ..., n_quadrature_nodes
     template <typename Quadrature__, typename fe_traits__>
-    static consteval MdArray<
-      double, MdExtents<fe_traits__::n_basis, Quadrature__::order, fe_traits__::n_components>>
+    static consteval MdArray<double, MdExtents<fe_traits__::n_basis, Quadrature__::order, fe_traits__::n_components>>
     eval_shape_values() {
         fdapde_static_assert(   // check dimensions only for user-provided quadrature
           std::is_same_v<Quadrature__ FDAPDE_COMMA Quadrature> ||
             (Options_ == FaceMajor && Quadrature__::local_dim == local_dim - 1) ||
             (Options_ == CellMajor && Quadrature__::local_dim == local_dim),
-          SUPPLIED_QUADRATURE_DIMENSION_DOES_NOT_MATCH_PROBLEM_DIMENSION); // revise this message
+          YOU_SUPPLIED_A_QUADRATURE_OF_INVALID_DIMENSION);
 
         using BasisType = typename fe_traits__::BasisType;
 	using dof_descriptor = typename fe_traits__::dof_descriptor;
         constexpr int n_basis = BasisType::n_basis;
-        constexpr int n_quadrature_nodes =
-          Quadrature__::order * ((Options_ == CellMajor || local_dim == 1) ? 1 : Triangulation::n_facets_per_cell);
+        constexpr int n_quadrature_nodes = Quadrature__::order;
         constexpr int n_components = fe_traits__::n_components;
-
-        Matrix<double, n_quadrature_nodes, local_dim> quad_nodes;
-        if constexpr (Options_ == CellMajor) { quad_nodes = Quadrature__::nodes; }
-        if constexpr (Options_ == FaceMajor) {
-            quad_nodes = distribute_quadrature_on_reference_faces_<Quadrature__, fe_traits__>();
-        }
-        // evaluate basis at quadrature
+        // evaluate basis at quadrature nodes
         MdArray<double, MdExtents<n_basis, n_quadrature_nodes, n_components>> shape_values_ {};	
         BasisType basis {dof_descriptor().dofs_phys_coords()};
         for (int i = 0; i < n_basis; ++i) {
             // evaluation of \psi_i at q_j, j = 1, ..., n_quadrature_nodes
             for (int j = 0; j < n_quadrature_nodes; ++j) {
-                const auto value = basis[i](quad_nodes.row(j).transpose());
+                const auto value = basis[i](Quadrature__::nodes.row(j).transpose());
                 for (int k = 0; k < n_components; ++k) {
                     shape_values_(i, j, k) = scalar_or_kth_component_of(value, k);
                 }
@@ -210,26 +202,25 @@ struct fe_assembler_base {
         return shape_values_;
     }
     // compile-time evaluation of \nabla{\psi_i}(q_j), i = 1, ..., n_basis, j = 1, ..., n_quadrature_nodes
-    // NB: reference shape functions gradients are intentionally stored **by row** instead of **by column** for memory
-    // aligness reasons (essentially, to allow contiguous access of components' gradients)
     template <typename Quadrature__, typename fe_traits__>
     static consteval MdArray<
-      double, MdExtents<fe_traits__::n_basis, Quadrature__::order, fe_traits__::n_components, local_dim>>
+      double, MdExtents<fe_traits__::n_basis, Quadrature__::order, fe_traits__::n_components, fe_traits__::local_dim>>
     eval_shape_grads() {
         fdapde_static_assert(   // check dimensions only for user-provided quadrature
-          std::is_same_v<Quadrature__ FDAPDE_COMMA Quadrature> || Quadrature__::local_dim == local_dim,
-          SUPPLIED_QUADRATURE_DIMENSION_DOES_NOT_MATCH_PROBLEM_DIMENSION);
+          std::is_same_v<Quadrature__ FDAPDE_COMMA Quadrature> ||
+            (Options_ == FaceMajor && Quadrature__::local_dim == local_dim - 1) ||
+            (Options_ == CellMajor && Quadrature__::local_dim == local_dim),
+          YOU_SUPPLIED_A_QUADRATURE_OF_INVALID_DIMENSION);
+
         using BasisType = typename fe_traits__::BasisType;
 	using dof_descriptor = typename fe_traits__::dof_descriptor;
         constexpr int n_basis = BasisType::n_basis;
         constexpr int n_quadrature_nodes = Quadrature__::order;
         constexpr int n_components = fe_traits__::n_components;
-	
+        constexpr int local_dim = fe_traits__::local_dim;
+        // evaluate basis gradient at quadrature nodes
         MdArray<double, MdExtents<n_basis, n_quadrature_nodes, n_components, local_dim>> shape_grad_ {};
         BasisType basis {dof_descriptor().dofs_phys_coords()};
-
-	// TODO: handle FaceMajor assembly as in eval_shape_values_
-	
         for (int i = 0; i < n_basis; ++i) {
             // evaluation of \nabla{\psi_i} at q_j, j = 1, ..., n_quadrature_nodes
             for (int j = 0; j < n_quadrature_nodes; ++j) {
@@ -244,20 +235,25 @@ struct fe_assembler_base {
     // compile-time evaluation of hessian matrix of \psi_i(q_j), i = 1, ..., n_basis, j = 1, ..., n_quadrature_nodes
     template <typename Quadrature__, typename fe_traits__>
     static consteval MdArray<
-      double, MdExtents<fe_traits__::n_basis, Quadrature__::order, fe_traits__::n_components, local_dim, local_dim>>
+      double, MdExtents<
+                fe_traits__::n_basis, Quadrature__::order, fe_traits__::n_components, fe_traits__::local_dim,
+                fe_traits__::local_dim>>
     eval_shape_hess() {
         fdapde_static_assert(   // check dimensions only for user-provided quadrature
-          std::is_same_v<Quadrature__ FDAPDE_COMMA Quadrature> || Quadrature__::local_dim == local_dim,
-          SUPPLIED_QUADRATURE_DIMENSION_DOES_NOT_MATCH_PROBLEM_DIMENSION);
+          std::is_same_v<Quadrature__ FDAPDE_COMMA Quadrature> ||
+            (Options_ == FaceMajor && Quadrature__::local_dim == local_dim - 1) ||
+            (Options_ == CellMajor && Quadrature__::local_dim == local_dim),
+          YOU_SUPPLIED_A_QUADRATURE_OF_INVALID_DIMENSION);
+
         using BasisType = typename fe_traits__::BasisType;
 	using dof_descriptor = typename fe_traits__::dof_descriptor;
         constexpr int n_basis = BasisType::n_basis;
         constexpr int n_quadrature_nodes = Quadrature__::order;
         constexpr int n_components = fe_traits__::n_components;
-	
+	constexpr int local_dim = fe_traits__::local_dim;
+	// evaluate basis hessian at quadrature nodes
         MdArray<double, MdExtents<n_basis, n_quadrature_nodes, n_components, local_dim, local_dim>> shape_hess_ {};
         BasisType basis {dof_descriptor().dofs_phys_coords()};
-	if constexpr(n_components == 1) {
         for (int i = 0; i < n_basis; ++i) {
             // evaluation of \nabla{\psi_i} at q_j, j = 1, ..., n_quadrature_nodes
             for (int j = 0; j < n_quadrature_nodes; ++j) {
@@ -267,17 +263,13 @@ struct fe_assembler_base {
                 }
             }
         }
-	}
         return shape_hess_;
     }
 
-    // test basis functions evaluations
-    static constexpr MdArray<double, MdExtents<n_basis, n_quadrature_nodes, n_components>> test_shape_values_ =
-      eval_shape_values<Quadrature, fe_traits>();
-    static constexpr MdArray<double, MdExtents<n_basis, n_quadrature_nodes, n_components, local_dim>>
-      test_shape_grads_ = eval_shape_grads<Quadrature, fe_traits>();
-    static constexpr MdArray<double, MdExtents<n_basis, n_quadrature_nodes, n_components, local_dim, local_dim>>
-      test_shape_hess_  = eval_shape_hess <Quadrature, fe_traits>();
+    // test functions evaluations
+    static constexpr auto test_shape_values_ = eval_shape_values<Quadrature, fe_traits>();
+    static constexpr auto test_shape_grads_  = eval_shape_grads <Quadrature, fe_traits>();
+    static constexpr auto test_shape_hess_   = eval_shape_hess  <Quadrature, fe_traits>();
 
     void
     distribute_quadrature_nodes(typename fe_traits::dof_iterator begin, typename fe_traits::dof_iterator end) const {
@@ -308,28 +300,13 @@ struct fe_assembler_base {
     // moves \nabla{\psi_i}(q_k) from the reference cell to physical cell pointed by it
     template <typename CellIterator, typename SrcMdArray, typename DstMdArray>
     constexpr void eval_shape_grads_on_cell(CellIterator& it, const SrcMdArray& ref_grads, DstMdArray& dst) const {
-
-      // for CellMajor, this is ok
-      // for FaceMajor, we need to understand how the face pointed by it is moved to the reference edge
-      // this will provide us with an index
-      // with this index, we can access the correct values on the table, as we can access the reference basis evaluated
-      // at those quadrature nodes
-      
         constexpr int n_basis_ = SrcMdArray::static_extents[0];
         constexpr int n_quadrature_nodes_ = SrcMdArray::static_extents[1];
-
-	// for FaceMajor, divide by number of faces per cell
-
-	// compute offset index (mapping from physical to reference)
-	
         constexpr int n_components_ = SrcMdArray::static_extents[2];
+	
         for (int i = 0; i < n_basis_; ++i) {
             for (int j = 0; j < n_quadrature_nodes_; ++j) {
                 // get i-th reference basis gradient evaluted at j-th quadrature node
-
-	      // the index plays a role here, it will be index + j
-	      // check the transfomation here
-	      
                 auto ref_grad = ref_grads.template slice<0, 1>(i, j).as_matrix();
                 Matrix<double, embed_dim, n_components_> mapped_grad;
                 for (int k = 0; k < n_components_; ++k) {
@@ -388,40 +365,6 @@ struct fe_assembler_base {
     const DofHandlerType* dof_handler_;
     const TestSpace* test_space_;
     typename fe_traits::geo_iterator begin_, end_;
-   private:
-    // move quadrature nodes defined on an N-dimensional space to the faces of the (N + 1)-dimensional reference cell
-    template <typename Quadrature__, typename fe_traits__>
-    static consteval auto distribute_quadrature_on_reference_faces_() {
-        using ReferenceCell = typename fe_traits__::dof_descriptor::ReferenceCell;
-        constexpr int n_quadrature_nodes =
-          Quadrature__::order * ((Options_ == CellMajor || local_dim == 1) ? 1 : Triangulation::n_facets_per_cell);
-
-        Matrix<double, n_quadrature_nodes, local_dim> quad_nodes;
-        // move quadrature nodes to barycentric system
-        Matrix<double, Quadrature__::order, Quadrature__::local_dim + 1> bary_quadrature_nodes;
-        for (int i = 0; i < Quadrature__::order; ++i) {
-            double sum = 0;
-            for (int j = 1; j < Quadrature__::local_dim + 1; ++j) {
-                bary_quadrature_nodes(i, j) = Quadrature__::nodes(i, j - 1);
-                sum += Quadrature__::nodes(i, j - 1);
-            }
-            bary_quadrature_nodes(i, 0) = 1 - sum;
-        }
-        // build reference cell nodes
-        Matrix<double, ReferenceCell::n_nodes, local_dim> reference_nodes;
-        for (int i = 1; i < ReferenceCell::n_nodes; ++i) { reference_nodes(i, i - 1) = 1; }
-        // map quadrature nodes on reference faces
-        auto facet_pattern = Triangulation::facet_pattern;
-        for (int i = 0; i < facet_pattern.rows(); ++i) {
-            for (int j = 0; j < Quadrature__::order; ++j) {
-                for (int k = 0; k < local_dim; ++k) {
-                    quad_nodes.row(j + i * Quadrature__::order) +=
-                      reference_nodes.row(facet_pattern(i, k)) * bary_quadrature_nodes(j, k);
-                }
-            }
-        }
-        return quad_nodes;
-    }
 };
     
 }   // namespace internals

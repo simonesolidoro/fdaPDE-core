@@ -73,7 +73,7 @@ class fe_linear_form_assembly_loop :
                 fe_packet.normal = it->normal();
             }
             if constexpr (Form::XprBits & int(fe_assembler_flags::compute_shape_grad)) {
-                Base::eval_shape_grads_on_cell(it, Base::test_shape_grads_, test_grads);
+                Base::eval_physical_grads(it, Base::test_shape_grads_, test_grads);
             }
 	    
 	    // perform integration of linear form for i-th basis
