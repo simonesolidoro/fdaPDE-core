@@ -48,11 +48,14 @@ class WolfeLineSearch {
                 + c1 * alpha * m < 0) {
                 alpha_max = alpha;
                 alpha = (alpha_min + alpha_max) * 0.5;
-            } else if (obj.gradient()(opt.x_old + alpha * opt.update).dot(opt.update) < c2 * m) {   // curvature condition
-                alpha_min = alpha;
-                alpha = (std::isinf(alpha_max)) ? 2 * alpha_min : (alpha_min + alpha_max) * 0.5;
             } else {
-                stop = true;
+                double grad_new = obj.gradient()(opt.x_old + alpha * opt.update).dot(opt.update);
+            	if (grad_new < c2 * m && std::abs(grad_new) > 1e-2) {   // curvature condition
+                    alpha_min = alpha;
+                    alpha = (std::isinf(alpha_max)) ? 2 * alpha_min : (alpha_min + alpha_max) * 0.5;
+                } else {
+                    stop = true;
+                }
             }
         }
         opt.h = alpha;
@@ -63,3 +66,4 @@ class WolfeLineSearch {
 }   // namespace fdapde
 
 #endif   // __FDAPDE_WOLFE_LINE_SEARCH_H__
+

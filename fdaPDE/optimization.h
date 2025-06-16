@@ -33,6 +33,7 @@
 #include "src/optimization/newton.h"
 #include "src/optimization/gradient_descent.h"
 #include "src/optimization/bfgs.h"
+#include "src/optimization/lbfgs.h"
 
 // clang-format on
 
