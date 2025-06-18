@@ -47,8 +47,8 @@ namespace fdapde{
                 public:
                     friend class Threadpool; //TODO: classi friend quindi inutili tuti i getter ecc.. ripulire codice. lasciare magari wrap di alcune funzioni per chiarezza in uso in threadpool(es workers_[i]->notifica() al posto di workers_[i]->cv_.notify_one())
                     // costruttore con numero elementi di coda
-                    //inizializza thread con funzione membro worker_loop di Threadpoool cosi che accessibili altre code senza passaggio di puntatore/reference a threadpool in worker che causava segmentation fault  
-                    Worker(int n, void (Threadpool::*worker_loop)(int),Threadpool* Th, int idx):indx_(idx),sync_queue_(n),t_(worker_loop,Th,idx){}; //oss non serve <N> compila e funziona lo stesso ma non so perche
+                    //inizializza thread con funzione membro worker_loop di Threadpoool cosi che accessibili altre code senza passaggio di puntatore/reference a threadpool in worker   
+                    Worker(int n, void (Threadpool::*worker_loop)(int),Threadpool* Th, int idx):indx_(idx),sync_queue_(n),t_(worker_loop,Th,idx){}; 
 
                     //  TUTTI WRAP "INUTILI" BASTA FATTO CHE SIA FRIEND PER ACCESSO DIRETTO, FORSE PIU LEGGIBILE USARLI PERO.
                     //per poter bloccare il mutex di Worker m_ in threadpool
@@ -96,7 +96,7 @@ namespace fdapde{
             std::condition_variable_any cv_threadpool_;
             bool active_ = false; //TODO oss: possibile evitare stop_ di singolo worker e usare active, ma stop_ in singolo worker rende worker indipendente da threadpool (puo terminare anche se threadpool non distrutta) e questo puo essere utile magari in seguito 
         public:
-            friend class Worker; //poi togliere tuti get e sostituire con accesso diretto
+            friend class Worker; //poi togliere tutti get e sostituire con accesso diretto
             //n = size code, k = numero worker
             Threadpool(int n,int k):n_worker_(k),queue_size_(n){
                 threadpool_volume_ = k * n;
@@ -125,13 +125,13 @@ namespace fdapde{
                 while(get_count_all_job()>0){
                     std::this_thread::yield(); //per dare piu tempo a worker di finire e ridurre esecuzione cicli while a vuoto.
                 }; //aspetta finche count_job[] di tutti non a zero
-                //aspetta che code siano vuote una per volta, messo dopo count_job perche questo chiama empty e quindi locca interventi su coda e rallenta tutto, dopo while con get_count_all_job elemeti in coda dovreero essere zero o quasi quindi empty rallenta ma molto meno
+                //aspetta che code siano vuote una per volta, messo dopo count_job perche questo chiama empty e quindi blocca interventi su coda e rallenta tutto, dopo while con get_count_all_job elemeti in coda dovreero essere zero o quasi quindi empty rallenta ma molto meno
                 for (int i =0; i<n_worker_; i++){
                     while(!workers_[i]->sync_queue_.empty()){}
                 }
 
                 //TODO: ora deve aspettare che worker abbiano effettivamente finito i job dopo averli pop da coda
-                //RISPOSTA: i realta ora sicuro che che code sono vuote quindi eseguito pop su tutte, dopo viene messo stop_ = true ma dato che siamo dopo il pop prima di check su stop_ cronologicamente in workerloop avviene esecuzioe job :)
+                //RISPOSTA: in realta ora sicuro che che code sono vuote quindi eseguito pop su tutte, dopo viene messo stop_ = true ma dato che siamo dopo il pop prima di check su stop_ cronologicamente in workerloop avviene esecuzioe job :)
 
                 //facciamo terminare tutti worker_loop cosi che nessun worker acceda a worker distrutti o a threadpool (perche quando il resto del distruttore di threadpool verra chiamato, cioe finito il corpo di questo distruttore, tutti i worker avranno terminato worker_loop grazie a join())
                 for(int j = 0; j<n_worker_; j++){
@@ -152,6 +152,7 @@ namespace fdapde{
                 m_threadpool_.unlock_shared();
                 while(!workers_[i]->stop_){
                     //TODO è meglio fare unico thread_local job per ogni thread e riusare sempre quello ?. forse si perche tanto std::fuction<> ha membro operator = quindi permesso copia assegazione non solo inizializzazione
+                    //TODO refactoring funzione esterna do_job cosi non si rifa 3 volte if(j)...
                     std::optional<job> try_j = workers_[i]->pop_front();
                     if(try_j){//esegue se non è nullopt
                         count_job_[i]--;
@@ -170,84 +171,91 @@ namespace fdapde{
                             //std::cout<<"thread: "<<std::this_thread::get_id()<<" ha eseguito"<<std::endl; 
                         }
                         else{ //steal.
+
+                            //indice da cui rubare
+                            int indx_steal = -1;
                             if constexpr(T == steal::random){
-                                random_steal_and_do();
+                                indx_steal = indx_random_from_busy();
                             }
                             if constexpr(T == steal::most_busy){
-                                steal_from_most_busy_and_do();
+                                indx_steal = indx_most_busy();
                             }
                             if constexpr(T == steal::random_half_most_busy){
-                                steal_random_from_most_busy_and_do();
-                            } 
-                            //std::cout<<"furtooooo"<<std::endl;
+                                indx_steal = indx_random_from_half_most_busy();
                                 //oss: steal_random_from_most_busy_and_do() ha senso solo per N > 5 (perche dimezza i worker con job tra cui sceglie random)
+                            } 
+
+                            if(indx_steal != -1){
+                                //do job steal
+                                std::optional<job> jj = workers_[indx_steal]->pop_back();
+                                if(jj){
+                                    count_job_[indx_steal].fetch_sub(1,std::memory_order_release);
+                                    (jj.value())();
+                                }
+                            }
                             
                         }                             
                     }
                 }
             };
-            //al posto di steal se n_worer solo 2
-            //ora che umero worker non noto at compile time inutile
-            void steal_from_the_other_one_and_do(int i){
-                int indx_the_other_one = (i == 0)?(1):(0);
-                //if(count_job_[indx_the_other_one]<2) return; 
-                std::optional<job> j = workers_[indx_the_other_one]->pop_back();
-                if(j){
-                    count_job_[indx_the_other_one].fetch_sub(1,std::memory_order_release);
-                    (j.value())();
-                }
-            };
-            
-            void steal_from_most_busy_and_do(){ 
-                int most_busy = indx_most_busy();
-                if(most_busy != -1){
-                    std::optional<job> j = workers_[most_busy]->pop_back();
-                    if(j){
-                        count_job_[most_busy].fetch_sub(1,std::memory_order_release);
-                        (j.value())();
-                        //std::cout<<"thread: "<<std::this_thread::get_id()<<" ha rubato"<<std::endl;
+
+                        int indx_most_free(){
+                int worker_indx = 0;
+                int min_elem= count_job_[0].load(std::memory_order_acquire); //numero elementi in primo worker 
+                for (int j=1; j<n_worker_; j++){
+                    int current_el = count_job_[j].load(std::memory_order_acquire);
+                    if(current_el < min_elem ){ 
+                        worker_indx = j;
+                        min_elem = current_el;
                     }
-                    //else{std::cout<<"thread: "<<std::this_thread::get_id()<<"nulloptRubato"<<std::endl;}
                 }
+                return worker_indx;
+            };
+
+            int indx_most_busy(){
+                int worker_indx = 0;
+                int max_elem= count_job_[0].load(std::memory_order_acquire); //numero elementi in primo worker 
+                for (int j=1; j<n_worker_; j++){
+                    int current_el = count_job_[j].load(std::memory_order_acquire);
+                    if(current_el > max_elem ){
+                        worker_indx = j;
+                        max_elem = current_el;
+                    }
+                }
+                if(max_elem == 0){return -1;} //evita steal di nullopt 
+                return worker_indx;
             }
 
-            // per steal random tra chi ha code non vuote
-            int random_indx(int size){
+
+            // ridà int a caso tra 0 e size-1
+            int random_int(int size){
                 std::random_device rd;
                 std::mt19937 gen(rd());
                 std::uniform_int_distribution<> distrib(0,size-1);
                 return distrib(gen);
             }
-            void random_steal_and_do(){
-                std::vector<int> indxs;
+
+            //indx random tra i worker con job in coda ovviamente
+            int indx_random_from_busy(){
+                std::vector<int> indxs; //vector di indici di worker in workers che hanno job in coda
                 for(int k = 0; k<n_worker_; k++){
-                    //if per evitare se stessi.  poi da fare piu efficente se possibile
-                    //if(k != i){ per ora tolto, se fa steal molto probabilmente ha coda vuota (non certo perche pop in Relax puo fallire anche se coda non vuota)
-                        if(count_job_[k].load(std::memory_order_acquire) > 0){
-                            indxs.push_back(k);
-                        }
-                    //}
+                    // oss: non evitati se stessi (k!=j) perche sarebbe piu costoso (range di for diminusice di un elemento, ma ad ogni iterazione ci sarebbe if aggiuntivo)
+                    if(count_job_[k].load(std::memory_order_acquire) > 0){
+                        indxs.push_back(k);
+                    }
                 }
                 int size = indxs.size();
-                if(size == 0){ return;}
-                int indx = indxs[random_indx(size)];
-                std::optional<job> j = workers_[indx]->pop_back();
-                if(j){
-                    count_job_[indx].fetch_sub(1,std::memory_order_release);
-                    (j.value())();
-                    //std::cout<<"thread: "<<std::this_thread::get_id()<<" ha eseguito"<<std::endl;
-                }
-                //else{std::cout<<"thread: "<<std::this_thread::get_id()<<"nullopt"<<std::endl;}
-                
+                if(size == 0){ return -1;}
+                return indxs[random_int(size)];                
             }
 
             //m numero di worker con job, i ladri fanno steal a worker casuale tra i primi m/2 con piu job in coda
             //obbiettivo evitare starvation di steal_from_most_busy ma preservare la sua proprietà stabilizzante (steal_from_most_busy tende a riequilibrare i count_job, steal_random mantiene squilibrio )
             //OSS: importante equilibrare count_job perchè count_job[] squilibrati porta poi a maggiore penalita per starvation
-            void steal_random_from_most_busy_and_do(){ 
-                std::vector<std::pair<int,int>> indxs; //vettore di coppie j,count_job[j] 
+            int indx_random_from_half_most_busy(){ 
+                std::vector<std::pair<int,int>> indxs; //vettore di coppie j,count_job[j]. j indice di worker in workers
                 int tmp_count_job = 0;
-                //mappa di chi ha count_job()>0
+                //chi ha count_job()>0 inserito in indxs
                 for(int k = 0; k<n_worker_; k++){
                     tmp_count_job = count_job_[k];
                     if(tmp_count_job > 0){
@@ -255,22 +263,14 @@ namespace fdapde{
                     }
                 }
                 int size = indxs.size();
-                if(size == 0) {return;}
+                if(size == 0) {return -1;}
                 std::sort(indxs.begin(), indxs.end(), [](std::pair<int,int> &a, std::pair<int,int> &b) {return a.second > b.second;}); //ordina da chi ha piu job (indx[].second) a chi ne ha meno
-                int indx = 0;
                 switch (size)
                 {
                 case 1:
-                    indx = indxs[0].first; //evita chiamata a geerazioe random number inutile
-                    break;
+                    return indxs[0].first; //evita chiamata a geerazioe random number inutile
                 default: 
-                    indx = indxs[random_indx(size/2)].first; //sceglie a caso tra i primi size/2 con count_job maggiore. //TODO: per ora size/2, sarebbe meglio aggiungere dipendenza da N-size (N-size = numero worker ladri) o simile. 
-                    break;
-                }
-                std::optional<job> j = workers_[indx]->pop_back();
-                if(j){
-                    count_job_[indx].fetch_sub(1,std::memory_order_release);
-                    (j.value())();
+                    return indxs[random_int(size/2)].first; //sceglie a caso tra i primi size/2 con count_job maggiore. //TODO: per ora size/2, sarebbe meglio aggiungere dipendenza da N-size (N-size = numero worker ladri) o simile. 
                 }
             }
             
@@ -301,33 +301,6 @@ namespace fdapde{
                 for(int i=0; i<n_worker_; i++){
                     vett_lock[i].unlock();
                 }
-            }
-
-            int indx_most_free(){
-                int worker_indx = 0;
-                int min_elem= count_job_[0].load(std::memory_order_acquire); //numero elementi in primo worker 
-                for (int j=1; j<n_worker_; j++){
-                    int current_el = count_job_[j].load(std::memory_order_acquire);
-                    if(current_el < min_elem ){ 
-                        worker_indx = j;
-                        min_elem = current_el;
-                    }
-                }
-                return worker_indx;
-            };
-
-            int indx_most_busy(){
-                int worker_indx = 0;
-                int max_elem= count_job_[0].load(std::memory_order_acquire); //numero elementi in primo worker 
-                for (int j=1; j<n_worker_; j++){
-                    int current_el = count_job_[j].load(std::memory_order_acquire);
-                    if(current_el > max_elem ){
-                        worker_indx = j;
-                        max_elem = current_el;
-                    }
-                }
-                if(max_elem == 0){return -1;} //evita steal di nullopt 
-                return worker_indx;
             }
 
             //send generico combina send_round e send_most_free. se job in threadpool alto allora manda a chi piu libero, se basso manda a giro. (alto basso per ora segnato da threadpool_volume_/2)
