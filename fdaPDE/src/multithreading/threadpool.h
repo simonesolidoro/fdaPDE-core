@@ -199,7 +199,7 @@ namespace fdapde{
                 }
             };
 
-                        int indx_most_free(){
+            int indx_most_free(){
                 int worker_indx = 0;
                 int min_elem= count_job_[0].load(std::memory_order_acquire); //numero elementi in primo worker 
                 for (int j=1; j<n_worker_; j++){
@@ -410,7 +410,13 @@ namespace fdapde{
             };
 
             //parallel_for 
-            template<typename F> //F = body_function di loop, function con input indice i di loop. firma: return_type (int i)
+            //TODO: capire se necessario perfect forwarding
+
+            //lasciato versione con body function con return perche magari parallelizzando salvare risultati in vettore non è thread-safe (bisognerebbe salvare in array cosi che non si riallochi la memoria, oppure usare thread safe vector)
+            //ma non chiaro in realta probabimnte non serve 
+
+            //F = body_function di loop, function con input indice i di loop. firma: return_type (int i)
+            template<typename F> 
             requires (!std::is_same_v<std::invoke_result_t<F,int>, void>)
             auto parallel_for_sure(int start, int end, F&& f)-> std::vector<std::invoke_result_t<F, int>>{
                 using return_type = std::invoke_result_t<F, int>;
@@ -438,37 +444,10 @@ namespace fdapde{
                 return ret;
             }
 
-            template<typename F, typename... Args> //F = body_function di loop, function indipendente dall'indice del loop. firma: return_type (Args...)
-            requires (!std::is_same_v<std::invoke_result_t<F,Args...>, void>)
-            auto parallel_for_sure(int n, F&& f, Args... args)-> std::vector<decltype(f(args...))>{
-                using return_type = decltype(f(args...));
-                std::vector<std::optional<std::future<return_type>>> ret_opt;
-                std::vector<return_type> ret;
-                int j = 0;
-                //while con controllo se job send, se non inviato elimina nullopt e non aggiorna j cosi da riprovare finche non lo invia
-                //molto costoso ma necessario per avere certezza send all job
-                //OSS: se push in syncro_queue fosse garantito (es push_or_wait di hold_wait version) non sarebbe necessario while(){if()} ma basterebbe for
-                //TODO: scrivere diverso parallel_for a seconda di tipo coda in threadpool 
-                while(j<n){
-                    ret_opt.push_back(this->send_task_round(std::forward<F>(f),std::forward<Args>(args)...));
-                    if(ret_opt[j]){
-                        j++;
-                    }
-                    else{
-                        ret_opt.pop_back();
-                    }
-                }
-                // get di tutti i future cosi da assicurarsi che tutte le body_function di ciclo for siano eseguite prima di termine funzione parallel_for
-                // e copia di return di ogni body_function per return vector<return_type> di parallel_for
-                //TODO se void le body_function non serve copia per return, vale la pena fare una seconda versione per parallel_for con body_function void
-                for (size_t k= 0; k<ret_opt.size(); k++){
-                    ret.push_back(ret_opt[k].value().get());
-                }
-                return ret;
-            }
+            
 
-            //void body_function
-            template<typename F> //F = body_function di loop, function con input indice i di loop. firma: void (int i)
+            //F = body_function di loop, function con input indice i di loop. firma: void (int i)
+            template<typename F> 
             requires std::is_same_v<std::invoke_result_t<F,int>, void>
             void parallel_for_sure(int start, int end, F&& f){
                 using return_type = std::invoke_result_t<F, int>;
@@ -511,9 +490,11 @@ namespace fdapde{
                         }
                     }));
                     if(ret_opt[j]){
+                        //se push andato a buon fine incrementa 
                         j++;
                     }
                     else{
+                        //altrimenti elimina null_opt da vettore di return prima di riprovare
                         ret_opt.pop_back();
                     }
                 }
@@ -526,14 +507,8 @@ namespace fdapde{
 
             //TODO: da mettere il get dei future dentro i parallel_for, come in parallel_for_sure for void
             //PARALLEL_FOR
-            //2 tipi a seconda di body function in for loop:
-            //      1)body fuction dipendente da i.     body function passate come wrap di funzioni in lambda e quindi unico parametro i: [args](int i){retur fun(args,i);}
-            //      2)body fuction INdipendente da i.   niente wrap in lamda, passata direttamente funzione e argomenti 
-            //TODO: ci sara modo per poter passare direttamente la funzione senza wrap e separare args ed i cosi da avere un unica funzione parallel_for per tutti i casi
-            //TODO: capire se necessario perfect forwarding
+            //body fuction dipendente da i.     body function passate come wrap di funzioni in lambda e quindi unico parametro i: [args](int i){retur fun(args,i);}    
 
-
-            //1
             //OSS: diversificato caso return e void perche void non serve faccia vector da ritornare quindi piu veloce. NO! vedi oss sotto 
             //OSS: meglio return vettore di future void cosi in main si puo garantire con get entro quando si vuole che un job void venga eseguito
              
@@ -547,96 +522,41 @@ namespace fdapde{
                 return ret;
             }   
 
-            //2
-            template<typename F, typename... Args>
-            auto parallel_for(int n, F&& f, Args... args)-> std::vector<std::optional<std::future<decltype(f(args...))>>>{
-                using return_type = decltype(f(args...));
-                std::vector<std::optional<std::future<return_type>>> ret;
-                for(int j=0; j<n; j++){
-                    ret.push_back(this->send_task_round(std::forward<F>(f),std::forward<Args>(args)...));
-                }
-                return ret;
-            }
 
-            //OSS: probabilmente inutile perche basterebbe catturare container in lamda nel main e poi nella lambda usare accesso tramite i
-            //     ES: [& V](int i){ ...V[i]...}
-            //     OSS: unico pro di scorrere con iteartor direttamente è che evita di dover catturare ref a V.
-            //PARALLEL_FOR_ITERATOR
-            //parallel_for_iterator: for_loop scorre cotainer con iterator it e applica funzione con tutti elementi di container f(*it)
-            template<typename Iterator, typename F> 
-            //TODO: da aggiugere vicolo che iteartor abbia membro value_type
-            auto parallel_for_iterator(Iterator begin, Iterator end,F&& f)->std::vector<std::optional<std::future<std::invoke_result_t<F,typename Iterator::value_type>>>>{
-                using return_type = std::invoke_result_t<F,typename Iterator::value_type>;
-                std::vector<std::optional<std::future<return_type>>> ret;
-                for (auto it = begin; it!=end; it++){
-                    ret.push_back(this->send_task_round(std::forward<F>(f),*it));
-                }
-                return ret;
-            }
-
-            //parallel_for_iterator_ref: for_loop scorre cotainer con iterator it e applica funzione con tutti elementi di container tramite reference f(std::ref(*it))
-            template<typename Iterator, typename F> 
-            //TODO: da aggiugere vicolo che iteartor abbia membro value_type
-            auto parallel_for_iterator_ref(Iterator begin, Iterator end,F&& f)->std::vector<std::optional<std::future<std::invoke_result_t<F,typename Iterator::value_type&>>>>{
-                using return_type = std::invoke_result_t<F,typename Iterator::value_type&>;
-                std::vector<std::optional<std::future<return_type>>> ret;
-                for (auto it = begin; it!=end; it++){
-                    ret.push_back(this->send_task_round(std::forward<F>(f),std::ref(*it)));
-                }
-                return ret;
-            }
 
             //parallel reduce con funzioni dipendenti da j
-            template<op Op, typename F>
-            auto parallel_reduce(int start, int end, F&& f)-> std::invoke_result_t<F, int>{
+            template<typename F>
+            auto parallel_reduce_sum(int start, int end, F&& f)-> std::invoke_result_t<F, int>{
                 using return_type = std::invoke_result_t<F, int>;
 
-                auto results = parallel_for_sure(start,end,f);
+                std::vector<return_type> results = parallel_for_sure(start,end,f);
 
                 return_type ret = results[0];
-                
-                if constexpr(Op == fdapde::op::sum){
-                    for(auto it = results.begin()+1; it < results.end(); it++){
-                        ret += *it;
-                    }
+                                
+                for(auto it = results.begin()+1; it < results.end(); it++){
+                    ret += *it;
                 }
-
-                if constexpr(Op == fdapde::op::mult){
-                    for(auto it = results.begin()+1; it < results.end(); it++){
-                        ret *= *it;
-                    }
-                }
-                    
                 return ret;
             }
+            //parallel reduce con funzioni dipendenti da j
+            template<typename F>
+            auto parallel_reduce_dot(int start, int end, F&& f)-> std::invoke_result_t<F, int>{
+                using return_type = std::invoke_result_t<F, int>;
 
-            //parallel reduce con funzioni indipendenti da j
-            template<op Op, typename F, typename... Args>
-            auto parallel_reduce(int n, F&& f, Args... args)-> decltype(f(args...)){
-                using return_type = decltype(f(args...));
-
-                auto results = parallel_for_sure(n,f, args...);
+                std::vector<return_type> results = parallel_for_sure(start,end,f);
 
                 return_type ret = results[0];
-                
-                if constexpr(Op == fdapde::op::sum){
-                    for(auto it = results.begin()+1; it < results.end(); it++){
-                        ret += *it;
-                    }
-                }
 
-                if constexpr(Op == fdapde::op::mult){
-                    for(auto it = results.begin()+1; it < results.end(); it++){
+                for(auto it = results.begin()+1; it < results.end(); it++){
                         ret *= *it;
-                    }
                 }
-                    
+                      
                 return ret;
             }
             
-
-           
         };
+
+        
 
 
 

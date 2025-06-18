@@ -19,11 +19,11 @@
 int main(){
     fdapde::Threadpool<fdapde::steal::random> tp(16,4);
 
-    int out = tp.parallel_reduce<fdapde::op::sum, std::function<int(int)>>(0,10000,[&](int i){return i;});
+    int out = tp.parallel_reduce_sum(0,10001,[&](int i){return i;});
 
     std::cout << out << std::endl;
 
-    out = tp.parallel_reduce<fdapde::op::sum, std::function<int()>>(10000,[&](){return 1;});
+    out = tp.parallel_reduce_dot(0,10000,[&](int i){return 1;});
 
     std::cout << out << std::endl;
  

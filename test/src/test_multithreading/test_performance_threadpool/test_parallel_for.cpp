@@ -103,36 +103,7 @@ int main(){
     });
 }
 */
-{//parallel_for_iteartor;  parallel_for_iteartor_ref  
-    std::cout<<"test scrorrere conteiner con iterator"<<std::endl;
-    fdapde::Threadpool<fdapde::steal::random_half_most_busy> tp(64,3);
-    std::vector<int> V;
-    //std::list<int> V;
-    for (int i=0; i<10; i++){
-        V.push_back(i);
-    }
-    tp.parallel_for_iterator(V.begin(),V.end(),[](int a){
-        std::cout<<std::this_thread::get_id()<<"printa: "<<a<<std::endl;
-    });
-    std::vector<std::optional<std::future<int>>> ret = tp.parallel_for_iterator(V.begin(),V.end(),[](int a){return a+100;});
-    for (size_t i=0; i<ret.size(); i++){
-        if(ret[i]){
-            std::cout<<ret[i].value().get()<<" : "<<std::endl;
-        }
-    }
-    std::vector<std::optional<std::future<void>>> ret_void = tp.parallel_for_iterator_ref(V.begin(),V.end(),[](int& a){a+=100;});
-    for (size_t i=0; i<ret_void.size(); i++){
-        if(ret_void[i]){
-            ret_void[i].value().get();
-            std::cout<<"ret_void[i].value().get() : "<<std::endl;
-        }
-    }
-    for (int i=0; i<10; i++){
-        std::cout<<"V[i]:"<<V[i]<<std::endl;
-    }
 
-
-}
     
     return 0;
 }
