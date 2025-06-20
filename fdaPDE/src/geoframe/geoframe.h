@@ -75,6 +75,14 @@ template <typename... Triangulation_> struct GeoFrame {
         template <typename T> decltype(auto) col(const std::string& colname) const {
             return data_->template col<T>(colname);
         }
+        // modifiers
+        template <typename DataT> void add_column(const std::string& colname, const DataT& data) {
+            data_->append_vec(colname, data);
+        }
+        // output stream
+        friend std::ostream& operator<<(std::ostream& os, const layer_t& layer) {
+            return operator<<(os, *layer.data_);
+        }
        private:
         std::shared_ptr<void> geo_data_;       // type erased geometric layer
         std::array<void*, Order> geo_index_;   // pointers to (type-erased) geometric indexes

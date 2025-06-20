@@ -93,7 +93,7 @@ struct random_access_geo_col_view :
     template <typename FieldDescriptor>
     random_access_geo_col_view(
       GeoLayer* geo_data, const std::vector<index_t>& idxs, const FieldDescriptor& desc) noexcept :
-        Base(std::addressof(geo_data->data()), idxs, desc), geo_data_(geo_data) { }
+        Base(geo_data->data(), idxs, desc), geo_data_(geo_data) { }
     // observers
     auto geometry(int i) const { return geo_data_->geometry(this->idxs_[i]); }
     const GeoLayer& geo_data() const { return *geo_data_; }
