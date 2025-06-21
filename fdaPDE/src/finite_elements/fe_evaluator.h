@@ -95,7 +95,8 @@ template <typename Form_> struct fe_pointwise_evaluator_loop {
                         }
                     }
 		    // evaluate form
-                    triplet_list.emplace_back(cell.dofs()[h], i, form_(fe_packet));
+                    double value = form_(fe_packet);
+                    if (value > 1e-14) { triplet_list.emplace_back(cell.dofs()[h], i, value); }
                 }
             }
         }

@@ -818,12 +818,13 @@ template <typename MdArray, int... Slicers> class MdArraySlice {
             // for pointer types, this could lead to ub. is caller responsibility to guarantee bounded access
             for (int i = 0, n = size(); i < n; ++i) { operator[](i) = src[i]; }
         } else {
+            int i = 0;
             if constexpr (std::is_same_v<Scalar, bool>) {
                 for (auto v : *this) {
-                    if (src[v.mapped_index()]) { v.set(); }
+                    if (src[i++]) { v.set(); }
                 }
             } else {
-                for (auto& v : *this) { v = src[v.mapped_index()]; }
+                for (auto& v : *this) { v = src[i++]; }
             }
         }
         return *this;
