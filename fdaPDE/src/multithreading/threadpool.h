@@ -145,33 +145,31 @@ namespace fdapde{
             }
 
             //prova a eseguire job
-            //OSS: non fatto void try_do(i) con workers_[i]->pop dentro funzione perchè pop da front ma in steal pop da back 
-            bool try_do(std::optional<job> j, int i){ //j job da eseguire se non nullopt, i indx di worker da cui si prende il job.
+            //OSS: non fatto bool try_do(i) con workers_[i]->pop dentro funzione perchè pop da front ma in steal pop da back 
+            bool try_do(std::optional<job> j, int indx){ //j job da eseguire se non nullopt, i indx di worker da cui si prende il job.
                 if(j){//esegue se non è nullopt. 
-                    count_job_[i].fetch_sub(1,std::memory_order_release); //TODO: capire miglior memory order (forse relax che lascia compilatore piu libero di ottimizzare, perche tanto non è sincronizzato i realise con gli acquire)
+                    count_job_[indx].fetch_sub(1,std::memory_order_release); //TODO: capire miglior memory order (forse relax che lascia compilatore piu libero di ottimizzare, perche tanto non è sincronizzato i realise con gli acquire)
                     (j.value())(); 
                     return true;
                 }
                 return false;
             }
 
-            void worker_loop(int i){
+            void worker_loop(int i){// i = indice di worker in workers_
                 //per assicurare che thread partano a fare worker_loop solo dopo che tutti siano stati inizializzati
                 m_threadpool_.lock_shared();
                 cv_threadpool_.wait(m_threadpool_,[this](){return active_;});
                 m_threadpool_.unlock_shared();
                 bool done_own_job = true; //spostato fuori da while cosi non locale e creato una volta sola 
+                int indx_steal = -1; //indice da cui rubare
                 while(!workers_[i]->stop_){
                     //TODO è meglio fare unico thread_local job per ogni thread e riusare sempre quello ?. forse si perche tanto std::fuction<> ha membro operator = quindi permesso copia assegazione non solo inizializzazione
                     done_own_job = try_do(workers_[i]->pop_front(),i);
                     if(done_own_job){
                         continue; //passa a iterazione di while successiva evitando steal ecc
                     }
-                    if( get_count_all_job()>0){ //aggiunto cosi che si passi da mutex (che ricordiamo viene lock anche ad ogni send) solo quando non c'è job in nessuna coda. 
-                        //steal.
-
-                        //indice da cui rubare
-                        int indx_steal = -1;
+                    if( get_count_all_job()>n_worker_){ //aggiunto cosi che si passi da mutex (che ricordiamo viene lock anche ad ogni send) solo quando non c'è job in nessuna coda. 
+                        //steal
                         if constexpr(T == steal::random){
                             indx_steal = indx_random_from_busy();
                         }
@@ -186,19 +184,17 @@ namespace fdapde{
                         if(indx_steal != -1){
                             //do job steal
                             try_do(workers_[indx_steal]->pop_back(),indx_steal);
+                            indx_steal = -1; //rimettiamo a -1 per prossime iterazioni
                         }
                         continue;                             
                     }
                     //arrivare qui significa nessun job in coda probabilmente e quindi va a dormire in CV, non certo perche count_job non sincronizzato quindi non attendibile, ma cosi si evita blocco di mutex che viene bloccato anche ad ogni send e quindi rallentava molto il parallel_for_sure se range_for grande
-                    std::unique_lock<std::mutex> loc(workers_[i]->m_); //OSS: empty() gia sincronizzato con push grazie a mtex dentro Synchro_queue, mutex in Worker serve solo per avere cv che manda a dormire. get_count_job_all() invece vede sincronizzati solo i count_job[i]++ perche avvengono in mutex con push, pro: se ce push chi non lha ricevuto si sveglia per rubare, contro: possibile svegliarsi e invece non ce niente da rubare perche count_job[i]-- gia fatto ma non letto perche non sincornizzato 
+                    std::unique_lock<std::mutex> loc(workers_[i]->m_); //OSS:mutex in Worker serve solo per avere cv che manda a dormire. get_count_job_all() invece vede sincronizzati solo i count_job[i]++ perche avvengono in mutex con push, pro: se ce push chi non lha ricevuto si sveglia per rubare, contro: possibile svegliarsi e invece non ce niente da rubare perche count_job[i]-- gia fatto ma non letto perche non sincornizzato 
                     workers_[i]->cv_.wait(loc,[&](){return get_count_all_job()>n_worker_ || count_job_[i].load(std::memory_order_acquire) > 0 || workers_[i]->stop_;}); // get_count_all_job > n_worker cosi da svegliare per steal solo se c'è da rubare per tutti (questa è l'idea, non proprio precisa l'esecuzione ma vabbè), poi count_job[i] cosi worker si sveglia se è inviato job a lui (è certo che si svegli se send job a lui perchè count_job sincronizzati da mutex di CV qui e di send in send)
                     loc.unlock();
                     if(workers_[i]->stop_){return;}
                     done_own_job = try_do(workers_[i]->pop_front(),i); //riprova a fare proprio job, (se sveliato per count_job[i]>0)
                     if(!done_own_job){ //steal.
-
-                        //indice da cui rubare
-                        int indx_steal = -1;
                         if constexpr(T == steal::random){
                             indx_steal = indx_random_from_busy();
                         }
@@ -213,6 +209,7 @@ namespace fdapde{
                         if(indx_steal != -1){
                             //do job steal
                             try_do(workers_[indx_steal]->pop_back(),indx_steal);
+                            indx_steal = -1;
                         }                             
                     }
                 }
@@ -372,7 +369,7 @@ namespace fdapde{
             
                 std::vector<std::unique_lock<std::mutex>> vett_locks(lock_tutti());
                 bool flag = workers_[indxw_.indx_]->push_back(j);
-                notifica_tutti(); //sincronizzata solo worker a cui si fa il push ma meglio che niente
+                notifica_tutti(); 
                 if(flag){
                     count_job_[indxw_.indx_].fetch_add(1,std::memory_order_release);
                     indxw_.next(n_worker_); //dentro mutex per sincronizzazione visione (se solo un thread manda non necessario)
@@ -505,6 +502,47 @@ namespace fdapde{
                 while(j< n){
                     ret_opt.push_back(this->send_task_round([&,j](){ //j gia catturata in & credo non serve
                         for(int k=j*n_job; k<(j+1)*n_job; k++ ){
+                            f(k);
+                        }
+                    }));
+                    if(ret_opt[j]){
+                        //se push andato a buon fine incrementa 
+                        j++;
+                    }
+                    else{
+                        //altrimenti elimina null_opt da vettore di return prima di riprovare
+                        ret_opt.pop_back();
+                    }
+                }
+                for (size_t k= 0; k<ret_opt.size(); k++){
+                    ret_opt[k].value().get(); //get per aasicurarsi esecuzione completata
+                    //TODO: capire se ha senso parallelizzare i get()--> NON SI PUO, poi si dovrebbe fare get() dei get()
+                }
+                return;
+            } 
+
+            //riceve vettore per far scegliere a utente come suddividere le iterazioni nei blocchi 
+            // es vect=[1,5,5,4] for(0,15)  lo divide in 4 blocchi primo 1 it, secondo 5 it ecc...
+            template<typename F> 
+            requires std::is_same_v<std::invoke_result_t<F,int>, void>
+            void parallel_for_sure_vect(int start, int end,std::vector<int>& vect, F&& f){
+                using return_type = std::invoke_result_t<F, int>;
+                //range va da start a end-1--> end-start= dimensione range
+                if(std::reduce(vect.cbegin(),vect.cend(),0) != (end-start)){
+                    std::cerr<<"somma di elem in vect deve essere uguale a range (end-start)"<<std::endl;
+                    return;
+                }
+                std::vector<int> seq={0}; //seq sara vettore di somme parziali (es np.cumsum) con primo elemento pero 0 cosi da pterlo usare in divisione di for piu comodamente
+                int sum_seq = 0;
+                for(int l = 0; l<vect.size(); l++){
+                    sum_seq += vect[l];
+                    seq.push_back(sum_seq);
+                }
+                std::vector<std::optional<std::future<return_type>>> ret_opt;
+                int j = 0;
+                while(j< vect.size()){
+                    ret_opt.push_back(this->send_task_round([&,j](){ //j gia catturata in & credo non serve
+                        for(int k=seq[j]; k<seq[j+1]; k++ ){
                             f(k);
                         }
                     }));

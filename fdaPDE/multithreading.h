@@ -31,6 +31,7 @@
 #include<future>
 #include<random>
 #include <shared_mutex>
+#include<numeric>
 
 // per debug e test momentaneo
 #include<iostream>

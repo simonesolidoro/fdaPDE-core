@@ -16,29 +16,71 @@
 
 #include<fdaPDE/multithreading.h>
 
-int main(){
-{
-    fdapde::Threadpool<fdapde::steal::random> tp(32,2);
-    std::atomic<int> a=0;
-    tp.parallel_for_sure(0,10000,[&](int i){a++;});
-    std::cout<<"sure a:"<<a.load()<<std::endl;
+int main(int argc,char** argv)
+{//parallel_for_sure
+    int n = 10000;
+    fdapde::Threadpool<fdapde::steal::random> tp(64,8);
+    std::atomic<int> a=0; //usata per verifica tutti jo vengano eseguiti (a deve arrivare ad n)
+    auto start = std::chrono::high_resolution_clock::now();
 
+    tp.parallel_for_sure(0,1000,[&](int i){
+        a++;
+        std::this_thread::sleep_for(std::chrono::microseconds(10));
+    });
     
-    auto V = tp.parallel_for(0,10000,[&](int i){a++;});
-    for(auto& x: V){
-        if(x){
-            x.value().get();
-        }
+    auto end = std::chrono::high_resolution_clock::now();
+    auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start);  
+    std::cout<<"par_for_sure - incrementata a da 0 ad: "<<a.load()<<"  impiegato:"<<duration.count()<< " microsecondi\n";
+
+//for non parallel
+    a.store(0);
+    auto start2 = std::chrono::high_resolution_clock::now();
+
+    for (int i = 0;i < n;i++){
+        a++;
+        std::this_thread::sleep_for(std::chrono::microseconds(10));
     }
-    std::cout<<"sure a:"<<a.load()<<std::endl;
-} 
-{
-    fdapde::Threadpool<fdapde::steal::random> tp(32,2);
-    std::atomic<int> b=0;
-    tp.parallel_for_sure_n(0,10000,10,[&](int i){b++;});
-    std::cout<<"sure b:"<<b.load()<<std::endl;
+    
+    auto end2 = std::chrono::high_resolution_clock::now();
+    auto duration2 = std::chrono::duration_cast<std::chrono::microseconds>(end2 - start2);  
+    std::cout<<"for - incrementata a da 0 ad: "<<a.load()<<"  impiegato:"<<duration2.count()<< " microsecondi\n";
+    
 
+// parallel_for_sure_n
+    a.store(0);
+    int n_block = std::stoi(argv[1]); //numero di blocchi in cui dividere range di for
+    auto start3 = std::chrono::high_resolution_clock::now();
+
+    tp.parallel_for_sure_n(0,n,n_block,[&](int i){a++;
+    std::this_thread::sleep_for(std::chrono::microseconds(10));
+    });
+    
+    auto end3 = std::chrono::high_resolution_clock::now();
+    auto duration3 = std::chrono::duration_cast<std::chrono::microseconds>(end3 - start3);  
+    std::cout<<"par_for_sure_n - incrementata a da 0 ad: "<<a.load()<<"  impiegato:"<<duration3.count()<< " microsecondi\n";
+
+
+// parallel_for_sure_vect
+    a.store(0);
+    std::vector<int> vect = {n/2,n/2};
+    start3 = std::chrono::high_resolution_clock::now();
+
+    tp.parallel_for_sure_vect(0,n,vect,[&](int i){a++;
+    std::this_thread::sleep_for(std::chrono::microseconds(10));
+    });
+    
+    end3 = std::chrono::high_resolution_clock::now();
+    duration3 = std::chrono::duration_cast<std::chrono::microseconds>(end3 - start3);  
+    std::cout<<"par_for_sure_vect - incrementata a da 0 ad: "<<a.load()<<"  impiegato:"<<duration3.count()<< " microsecondi\n";
+
+
+    return 0; ///
 }
 
-    return 0; //
-}
+/*
+    auto start = std::chrono::high_resolution_clock::now();
+    
+    auto end = std::chrono::high_resolution_clock::now();
+    auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start);  
+    std::cout<<"operazioni fatte: "<<n*n_job<<" singolo thread impiegato:"<<duration.count()<< " microsecondi\n";
+*/
