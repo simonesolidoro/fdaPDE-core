@@ -164,33 +164,55 @@ namespace fdapde{
                 while(!workers_[i]->stop_){
                     //TODO è meglio fare unico thread_local job per ogni thread e riusare sempre quello ?. forse si perche tanto std::fuction<> ha membro operator = quindi permesso copia assegazione non solo inizializzazione
                     done_own_job = try_do(workers_[i]->pop_front(),i);
-                    if(!done_own_job){
-                        std::unique_lock<std::mutex> loc(workers_[i]->m_); //OSS: empty() gia sincronizzato con push grazie a mtex dentro Synchro_queue, mutex in Worker serve solo per avere cv che manda a dormire. get_count_job_all() invece vede sincronizzati solo i count_job[i]++ perche avvengono in mutex con push, pro: se ce push chi non lha ricevuto si sveglia per rubare, contro: possibile svegliarsi e invece non ce niente da rubare perche count_job[i]-- gia fatto ma non letto perche non sincornizzato 
-                        //TODO: migliorare condizioni sveglia. vedi oss fine riga successiva
-                        workers_[i]->cv_.wait(loc,[&](){return get_count_all_job()>0 || workers_[i]->stop_ ;}); //oss: spostato get_count_job() per primo cosi si riduce chiamata a empty() che blocca push e pop su coda. //OSS: magari get_cout_jo()>N cosi da evitare sveglia se steal non necessario (logica da coordinare con send) //TODO: empty() inutile basta get_count_al_job. se get_count_all_job()>N mettere has_job = count_job[i]>0 al posto di empty() cosi chi ha suo si sveglia e ladri si svegliano solo se ognuno ne ha piu di uno (oss: get_count_all_job()>n_worker <-> ogni worker ha 1 job, se usato send_round e nemmeno certo)
-                        loc.unlock();
-                        if(workers_[i]->stop_){return;}
-                        done_own_job = try_do(workers_[i]->pop_front(),i); //riprova a fare proprio job, perché steal piu costoso e possibile non riuscire a fare proprio job anche se si ha in inizio while, ma ne vale la pena ? forse piu efficente steal perché fare pop di nullopt quando coda non vuota possibile ma capita poco , cosi invece ogni volta che si vuole fare steal si perde priam tempo a riprovare propria coda
-                        if(!done_own_job){ //steal.
+                    if(done_own_job){
+                        continue; //passa a iterazione di while successiva evitando steal ecc
+                    }
+                    if( get_count_all_job()>0){ //aggiunto cosi che si passi da mutex (che ricordiamo viene lock anche ad ogni send) solo quando non c'è job in nessuna coda. 
+                        //steal.
 
-                            //indice da cui rubare
-                            int indx_steal = -1;
-                            if constexpr(T == steal::random){
-                                indx_steal = indx_random_from_busy();
-                            }
-                            if constexpr(T == steal::most_busy){
-                                indx_steal = indx_most_busy();
-                            }
-                            if constexpr(T == steal::random_half_most_busy){
-                                indx_steal = indx_random_from_half_most_busy();
-                                //oss: steal_random_from_most_busy_and_do() ha senso solo per N > 5 (perche dimezza i worker con job tra cui sceglie random)
-                            } 
+                        //indice da cui rubare
+                        int indx_steal = -1;
+                        if constexpr(T == steal::random){
+                            indx_steal = indx_random_from_busy();
+                        }
+                        if constexpr(T == steal::most_busy){
+                            indx_steal = indx_most_busy();
+                        }
+                        if constexpr(T == steal::random_half_most_busy){
+                            indx_steal = indx_random_from_half_most_busy();
+                            //oss: steal_random_from_most_busy_and_do() ha senso solo per N > 5 (perche dimezza i worker con job tra cui sceglie random)
+                        } 
 
-                            if(indx_steal != -1){
-                                //do job steal
-                                try_do(workers_[indx_steal]->pop_back(),indx_steal);
-                            }
-                            
+                        if(indx_steal != -1){
+                            //do job steal
+                            try_do(workers_[indx_steal]->pop_back(),indx_steal);
+                        }
+                        continue;                             
+                    }
+                    //arrivare qui significa nessun job in coda probabilmente e quindi va a dormire in CV, non certo perche count_job non sincronizzato quindi non attendibile, ma cosi si evita blocco di mutex che viene bloccato anche ad ogni send e quindi rallentava molto il parallel_for_sure se range_for grande
+                    std::unique_lock<std::mutex> loc(workers_[i]->m_); //OSS: empty() gia sincronizzato con push grazie a mtex dentro Synchro_queue, mutex in Worker serve solo per avere cv che manda a dormire. get_count_job_all() invece vede sincronizzati solo i count_job[i]++ perche avvengono in mutex con push, pro: se ce push chi non lha ricevuto si sveglia per rubare, contro: possibile svegliarsi e invece non ce niente da rubare perche count_job[i]-- gia fatto ma non letto perche non sincornizzato 
+                    workers_[i]->cv_.wait(loc,[&](){return get_count_all_job()>n_worker_ || count_job_[i].load(std::memory_order_acquire) > 0 || workers_[i]->stop_;}); // get_count_all_job > n_worker cosi da svegliare per steal solo se c'è da rubare per tutti (questa è l'idea, non proprio precisa l'esecuzione ma vabbè), poi count_job[i] cosi worker si sveglia se è inviato job a lui (è certo che si svegli se send job a lui perchè count_job sincronizzati da mutex di CV qui e di send in send)
+                    loc.unlock();
+                    if(workers_[i]->stop_){return;}
+                    done_own_job = try_do(workers_[i]->pop_front(),i); //riprova a fare proprio job, (se sveliato per count_job[i]>0)
+                    if(!done_own_job){ //steal.
+
+                        //indice da cui rubare
+                        int indx_steal = -1;
+                        if constexpr(T == steal::random){
+                            indx_steal = indx_random_from_busy();
+                        }
+                        if constexpr(T == steal::most_busy){
+                            indx_steal = indx_most_busy();
+                        }
+                        if constexpr(T == steal::random_half_most_busy){
+                            indx_steal = indx_random_from_half_most_busy();
+                            //oss: steal_random_from_most_busy_and_do() ha senso solo per N > 5 (perche dimezza i worker con job tra cui sceglie random)
+                        } 
+
+                        if(indx_steal != -1){
+                            //do job steal
+                            try_do(workers_[indx_steal]->pop_back(),indx_steal);
                         }                             
                     }
                 }
