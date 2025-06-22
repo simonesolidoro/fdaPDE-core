@@ -23,7 +23,7 @@ int main(int argc,char** argv)
     std::atomic<int> a=0; //usata per verifica tutti jo vengano eseguiti (a deve arrivare ad n)
     auto start = std::chrono::high_resolution_clock::now();
 
-    tp.parallel_for_sure(0,1000,[&](int i){
+    tp.parallel_for_sure(0,n,[&](int i){
         a++;
         std::this_thread::sleep_for(std::chrono::microseconds(10));
     });
@@ -57,12 +57,12 @@ int main(int argc,char** argv)
     
     auto end3 = std::chrono::high_resolution_clock::now();
     auto duration3 = std::chrono::duration_cast<std::chrono::microseconds>(end3 - start3);  
-    std::cout<<"par_for_sure_n - incrementata a da 0 ad: "<<a.load()<<"  impiegato:"<<duration3.count()<< " microsecondi\n";
+    std::cout<<"par_for_sure_n - incrementata a da 0 ad: "<<a.load()<<"  impiegato:"<<duration3.count()<< " microsecondi con n_blocchi: "<<n_block<<std::endl;
 
 
 // parallel_for_sure_vect
     a.store(0);
-    std::vector<int> vect = {n/2,n/2};
+    std::vector<int> vect = {n/4,n/4,n/4-10,n/4+10};
     start3 = std::chrono::high_resolution_clock::now();
 
     tp.parallel_for_sure_vect(0,n,vect,[&](int i){a++;
