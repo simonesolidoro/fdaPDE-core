@@ -335,6 +335,7 @@ namespace fdapde{
            //TODO: tutti i send uguali cambia solo scelta indice, ma non si puo fare template<typename F, typename... Args, typename tipo_send> perche templeta parameter deduction è un tutto o niente, come fare allora per semplificare ?
            //lock di tutti i mutex cosi notifica a tutti sara sincronizzata con push e  count++, OSSERVAZIONE: lock di mutex non interrompe worker_loop di chi ha gia job in coda grazie a nuovo worker_loop con try_j all inizio di while 
            //OSS:ora che i distruttore si aspetta esecuzioen di tutti i job non servono piu i future<void> per assivurare esecuzione di job, si potrebbe pensare di ritornare  aversioni conn return=void che nnon perdono tempo a creare vector<future<void>>, PERO' meglio lasciarli perche con future<void> in main con get si puo specificare entro quando vuoi che un job sia eseguito
+           //send_task_mostfree
             template<typename F, typename... Args>
             auto send_task(F&& f,Args... args) -> std::optional<std::future<decltype(f(args...))>>{
                 //wrap 
@@ -494,6 +495,17 @@ namespace fdapde{
                 //range va da start a end-1--> end-start= dimensione range
                 if((end-start) % n != 0){
                     std::cerr<<"n deve essere divisore di end-start"<<std::endl;
+                    /*
+                    //TODO: se n inserito non divisore modificarlo in divisore piu vicino minore, minore perche limite 1 sicuro divisore (n=1 significa parallel_for == for non ha sensp ma meglio di interruzione programma credo) 
+                    int new_n = n;
+                    while (new_n>1){
+                        new_n--;
+                        if((end-start)%new_n==0){
+                            break; //esce da while
+                        }
+                    }
+                    n = new_n;
+                    */
                     return;
                 }
                 int n_job = (end-start) / n; //numero job in ogni blocco 
@@ -523,6 +535,7 @@ namespace fdapde{
 
             //riceve vettore per far scegliere a utente come suddividere le iterazioni nei blocchi 
             // es vect=[1,5,5,4] for(0,15)  lo divide in 4 blocchi primo 1 it, secondo 5 it ecc...
+            //utile se si conosce gia sbilanciamento in iterazioni di for
             template<typename F> 
             requires std::is_same_v<std::invoke_result_t<F,int>, void>
             void parallel_for_sure_vect(int start, int end,std::vector<int>& vect, F&& f){
