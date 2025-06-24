@@ -99,13 +99,20 @@ constexpr T log1pexp(T x) {
     return x + std::exp(-x);
 }
 
+  // constexpr absoulte value
+template <typename T>
+    requires(std::is_signed_v<T>)
+constexpr T abs(T x) {
+    return x < 0 ? -x : x;
+}
+
 // constexpr square root
 template <typename T>
     requires(std::is_floating_point_v<T>)
 constexpr T sqrt(T x) {
     auto heron_method = [](T x) {
         T curr = x, prev = 0;
-        while (std::abs(curr - prev) > machine_epsilon) {
+        while (fdapde::abs(curr - prev) > machine_epsilon) {
             prev = curr;
             curr = 0.5 * (curr + x / curr);
         }
