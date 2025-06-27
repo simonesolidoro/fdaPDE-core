@@ -350,7 +350,7 @@ namespace fdapde{
                 if(flag){
                     count_job_[indx_worker].fetch_add(1,std::memory_order_release); // TODO: in realta dato che dentro mutex basta relax ancora piu efficente, però non tutte le letture avvengono dentro mutex quindi non saprei
                     lock.unlock();
-                    notifica_tutti(); // problema: push e notifica sono sincronizati solo in thread su cui viene fatto push perche mutex che poi leggera è lo stesso bloccato in push.
+                    workers_[indx_worker]->cv_.notify_one(); // problema: push e notifica sono sincronizati solo in thread su cui viene fatto push perche mutex che poi leggera è lo stesso bloccato in push.
                                 //POSSIBILE SOLUZIONE: fare lock_all() e poi unlock_all() ma cosi ogni send blocca worker_loop di chi ancora non ha superato la cv_.wait(), pero sarebbe sincronizzata la lettura dei count_job ++. 
                     return fut;
                 }
@@ -374,7 +374,7 @@ namespace fdapde{
                     count_job_[indxw_.indx_].fetch_add(1,std::memory_order_release);
                     indxw_.next(n_worker_); //dentro mutex per sincronizzazione visione (se solo un thread manda non necessario)
                     lock.unlock();
-                    notifica_tutti(); 
+                    workers_[indxw_.indx_]->cv_.notify_one();// notifica solo a chi riceve e non notifica a tutti, perchè tanto cv manda a dormire quando non ci sono job e poi quando vengono inviati ogni worker riceve una notifica un job ogni $n_worker inviati, tanto basta 
                     return fut;
                 }
                 lock.unlock();
@@ -398,7 +398,7 @@ namespace fdapde{
                     if (n_worker_ != 1)
                         indxw_.next(n_worker_/2);
                     lock.unlock();
-                    notifica_tutti();
+                    notifica_tutti(); //qui rimane notifica a tutti perchè alcuni worker non ricevono mai job e quindi non riceverebbero mai notifica
                     return fut;
                 }
                 lock.unlock();
