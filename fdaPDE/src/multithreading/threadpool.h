@@ -168,7 +168,7 @@ namespace fdapde{
                     if(done_own_job){
                         continue; //passa a iterazione di while successiva evitando steal ecc
                     }
-                    if( get_count_all_job()>n_worker_){ //aggiunto cosi che si passi da mutex (che ricordiamo viene lock anche ad ogni send) solo quando non c'è job in nessuna coda. 
+                    if( get_count_all_job()>0){ //aggiunto cosi che si passi da mutex (che ricordiamo viene lock anche ad ogni send) solo quando non c'è job in nessuna coda. 
                         //steal
                         if constexpr(T == steal::random){
                             indx_steal = indx_random_from_busy();
@@ -190,7 +190,7 @@ namespace fdapde{
                     }
                     //arrivare qui significa nessun job in coda probabilmente e quindi va a dormire in CV, non certo perche count_job non sincronizzato quindi non attendibile, ma cosi si evita blocco di mutex che viene bloccato anche ad ogni send e quindi rallentava molto il parallel_for_sure se range_for grande
                     std::unique_lock<std::mutex> loc(workers_[i]->m_); //OSS:mutex in Worker serve solo per avere cv che manda a dormire. get_count_job_all() invece vede sincronizzati solo i count_job[i]++ perche avvengono in mutex con push, pro: se ce push chi non lha ricevuto si sveglia per rubare, contro: possibile svegliarsi e invece non ce niente da rubare perche count_job[i]-- gia fatto ma non letto perche non sincornizzato 
-                    workers_[i]->cv_.wait(loc,[&](){return get_count_all_job()>n_worker_ || count_job_[i].load(std::memory_order_acquire) > 0 || workers_[i]->stop_;}); // get_count_all_job > n_worker cosi da svegliare per steal solo se c'è da rubare per tutti (questa è l'idea, non proprio precisa l'esecuzione ma vabbè), poi count_job[i] cosi worker si sveglia se è inviato job a lui (è certo che si svegli se send job a lui perchè count_job sincronizzati da mutex di CV qui e di send in send)
+                    workers_[i]->cv_.wait(loc,[&](){return get_count_all_job()>0 || count_job_[i].load(std::memory_order_acquire) > 0 || workers_[i]->stop_;}); // get_count_all_job > n_worker cosi da svegliare per steal solo se c'è da rubare per tutti (questa è l'idea, non proprio precisa l'esecuzione ma vabbè), poi count_job[i] cosi worker si sveglia se è inviato job a lui (è certo che si svegli se send job a lui perchè count_job sincronizzati da mutex di CV qui e di send in send)
                     loc.unlock();
                     if(workers_[i]->stop_){return;}
                     done_own_job = try_do(workers_[i]->pop_front(),i); //riprova a fare proprio job, (se svegliato per count_job[i]>0)
