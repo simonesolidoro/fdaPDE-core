@@ -345,16 +345,16 @@ namespace fdapde{
                 job j = [ptr_task](){(*ptr_task)();};
 
                 int indx_worker = indx_most_free();
-                std::vector<std::unique_lock<std::mutex>> vett_locks(lock_tutti()); // alternativa lock dei mutex direttamente 
+                std::unique_lock<std::mutex> lock(workers_[indx_worker]->get_loc()); // lock solo di worker a cui si manda job. altri non avranno lettura di count_job[indx_worker]++ sincronizzato, ma molto piu efficiente di lock tutti i mutex (i pro battono i contro) 
                 bool flag = workers_[indx_worker]->push_back(j);
                 if(flag){
                     count_job_[indx_worker].fetch_add(1,std::memory_order_release); // TODO: in realta dato che dentro mutex basta relax ancora piu efficente, però non tutte le letture avvengono dentro mutex quindi non saprei
-                    unlock_tutti(std::ref(vett_locks));
+                    lock.unlock();
                     notifica_tutti(); // problema: push e notifica sono sincronizati solo in thread su cui viene fatto push perche mutex che poi leggera è lo stesso bloccato in push.
                                 //POSSIBILE SOLUZIONE: fare lock_all() e poi unlock_all() ma cosi ogni send blocca worker_loop di chi ancora non ha superato la cv_.wait(), pero sarebbe sincronizzata la lettura dei count_job ++. 
                     return fut;
                 }
-                unlock_tutti(std::ref(vett_locks));
+                lock.unlock();
                 return std::nullopt;  //OSSERVAZIONE:return optional e non future cosi possibilita di fallire per push e non è necessario fare while(). spostato check se push e quindi send a buon fine fuori da threadpool perche usando hold queue per esempio non puo fallire il push e quindi ci sarebbe un while inutile              
             };
 
@@ -368,16 +368,16 @@ namespace fdapde{
                 std::future<return_type> fut = ptr_task->get_future();
                 job j = [ptr_task](){(*ptr_task)();};
             
-                std::vector<std::unique_lock<std::mutex>> vett_locks(lock_tutti());
+                std::unique_lock<std::mutex> lock(workers_[indxw_.indx_]->get_loc());
                 bool flag = workers_[indxw_.indx_]->push_back(j);
                 if(flag){
                     count_job_[indxw_.indx_].fetch_add(1,std::memory_order_release);
                     indxw_.next(n_worker_); //dentro mutex per sincronizzazione visione (se solo un thread manda non necessario)
-                    unlock_tutti(std::ref(vett_locks));
+                    lock.unlock();
                     notifica_tutti(); 
                     return fut;
                 }
-                unlock_tutti(std::ref(vett_locks));
+                lock.unlock();
                 return std::nullopt;
             };
 
@@ -391,17 +391,17 @@ namespace fdapde{
                 std::future<return_type> fut = ptr_task->get_future();
                 job j = [ptr_task](){(*ptr_task)();};
             
-                std::vector<std::unique_lock<std::mutex>> vett_locks(lock_tutti());
+                std::unique_lock<std::mutex> lock(workers_[indxw_.indx_]->get_loc());
                 bool flag = workers_[indxw_.indx_]->push_back(j);
                 if(flag){
                     count_job_[indxw_.indx_].fetch_add(1,std::memory_order_release);
                     if (n_worker_ != 1)
                         indxw_.next(n_worker_/2);
-                    unlock_tutti(std::ref(vett_locks));
+                    lock.unlock();
                     notifica_tutti();
                     return fut;
                 }
-                unlock_tutti(std::ref(vett_locks));
+                lock.unlock();
                 return std::nullopt;
             };
 
@@ -414,15 +414,15 @@ namespace fdapde{
                 std::future<return_type> fut = ptr_task->get_future();
                 job j = [ptr_task](){(*ptr_task)();};
             
-                std::vector<std::unique_lock<std::mutex>> vett_locks(lock_tutti());
+                std::unique_lock<std::mutex> lock(workers_[indxw_.indx_]->get_loc());
                 bool flag = workers_[0]->push_back(j);
                 if(flag){
                     count_job_[indxw_.indx_].fetch_add(1,std::memory_order_release);
-                    unlock_tutti(std::ref(vett_locks));
+                    lock.unlock();
                     notifica_tutti();
                     return fut;
                 }
-                unlock_tutti(std::ref(vett_locks));
+                lock.unlock();
                 return std::nullopt;
             };
 
