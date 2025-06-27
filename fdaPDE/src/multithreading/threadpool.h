@@ -193,7 +193,7 @@ namespace fdapde{
                     workers_[i]->cv_.wait(loc,[&](){return get_count_all_job()>n_worker_ || count_job_[i].load(std::memory_order_acquire) > 0 || workers_[i]->stop_;}); // get_count_all_job > n_worker cosi da svegliare per steal solo se c'è da rubare per tutti (questa è l'idea, non proprio precisa l'esecuzione ma vabbè), poi count_job[i] cosi worker si sveglia se è inviato job a lui (è certo che si svegli se send job a lui perchè count_job sincronizzati da mutex di CV qui e di send in send)
                     loc.unlock();
                     if(workers_[i]->stop_){return;}
-                    done_own_job = try_do(workers_[i]->pop_front(),i); //riprova a fare proprio job, (se sveliato per count_job[i]>0)
+                    done_own_job = try_do(workers_[i]->pop_front(),i); //riprova a fare proprio job, (se svegliato per count_job[i]>0)
                     if(!done_own_job){ //steal.
                         if constexpr(T == steal::random){
                             indx_steal = indx_random_from_busy();
@@ -347,11 +347,11 @@ namespace fdapde{
                 int indx_worker = indx_most_free();
                 std::vector<std::unique_lock<std::mutex>> vett_locks(lock_tutti()); // alternativa lock dei mutex direttamente 
                 bool flag = workers_[indx_worker]->push_back(j);
-                notifica_tutti(); // problema: push e notifica sono sincronizati solo in thread su cui viene fatto push perche mutex che poi leggera è lo stesso bloccato in push.
-                                //POSSIBILE SOLUZIONE: fare lock_all() e poi unlock_all() ma cosi ogni send blocca worker_loop di chi ancora non ha superato la cv_.wait(), pero sarebbe sincronizzata la lettura dei count_job ++. 
                 if(flag){
                     count_job_[indx_worker].fetch_add(1,std::memory_order_release); // TODO: in realta dato che dentro mutex basta relax ancora piu efficente, però non tutte le letture avvengono dentro mutex quindi non saprei
                     unlock_tutti(std::ref(vett_locks));
+                    notifica_tutti(); // problema: push e notifica sono sincronizati solo in thread su cui viene fatto push perche mutex che poi leggera è lo stesso bloccato in push.
+                                //POSSIBILE SOLUZIONE: fare lock_all() e poi unlock_all() ma cosi ogni send blocca worker_loop di chi ancora non ha superato la cv_.wait(), pero sarebbe sincronizzata la lettura dei count_job ++. 
                     return fut;
                 }
                 unlock_tutti(std::ref(vett_locks));
@@ -370,11 +370,11 @@ namespace fdapde{
             
                 std::vector<std::unique_lock<std::mutex>> vett_locks(lock_tutti());
                 bool flag = workers_[indxw_.indx_]->push_back(j);
-                notifica_tutti(); 
                 if(flag){
                     count_job_[indxw_.indx_].fetch_add(1,std::memory_order_release);
                     indxw_.next(n_worker_); //dentro mutex per sincronizzazione visione (se solo un thread manda non necessario)
                     unlock_tutti(std::ref(vett_locks));
+                    notifica_tutti(); 
                     return fut;
                 }
                 unlock_tutti(std::ref(vett_locks));
@@ -393,12 +393,12 @@ namespace fdapde{
             
                 std::vector<std::unique_lock<std::mutex>> vett_locks(lock_tutti());
                 bool flag = workers_[indxw_.indx_]->push_back(j);
-                notifica_tutti(); //sincronizzata solo worker a cui si fa il push ma meglio che niente
                 if(flag){
                     count_job_[indxw_.indx_].fetch_add(1,std::memory_order_release);
                     if (n_worker_ != 1)
                         indxw_.next(n_worker_/2);
                     unlock_tutti(std::ref(vett_locks));
+                    notifica_tutti();
                     return fut;
                 }
                 unlock_tutti(std::ref(vett_locks));
@@ -416,10 +416,10 @@ namespace fdapde{
             
                 std::vector<std::unique_lock<std::mutex>> vett_locks(lock_tutti());
                 bool flag = workers_[0]->push_back(j);
-                notifica_tutti(); //sincronizzata solo worker a cui si fa il push ma meglio che niente
                 if(flag){
                     count_job_[indxw_.indx_].fetch_add(1,std::memory_order_release);
                     unlock_tutti(std::ref(vett_locks));
+                    notifica_tutti();
                     return fut;
                 }
                 unlock_tutti(std::ref(vett_locks));
