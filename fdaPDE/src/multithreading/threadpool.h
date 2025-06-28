@@ -149,8 +149,11 @@ namespace fdapde{
             //OSS: non fatto bool try_do(i) con workers_[i]->pop dentro funzione perchè pop da front ma in steal pop da back 
             bool try_do(std::optional<job> j, int indx){ //j job da eseguire se non nullopt, i indx di worker da cui si prende il job.
                 if(j){//esegue se non è nullopt. 
-                    count_job_[indx].fetch_sub(1,std::memory_order_release); //TODO: capire miglior memory order (forse relax che lascia compilatore piu libero di ottimizzare, perche tanto non è sincronizzato i realise con gli acquire)
                     (j.value())(); 
+                    //spostato decremento dopo esecuzione job, perche:
+                    //usando send mostfree da job a primi worker loro fanno subito pop e quindi da secondi job a primi worker che hanno coda vuota ma stanno eseguendo il primo job al posto di darlo a worker ultimi liberi.
+                    //questo è un problema da quando messo che send non notifica tutti e quindi non sveglia per steal gli ultimi worker quando i primi hanno job in coda
+                    count_job_[indx].fetch_sub(1,std::memory_order_release); //TODO: capire miglior memory order (forse relax che lascia compilatore piu libero di ottimizzare, perche tanto non è sincronizzato i realise con gli acquire)
                     return true;
                 }
                 return false;
@@ -735,12 +738,16 @@ namespace fdapde{
             }
             //constructor default numero di worker ma specifica size code
             Threadpool_nosteal(int n):queue_size_(n){
+                std::unique_lock<std::shared_mutex> loc(m_threadpool_);
                 n_worker_ = std::thread::hardware_concurrency(); //OSS: forse n_worker_ = std::thread::hardware_concurrency()-1; perche un thread è quello del main
                 workers_.reserve(n_worker_);
                 for(int i=0; i<n_worker_; i++){
                     workers_.emplace_back(std::make_shared<Worker> (queue_size_,&Threadpool_nosteal::worker_loop,this,i));
                     count_job_.emplace_back(0);
                 }
+                active_ = true;
+                loc.unlock();
+                cv_threadpool_.notify_all();
             }
             ~Threadpool_nosteal(){
                 //std::unique_lock<std::mutex> loc_t(m_threadpool_);
@@ -770,6 +777,9 @@ namespace fdapde{
 
 
             void worker_loop(int i){
+                std::shared_lock<std::shared_mutex> lock_shared(m_threadpool_);
+                cv_threadpool_.wait(lock_shared,[this](){return active_;}); //cv.wait(loc) quando ritenta a verificare condition dopo notifica fa loc.lock() (chiama membro lock() di loc) e con loc=shared_lock<std::shared_mutex> il membro lock() è shared_lock(), prima con passaggio di loc= shared_mutex il membro lock() era lock() (cioe blocco in modalita scrittura) :()
+                lock_shared.unlock();
                 while(!workers_[i]->stop_){
                     std::optional<job> try_j = workers_[i]->pop_front();
                     if(try_j){//esegue se non è nullopt
@@ -780,7 +790,12 @@ namespace fdapde{
                         std::unique_lock<std::mutex> loc(workers_[i]->m_);
                         workers_[i]->cv_.wait(loc,[&](){return count_job_[i]>0  || workers_[i]->stop_ ;}); 
                         loc.unlock();
-                        if(workers_[i]->stop_){return;}                      
+                        if(workers_[i]->stop_){return;}  
+                        try_j = workers_[i]->pop_front();
+                        if(try_j){//esegue se non è nullopt
+                            count_job_[i].fetch_sub(1,std::memory_order_release);
+                            (try_j.value())();
+                        }
                     }
                 }
             };
