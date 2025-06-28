@@ -189,7 +189,6 @@ namespace fdapde{
                         if(indx_steal != -1){
                             //do job steal
                             try_do(workers_[indx_steal]->pop_back(),indx_steal);
-                            indx_steal = -1; //rimettiamo a -1 per prossime iterazioni
                         }
                         continue;                             
                     }
@@ -214,7 +213,6 @@ namespace fdapde{
                         if(indx_steal != -1){
                             //do job steal
                             try_do(workers_[indx_steal]->pop_back(),indx_steal);
-                            indx_steal = -1;
                         }                             
                     }
                 }
