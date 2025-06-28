@@ -42,8 +42,8 @@ namespace fdapde{
                     fdapde::Synchro_queue<job,fdapde::relax_nowait> sync_queue_;
                     std::thread t_;
                     bool stop_ = false;
-                    std::mutex m_;
-                    std::condition_variable cv_; 
+                    mutable std::mutex m_;
+                    mutable std::condition_variable cv_; 
                 public:
                     friend class Threadpool; //TODO: classi friend quindi inutili tuti i getter ecc.. ripulire codice. lasciare magari wrap di alcune funzioni per chiarezza in uso in threadpool(es workers_[i]->notifica() al posto di workers_[i]->cv_.notify_one())
                     // costruttore con numero elementi di coda
@@ -52,12 +52,12 @@ namespace fdapde{
 
                     //  TUTTI WRAP "INUTILI" BASTA FATTO CHE SIA FRIEND PER ACCESSO DIRETTO, FORSE PIU LEGGIBILE USARLI PERO.
                     //per poter bloccare il mutex di Worker m_ in threadpool
-                    std::unique_lock<std::mutex> get_loc(){
+                    std::unique_lock<std::mutex> get_loc()const{
                         std::unique_lock<std::mutex> loc(m_);
                         return loc;          
                     }
                     //per poter notificare da threadpool
-                    void notifica(){
+                    void notifica()const{
                         cv_.notify_one();
                     }
 
@@ -87,7 +87,7 @@ namespace fdapde{
             };
         private:
             std::vector<std::shared_ptr<Worker>> workers_; //vettore di putatori perche non movable e copiable synchro_queue per via di mutex
-            std::deque<std::atomic<int>> count_job_; //deque perché atomic<int> non movable e quindi non si puo fare vector
+            std::deque<std::atomic<int>> count_job_; //deque perché atomic<int> non movable e quindi non si puo fare vector,ideale sarebbe array perché cache friendly (utile perché get_count_all_job lo scorre) ma non va bene threadpool<sizeArray>
             int n_worker_ ;
             int queue_size_; // forse non costante poi
             int threadpool_volume_; //oss: se queue_size non costante fai funzione get thteadpool volume che lo calcola
@@ -157,9 +157,9 @@ namespace fdapde{
 
             void worker_loop(int i){// i = indice di worker in workers_
                 //per assicurare che thread partano a fare worker_loop solo dopo che tutti siano stati inizializzati
-                //TODO: da capire wait() quado notificata e riprova a verificare codition fa lock o lock_shared ? credo lock e quindi inutile shared mutex, rimettere mutex che piu efficiente e occupa meno memoria tanto sempre sequenziale start dei workerloop 
+                //shared cosi che tutt i thread possano partire contemporaneamente
                 std::shared_lock<std::shared_mutex> lock_shared(m_threadpool_);
-                cv_threadpool_.wait(lock_shared,[this](){return active_;});
+                cv_threadpool_.wait(lock_shared,[this](){return active_;}); //cv.wait(loc) quando ritenta a verificare condition dopo notifica fa loc.lock() (chiama membro lock() di loc) e con loc=shared_lock<std::shared_mutex> il membro lock() è shared_lock(), prima con passaggio di loc= shared_mutex il membro lock() era lock() (cioe blocco in modalita scrittura) :()
                 lock_shared.unlock();
                 bool done_own_job = true; //spostato fuori da while cosi non locale e creato una volta sola 
                 int indx_steal = -1; //indice da cui rubare
@@ -216,7 +216,7 @@ namespace fdapde{
                 }
             };
 
-            int indx_most_free(){
+            int indx_most_free()const{
                 int worker_indx = 0;
                 int min_elem= count_job_[0].load(std::memory_order_acquire); //numero elementi in primo worker 
                 for (int j=1; j<n_worker_; j++){
@@ -229,7 +229,7 @@ namespace fdapde{
                 return worker_indx;
             };
 
-            int indx_most_busy(){
+            int indx_most_busy()const{
                 int worker_indx = 0;
                 int max_elem= count_job_[0].load(std::memory_order_acquire); //numero elementi in primo worker 
                 for (int j=1; j<n_worker_; j++){
@@ -245,7 +245,7 @@ namespace fdapde{
 
 
             // ridà int a caso tra 0 e size-1
-            int random_int(int size){
+            int random_int(int size)const{
                 std::random_device rd;
                 std::mt19937 gen(rd());
                 std::uniform_int_distribution<> distrib(0,size-1);
@@ -253,7 +253,7 @@ namespace fdapde{
             }
 
             //indx random tra i worker con job in coda ovviamente
-            int indx_random_from_busy(){
+            int indx_random_from_busy()const{
                 std::vector<int> indxs; //vector di indici di worker in workers che hanno job in coda
                 for(int k = 0; k<n_worker_; k++){
                     // oss: non evitati se stessi (k!=j) perche sarebbe piu costoso (range di for diminusice di un elemento, ma ad ogni iterazione ci sarebbe if aggiuntivo)
@@ -269,7 +269,7 @@ namespace fdapde{
             //m numero di worker con job, i ladri fanno steal a worker casuale tra i primi m/2 con piu job in coda
             //obbiettivo evitare starvation di steal_from_most_busy ma preservare la sua proprietà stabilizzante (steal_from_most_busy tende a riequilibrare i count_job, steal_random mantiene squilibrio )
             //OSS: importante equilibrare count_job perchè count_job[] squilibrati porta poi a maggiore penalita per starvation
-            int indx_random_from_half_most_busy(){ 
+            int indx_random_from_half_most_busy()const{ 
                 std::vector<std::pair<int,int>> indxs; //vettore di coppie j,count_job[j]. j indice di worker in workers
                 int tmp_count_job = 0;
                 //chi ha count_job()>0 inserito in indxs
@@ -291,20 +291,20 @@ namespace fdapde{
                 }
             }
             
-            int get_count_all_job(){
+            int get_count_all_job()const{
                 int somma = 0;
                 for (int i = 0; i<n_worker_; i++)
                     somma += count_job_[i].load(std::memory_order_acquire);
                 return somma;
             }
             //per notificare tutte le CV_ dei worker
-            void notifica_tutti(){
+            void notifica_tutti()const{ //possibile const perche cv di singoli worker sono messe mutable
                 for(int i=0; i<n_worker_; i++){
                     workers_[i]->cv_.notify_one();
                 }
             }
             //per acquisire tutti i mutex dei worker
-            std::vector<std::unique_lock<std::mutex>> lock_tutti(){
+            std::vector<std::unique_lock<std::mutex>> lock_tutti()const{
                 std::vector<std::unique_lock<std::mutex>> vett_lock;
                 vett_lock.reserve(n_worker_);
                 for(int i=0; i<n_worker_; i++){
@@ -314,7 +314,7 @@ namespace fdapde{
                 return vett_lock;
             }
             //per rilasciare tutti i mutex dei worker
-            void unlock_tutti(std::vector<std::unique_lock<std::mutex>>& vett_lock){
+            void unlock_tutti(std::vector<std::unique_lock<std::mutex>>& vett_lock)const{
                 for(int i=0; i<n_worker_; i++){
                     vett_lock[i].unlock();
                 }
