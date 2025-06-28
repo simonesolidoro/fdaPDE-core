@@ -447,7 +447,7 @@ namespace fdapde{
             requires (!std::is_same_v<std::invoke_result_t<F,int>, void>)
             auto parallel_for_sure(int start, int end, F&& f)-> std::vector<std::invoke_result_t<F, int>>{
                 using return_type = std::invoke_result_t<F, int>;
-                std::vector<std::optional<std::future<return_type>>> ret_opt;
+                std::vector<std::future<return_type>> ret_fut;
                 std::vector<return_type> ret;
                 int j = start;
                 //while con controllo se job send, se non inviato elimina nullopt e non aggiorna j cosi da riprovare finche non lo invia
@@ -455,18 +455,16 @@ namespace fdapde{
                 //OSS: se push in syncro_queue fosse garantito (es push_or_wait di hold_wait version) non sarebbe necessario while(){if()} ma basterebbe for
                 //TODO: scrivere diverso parallel_for a seconda di tipo coda in threadpool 
                 while(j<end){
-                    ret_opt.push_back(this->send_task_round(std::forward<F>(f),j));
-                    if(ret_opt[j]){
+                    std::optional<std::future<return_type>> opt_fut= this->send_task_round(std::forward<F>(f),j);
+                    if(opt_fut){
+                        ret_fut.push_back(std::move(opt_fut.value()));
                         j++;
-                    }
-                    else{
-                        ret_opt.pop_back();
                     }
                 }
                 // get di tutti i future cosi da assicurarsi che tutte le body_function di ciclo for siano eseguite prima di termine funzione parallel_for
                 // e copia di return di ogni body_function per return vector<return_type> di parallel_for
-                for (size_t k= 0; k<ret_opt.size(); k++){
-                    ret.push_back(ret_opt[k].value().get());
+                for (size_t k= 0; k<ret_fut.size(); k++){
+                    ret.push_back(ret_fut[k].get());
                 }
                 return ret;
             }
@@ -478,19 +476,17 @@ namespace fdapde{
             requires std::is_same_v<std::invoke_result_t<F,int>, void>
             void parallel_for_sure(int start, int end, F&& f){
                 using return_type = std::invoke_result_t<F, int>; // sarebbe void
-                std::vector<std::optional<std::future<return_type>>> ret_opt;
+                std::vector<std::future<return_type>> ret_fut;
                 int j = start;
                 while(j<end){
-                    ret_opt.push_back(this->send_task_round(std::forward<F>(f),j));
-                    if(ret_opt[j]){
+                    std::optional<std::future<return_type>> opt_fut= this->send_task_round(std::forward<F>(f),j);
+                    if(opt_fut){
+                        ret_fut.push_back(std::move(opt_fut.value()));
                         j++;
                     }
-                    else{
-                        ret_opt.pop_back();
-                    }
                 }
-                for (size_t k= 0; k<ret_opt.size(); k++){
-                    ret_opt[k].value().get(); //get per aasicurarsi esecuzione completata
+                for (size_t k= 0; k<ret_fut.size(); k++){
+                    ret_fut[k].get(); //get per aasicurarsi esecuzione completata
                     //TODO: capire se ha senso parallelizzare i get()--> NON SI PUO, poi si dovrebbe fare get() dei get()
                 }
                 return;
@@ -519,25 +515,22 @@ namespace fdapde{
                     return;
                 }
                 int n_job = (end-start) / n; //numero job in ogni blocco 
-                std::vector<std::optional<std::future<return_type>>> ret_opt;
+                std::vector<std::future<return_type>> ret_fut; //no optinal<future> perché se nullopt non pushato quindi solo future
                 int j = 0;
                 while(j< n){
-                    ret_opt.push_back(this->send_task_round([&,j](){ //j gia catturata in & credo non serve
+                    std::optional<std::future<return_type>> opt_fut = this->send_task_round([&,j](){ //j gia catturata in & credo non serve
                         for(int k=j*n_job; k<(j+1)*n_job; k++ ){
                             f(k);
                         }
-                    }));
-                    if(ret_opt[j]){
-                        //se push andato a buon fine incrementa 
+                    });
+                    if(opt_fut){
+                        //se send andato a buon push di fut in ret_fut e incrementa j
+                        ret_fut.push_back(std::move(opt_fut.value())); //move perche future non copiabili
                         j++;
                     }
-                    else{
-                        //altrimenti elimina null_opt da vettore di return prima di riprovare
-                        ret_opt.pop_back();
-                    }
                 }
-                for (size_t k= 0; k<ret_opt.size(); k++){
-                    ret_opt[k].value().get(); //get per aasicurarsi esecuzione completata
+                for (size_t k= 0; k<ret_fut.size(); k++){
+                    ret_fut[k].get(); //get per aasicurarsi esecuzione completata
                     //TODO: capire se ha senso parallelizzare i get()--> NON SI PUO, poi si dovrebbe fare get() dei get()
                 }
                 return;
@@ -557,29 +550,25 @@ namespace fdapde{
                 }
                 std::vector<int> seq={0}; //seq sara vettore di somme parziali (es np.cumsum) con primo elemento pero 0 cosi da pterlo usare in divisione di for piu comodamente
                 int sum_seq = 0;
-                for(int l = 0; l<vect.size(); l++){
+                for(size_t l = 0; l<vect.size(); l++){
                     sum_seq += vect[l];
                     seq.push_back(sum_seq);
                 }
-                std::vector<std::optional<std::future<return_type>>> ret_opt;
-                int j = 0;
+                std::vector<std::future<return_type>> ret_fut;
+                size_t j = 0;
                 while(j< vect.size()){
-                    ret_opt.push_back(this->send_task_round([&,j](){ //j gia catturata in & credo non serve
+                    std::optional<std::future<return_type>> opt_fut = this->send_task_round([&,j](){ //j gia catturata in & credo non serve
                         for(int k=seq[j]; k<seq[j+1]; k++ ){
                             f(k);
                         }
-                    }));
-                    if(ret_opt[j]){
-                        //se push andato a buon fine incrementa 
+                    });
+                    if(opt_fut){
+                        ret_fut.push_back(std::move(opt_fut.value()));
                         j++;
                     }
-                    else{
-                        //altrimenti elimina null_opt da vettore di return prima di riprovare
-                        ret_opt.pop_back();
-                    }
                 }
-                for (size_t k= 0; k<ret_opt.size(); k++){
-                    ret_opt[k].value().get(); //get per aasicurarsi esecuzione completata
+                for (size_t k= 0; k<ret_fut.size(); k++){
+                    ret_fut[k].get(); //get per aasicurarsi esecuzione completata
                     //TODO: capire se ha senso parallelizzare i get()--> NON SI PUO, poi si dovrebbe fare get() dei get()
                 }
                 return;
