@@ -100,8 +100,7 @@ namespace fdapde{
             //n = size code, k = numero worker
             Threadpool(int n,int k):n_worker_(k),queue_size_(n){
                 threadpool_volume_ = k * n;
-                std::unique_lock<std::shared_mutex> loc(m_threadpool_,std::defer_lock);
-                loc.lock();
+                std::unique_lock<std::shared_mutex> loc(m_threadpool_);
                 //if(k> std::thread::hardware_concurrency()){std::cout<<"thread richiesti > thread supportati: "<<std::thread::hardware_concurrency()<<std::endl; }
                 workers_.reserve(k);
                 for(int i=0; i<k; i++){
@@ -109,6 +108,7 @@ namespace fdapde{
                     count_job_.emplace_back(0);
                 }
                 active_ = true;
+                loc.unlock();
                 cv_threadpool_.notify_all();
             };
 
@@ -157,9 +157,10 @@ namespace fdapde{
 
             void worker_loop(int i){// i = indice di worker in workers_
                 //per assicurare che thread partano a fare worker_loop solo dopo che tutti siano stati inizializzati
-                m_threadpool_.lock_shared();
-                cv_threadpool_.wait(m_threadpool_,[this](){return active_;});
-                m_threadpool_.unlock_shared();
+                //TODO: da capire wait() quado notificata e riprova a verificare codition fa lock o lock_shared ? credo lock e quindi inutile shared mutex, rimettere mutex che piu efficiente e occupa meno memoria tanto sempre sequenziale start dei workerloop 
+                std::shared_lock<std::shared_mutex> lock_shared(m_threadpool_);
+                cv_threadpool_.wait(lock_shared,[this](){return active_;});
+                lock_shared.unlock();
                 bool done_own_job = true; //spostato fuori da while cosi non locale e creato una volta sola 
                 int indx_steal = -1; //indice da cui rubare
                 while(!workers_[i]->stop_){
