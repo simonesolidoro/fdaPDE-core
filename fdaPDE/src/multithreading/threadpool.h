@@ -95,10 +95,11 @@ namespace fdapde{
             std::shared_mutex m_threadpool_; 
             std::condition_variable_any cv_threadpool_;
             bool active_ = false; //TODO oss: possibile evitare stop_ di singolo worker e usare active, ma stop_ in singolo worker rende worker indipendente da threadpool (puo terminare anche se threadpool non distrutta) e questo puo essere utile magari in seguito 
+            mutable std::mt19937 gen;
         public:
             friend class Worker; //poi togliere tutti get e sostituire con accesso diretto
             //n = size code, k = numero worker
-            Threadpool(int n,int k):n_worker_(k),queue_size_(n){
+            Threadpool(int n,int k):n_worker_(k),queue_size_(n),gen(std::random_device{}()){
                 threadpool_volume_ = k * n;
                 std::unique_lock<std::shared_mutex> loc(m_threadpool_);
                 //if(k> std::thread::hardware_concurrency()){std::cout<<"thread richiesti > thread supportati: "<<std::thread::hardware_concurrency()<<std::endl; }
@@ -169,7 +170,7 @@ namespace fdapde{
                     if(done_own_job){
                         continue; //passa a iterazione di while successiva evitando steal ecc
                     }
-                    if( get_count_all_job()>0){ //aggiunto cosi che si passi da mutex (che ricordiamo viene lock anche ad ogni send) solo quando non c'è job in nessuna coda. 
+                    if( get_count_all_job()>0){ //aggiunto tentativo di steal qui cosi che si passi da mutex (che ricordiamo viene lock anche ad ogni send) solo quando non c'è job in nessuna coda. 
                         //steal
                         if constexpr(T == steal::random){
                             indx_steal = indx_random_from_busy();
@@ -246,8 +247,6 @@ namespace fdapde{
 
             // ridà int a caso tra 0 e size-1
             int random_int(int size)const{
-                std::random_device rd;
-                std::mt19937 gen(rd());
                 std::uniform_int_distribution<> distrib(0,size-1);
                 return distrib(gen);
             }
@@ -285,7 +284,11 @@ namespace fdapde{
                 switch (size)
                 {
                 case 1:
-                    return indxs[0].first; //evita chiamata a geerazioe random number inutile
+                    return indxs[0].first; //evita chiamata a generazioe random number inutile
+                case 2:
+                    return indxs[0].first; //evita chiamata a generazioe random number inutile size/2 = 2/2 = 1 -> random_int(1)= numero casuale in {0,(1-1)} cioè = 0 sempre
+                case 3:
+                    return indxs[0].first; //evita chiamata a generazioe random number inutile size/2 = 3/2 = 1 -> "
                 default: 
                     return indxs[random_int(size/2)].first; //sceglie a caso tra i primi size/2 con count_job maggiore. //TODO: per ora size/2, sarebbe meglio aggiungere dipendenza da N-size (N-size = numero worker ladri) o simile. 
                 }
@@ -333,9 +336,14 @@ namespace fdapde{
                     return send_task_round(f,args...);
                 }
             }
+
            //TODO: tutti i send uguali cambia solo scelta indice, ma non si puo fare template<typename F, typename... Args, typename tipo_send> perche templeta parameter deduction è un tutto o niente, come fare allora per semplificare ?
+
            //lock di tutti i mutex cosi notifica a tutti sara sincronizzata con push e  count++, OSSERVAZIONE: lock di mutex non interrompe worker_loop di chi ha gia job in coda grazie a nuovo worker_loop con try_j all inizio di while 
+           // non piu lock di tutti ma lock e notifica solo di chi riceve, piu efficiente e non è un problema perche il send non serve svegli per lo steal, steal deve avvenire in fase finale quando per qualche ragione un worker è rimasto indietro e qualcuno finisce prima, ma questo accade dopo send 
+
            //OSS:ora che i distruttore si aspetta esecuzioen di tutti i job non servono piu i future<void> per assivurare esecuzione di job, si potrebbe pensare di ritornare  aversioni conn return=void che nnon perdono tempo a creare vector<future<void>>, PERO' meglio lasciarli perche con future<void> in main con get si puo specificare entro quando vuoi che un job sia eseguito
+
            //send_task_mostfree
             template<typename F, typename... Args>
             auto send_task(F&& f,Args... args) -> std::optional<std::future<decltype(f(args...))>>{
