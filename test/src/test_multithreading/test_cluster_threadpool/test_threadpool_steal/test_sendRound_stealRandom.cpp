@@ -33,7 +33,7 @@ int main(int argc, char** argv){
     auto start2 = std::chrono::high_resolution_clock::now();
     //send job con certezza
     while( i<n_job){
-        futs.push_back(std::move(tp.send_task_round([&](){
+        futs.push_back(std::move(tp.send_task_only_to_some([&](){
             count++;
             int a= 0;
             for (int j = 0; j<n_cicli_in_job; j++){

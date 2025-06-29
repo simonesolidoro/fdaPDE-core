@@ -23,7 +23,7 @@ int main(int argc, char** argv){
     int n_cicli_in_job = std::stoi(argv[3]); //lunghezza singolo job 50000
     int n_job = std::stoi(argv[4]); // 10000
 
-    fdapde::Threadpool<fdapde::steal::random> tp(size_queue,n_thread);
+    fdapde::Threadpool<fdapde::steal::most_busy> tp(size_queue,n_thread);
 
     std::vector<std::optional<std::future<void>>> futs;
     futs.reserve(n_job);
@@ -32,8 +32,8 @@ int main(int argc, char** argv){
 
     auto start2 = std::chrono::high_resolution_clock::now();
     //send job con certezza
-    while( i<n_job){
-        futs.push_back(std::move(tp.send_task_round([&](){
+    while( i<n_job/2){
+        futs.push_back(std::move(tp.send_task_only_to_zero([&](){
             count++;
             int a= 0;
             for (int j = 0; j<n_cicli_in_job; j++){
@@ -45,6 +45,25 @@ int main(int argc, char** argv){
         })));
         if(futs[i]){
             i++;
+        }
+        else{
+            futs.pop_back();
+        }
+    }
+    int ii = n_job/2;
+    while( ii<n_job){
+        futs.push_back(std::move(tp.send_task_only_to_some([&](){
+            count++;
+            int a= 0;
+            for (int j = 0; j<n_cicli_in_job; j++){
+                a++;
+                a--;
+                a++;
+                a--;
+            }
+        })));
+        if(futs[ii]){
+            ii++;
         }
         else{
             futs.pop_back();

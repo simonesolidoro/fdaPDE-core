@@ -26,6 +26,7 @@ int main(int argc, char** argv){
     fdapde::Threadpool<fdapde::steal::most_busy> tp(size_queue,n_thread);
 
     std::vector<std::optional<std::future<void>>> futs;
+    futs.reserve(n_job);
     std::atomic<int> count(0);
     int i = 0;
 

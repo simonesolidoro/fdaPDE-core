@@ -19,17 +19,15 @@
 int main(int argc, char** argv){
     int n_range_for = std::stoi(argv[1]); //numero cicli in contafino // lunghezza singolo job
     int operazioni_in_singola_body_function = std::stoi(argv[2]); // rappresenta "pesantezza" body_function
-    int n_thread = std::stoi(argv[3]);
-    int size_coda = std::stoi(argv[4]);
-    int n_blocchi = std::stoi(argv[5]); //numero blocchi in cui dividere range di for (utilizzato solo in parallel_for_sure_n)
+    //int n_thread = std::stoi(argv[3]);
+    //int size_coda = std::stoi(argv[4]);
+    //int n_blocchi = std::stoi(argv[5]); //numero blocchi in cui dividere range di for (utilizzato solo in parallel_for_sure_n)
     //fdapde::Threadpool<fdapde::steal::random> tp(size_coda,n_thread);
     std::atomic<int> a=0; //usata per verifica tutti jo vengano eseguiti (a deve arrivare ad n)
 
-//for non parallel
-    auto start2 = std::chrono::high_resolution_clock::now();
-
-    for (int i = 0; i < n_range_for; i++){
+    auto fun_body = [&](int i){
         // for inutile simula lavoro di body function
+        /*
         int b = 0;
         for (int j = 0; j< operazioni_in_singola_body_function; j++){
             b ++;
@@ -37,8 +35,15 @@ int main(int argc, char** argv){
             b ++;
             b --;
         }
-        a++; // contatore per verificare ogni job eseguito (alla fine a dovra essere = n_range_for)
-        //std::this_thread::sleep_for(std::chrono::microseconds(10)); // OSS: problema cosi tempo simulato ma non c'è consumo di cpu
+            */
+        std::this_thread::sleep_for(std::chrono::milliseconds(1)); //usato al posto di operazioi pr dimostrare che speedup o ottimale dovuto a cosumo di cpu
+        a++;
+    };
+//for non parallel
+    auto start2 = std::chrono::high_resolution_clock::now();
+
+    for (int i = 0; i < n_range_for; i++){
+       fun_body(i);
     }
     
     auto end2 = std::chrono::high_resolution_clock::now();

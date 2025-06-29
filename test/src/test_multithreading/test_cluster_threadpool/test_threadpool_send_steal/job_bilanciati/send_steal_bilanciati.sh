@@ -16,9 +16,9 @@ for i in $(seq 1 "$1"); do
 done
 
 # n_thread= []
-threads=(1 2 4 6)
+threads=(6 4 2 1)
 # Lista di eseguibili (modifica questa parte se serve)
-executables=("test_sendMostfree_stealMostbusy" "test_sendRound_stealMostbusy" "test_sendMostfree_stealRandom" "test_sendRound_stealRandom")
+executables=("test_sendMostfree_stealMostbusy" "test_sendRound_stealMostbusy" "test_sendMostfree_stealRandom" "test_sendRound_stealRandom" )
 
 for th in "${threads[@]}"; do
     # Per ogni eseguibile nella lista

@@ -30,13 +30,15 @@ int main(int argc, char** argv){
 
     tp.parallel_for_sure_n(0,n_range_for,n_blocchi,[&](int i){
         // for inutile simula lavoro di body function
+        /*
         int b = 0;
         for (int j = 0; j< operazioni_in_singola_body_function; j++){
             b ++;
             b --;
             b ++;
             b --;
-        }
+        }*/
+        std::this_thread::sleep_for(std::chrono::milliseconds(1)); //usato al posto di operazioi pr dimostrare che speedup o ottimale dovuto a cosumo di cpu
         a++;
         });
     
