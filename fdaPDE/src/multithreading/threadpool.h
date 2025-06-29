@@ -493,7 +493,7 @@ namespace fdapde{
             } 
 
             //versione che parallelizza dividendo il range iniziale in n blocchi.
-            //il senso potrebbe essere ridurre i send e poter controllare quanto parallelizzare, non c'è probelma di steal perchè i job() non sono l' esecuzione della singola body function f(i) ma sono for(k in subset_of_({start-end})){f(k)}
+            //ridurre i send, job() non sono l' esecuzione della singola body function f(i) ma sono for(k in subset_of_({start-end})){f(k)}
             template<typename F> 
             requires std::is_same_v<std::invoke_result_t<F,int>, void>
             void parallel_for_sure_n(int start, int end,int n, F&& f){
@@ -573,23 +573,6 @@ namespace fdapde{
                 }
                 return;
             } 
-
-            //TODO: da mettere il get dei future dentro i parallel_for, come in parallel_for_sure for void
-            //PARALLEL_FOR
-            //body fuction dipendente da i.     body function passate come wrap di funzioni in lambda e quindi unico parametro i: [args](int i){retur fun(args,i);}    
-
-            //OSS: diversificato caso return e void perche void non serve faccia vector da ritornare quindi piu veloce. NO! vedi oss sotto 
-            //OSS: meglio return vettore di future void cosi in main si puo garantire con get entro quando si vuole che un job void venga eseguito
-             
-            template<typename F>
-            auto parallel_for(int start, int end, F&& f)-> std::vector<std::optional<std::future<std::invoke_result_t<F, int>>>>{
-                using return_type = std::invoke_result_t<F, int>;
-                std::vector<std::optional<std::future<return_type>>> ret;
-                for(int j=start; j<end; j++){
-                    ret.push_back(this->send_task_round(std::forward<F>(f),j));
-                }
-                return ret;
-            }   
 
 
 
