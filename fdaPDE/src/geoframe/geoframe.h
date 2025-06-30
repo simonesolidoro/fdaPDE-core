@@ -66,7 +66,7 @@ template <typename... Triangulation_> struct GeoFrame {
         int rows() const { return n_rows_; }
         int cols() const { return data_->cols(); }
         int size() const { return data_->size(); }
-      
+        std::vector<std::string> colnames() const { return data_->colnames(); }
         void* geo_index(int n) const { return geo_index_.at(n); }
         // accessors
         template <typename T> decltype(auto) col(size_t col) { return data_->template col<T>(col); }
@@ -161,9 +161,17 @@ template <typename... Triangulation_> struct GeoFrame {
         }
         return false;
     }
-    std::vector<std::string> layer_names() const {
+    std::vector<std::string> laynames() const {
         std::vector<std::string> names;
         for (const auto& [name, id] : layer_name_to_idx_) { names.push_back(name); }
+        return names;
+    }
+    std::vector<std::string> colnames() const {
+        std::vector<std::string> names;
+        for (int i = 0; i < n_layers_; ++i) {
+            std::vector<std::string> c = layers_[i].colnames();
+            names.insert(names.end(), c.begin(), c.end());
+        }
         return names;
     }
     template <int N> decltype(auto) triangulation() const { return *std::get<N>(triangulation_); }
