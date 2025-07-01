@@ -145,7 +145,13 @@ template <typename... Triangulation_> struct GeoFrame {
     auto& insert_scalar_layer(
       const std::string& name, const internals::random_access_geo_row_view<LayerType>& row_filter) {
         return insert_scalar_layer_<GeoInfo...>(name, row_filter);
-    }  
+    }
+    auto& load_shp(const std::string& name, const std::string& filename) {
+        fdapde_assert(!name.empty() && !has_layer(name));
+        auto& l = insert_scalar_layer_<POLYGON>(name, triangulation_);
+        l.load_shp(filename);
+        return geo_cast<POLYGON>(operator[](name));
+    }
     // observers
     int n_layers() const { return n_layers_; }
     const std::array<ltype, Order>& category(int layer_id) const { return layers_[layer_id].category(); }

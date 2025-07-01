@@ -243,6 +243,10 @@ struct GeoLayer {
 
    public:
     // constructor
+    GeoLayer(triangulation_t triangulation) :
+        triangulation_(triangulation), data_(), geo_data_(), n_rows_(0), strides_(), extents_(), structured_(false) {
+        std::fill(strides_.begin(), strides_.end(), 1);   // default to unstructured layer
+    }
     template <typename GeoData_>
     GeoLayer(triangulation_t triangulation, const GeoData_& geo_data) :
         triangulation_(triangulation), data_(), geo_data_(), n_rows_(0), strides_(), extents_(), structured_(false) {
@@ -314,6 +318,7 @@ struct GeoLayer {
     size_t rows() const { return n_rows_; }
     size_t cols() const { return data_.cols(); }
     size_t size() const { return rows() * cols(); }
+    std::string crs() const { return crs_; }
     const auto& field_descriptor(const std::string& colname) const { return data_.field_descriptor(colname); }
     const auto& header() const { return data_.header(); }
     bool contains(const std::string& column) const { return data_.contains(column); }
@@ -456,22 +461,31 @@ struct GeoLayer {
         switch (shp.shape_type()) {
         case shp_reader::Polygon: {
             // load polygon as areal layer
-            std::vector<MultiPolygon<local_dim[0], embed_dim[0]>> regions;
-            regions.reserve(shp.n_records());
-            for (int i = 0, n = shp.n_records(); i < n; ++i) { regions.emplace_back(shp.polygon(i).nodes()); }
-	    std::get<0>(geo_data_) = std::tuple_element_t<0, geo_storage_t>(std::get<0>(triangulation_), regions);
-	    n_rows_ = regions.size();
-	    break;
+            std::vector<MultiPolygon<local_dim[0], embed_dim[0]>> mpolys;
+            mpolys.reserve(shp.n_records());
+            for (int i = 0, n = shp.n_records(); i < n; ++i) { mpolys.emplace_back(shp.polygon(i).nodes()); }
+            // compute region partitioning
+            using Triangulation = std::tuple_element_t<0, Triangulation_>;
+            const Triangulation& D = *std::get<0>(triangulation_);
+            std::vector<int> regions(D.n_cells(), 0);
+            for (auto it = D.cells_begin(); it != D.cells_end(); ++it) {
+                for (int i = 0, n = mpolys.size(); i < n; ++i) {
+                    if (mpolys[i].contains(it->barycenter())) {
+                        regions[it->id()] = i;
+                        break;
+                    }
+                }
+            }
+            std::get<0>(geo_data_) = std::tuple_element_t<0, geo_storage_t>(std::get<0>(triangulation_), regions);
+            n_rows_ = shp.n_records();
+            break;
         }
         }
-        std::vector<std::pair<std::string, std::vector<double     >>> dbl_data;
-        std::vector<std::pair<std::string, std::vector<std::string>>> str_data;
-        // TODO: std::vector<std::pair<std::string, std::vector<bool       >>> bin_data;
         for (const auto& [name, field_type] : shp.field_descriptors()) {
-            if (field_type == 'N' || field_type == 'F') { dbl_data.emplace_back(name, shp.get<double>(name)); }
-            if (field_type == 'C') { str_data.emplace_back(name, shp.get<std::string>(name)); }
+            if (field_type == 'N' || field_type == 'F') { load_vec(name, shp.get<double>(name)); }
+            if (field_type == 'C') { load_vec(name, shp.get<std::string>(name)); }
         }
-	data_ = storage_t(dbl_data, str_data);
+	crs_ = shp.gcs();
 	return;
     }
     template <typename... Ts>
@@ -619,7 +633,7 @@ struct GeoLayer {
             // print actual data
             auto col = internals::plain_col_view<T, const storage_t>(data.data(), 0, n_rows, desc);
             auto nan = col.nan();   // extract column nan pattern
-
+		
             for (int i = 0; i < n_rows; ++i) {
                 std::string datastr;
                 datastr += stringify(col(i, 0), nan(i, 0));
@@ -827,6 +841,7 @@ struct GeoLayer {
     std::array<int, Order> strides_;   // for unstructured layers: array of 1s
     std::array<int, Order> extents_;
     bool structured_;
+    std::string crs_ = "UNDEFINED";   // geodedics CRS
 };
 
 // geo_filter outstream
