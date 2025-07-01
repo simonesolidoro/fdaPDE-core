@@ -443,7 +443,7 @@ namespace fdapde{
             };
 
             //parallel_for 
-            //TODO: capire se necessario perfect forwarding
+            //TODO: capire se necessario perfect forwarding-> si evita copie di fuzioi se passate come lambda rvalue
 
             //lasciato versione con body function con return perche magari parallelizzando salvare risultati in vettore non è thread-safe (bisognerebbe salvare in array cosi che non si riallochi la memoria, oppure usare thread safe vector)
             //ma non chiaro in realta probabimnte non serve 
@@ -478,6 +478,10 @@ namespace fdapde{
             }
 
             
+            //OVERLOAD per distiguere tipi di parallel_for
+            // parallel_for(int,int,F&&) --> ogni iterazione diventa un job (n_block=range)
+            // parallel_for(int,int,int n,F&&) --> divide range in n blocchi
+            // parallel_for(int,int,vector<int>,F&&) --> divide range in vect.size() blocchi ognuno con numero iterazioni = vect[j] 
 
             //F = body_function di loop, function con input indice i di loop. firma: void (int i)
             template<typename F> 
@@ -505,7 +509,7 @@ namespace fdapde{
             //ridurre i send, job() non sono l' esecuzione della singola body function f(i) ma sono for(k in subset_of_({start-end})){f(k)}
             template<typename F> 
             requires std::is_same_v<std::invoke_result_t<F,int>, void>
-            void parallel_for_sure_n(int start, int end,int n, F&& f){
+            void parallel_for_sure(int start, int end,int n, F&& f){
                 using return_type = std::invoke_result_t<F, int>;
                 //range va da start a end-1--> end-start= dimensione range
                 if((end-start) % n != 0){
@@ -551,7 +555,7 @@ namespace fdapde{
             //utile se si conosce gia sbilanciamento in iterazioni di for
             template<typename F> 
             requires std::is_same_v<std::invoke_result_t<F,int>, void>
-            void parallel_for_sure_vect(int start, int end,std::vector<int>& vect, F&& f){
+            void parallel_for_sure(int start, int end,std::vector<int>& vect, F&& f){
                 using return_type = std::invoke_result_t<F, int>;
                 //range va da start a end-1--> end-start= dimensione range
                 if(std::reduce(vect.cbegin(),vect.cend(),0) != (end-start)){
