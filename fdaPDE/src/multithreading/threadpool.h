@@ -262,8 +262,14 @@ namespace fdapde{
                     }
                 }
                 int size = indxs.size();
-                if(size == 0){ return -1;}
-                return indxs[random_int(size)];                
+                switch(size){
+                case 0: 
+                    return -1;
+                case 1:
+                    return indxs[0];
+                default:
+                    return indxs[random_int(size)];   
+                }                
             }
 
             //m numero di worker con job, i ladri fanno steal a worker casuale tra i primi m/2 con piu job in coda
@@ -448,7 +454,9 @@ namespace fdapde{
             auto parallel_for_sure(int start, int end, F&& f)-> std::vector<std::invoke_result_t<F, int>>{
                 using return_type = std::invoke_result_t<F, int>;
                 std::vector<std::future<return_type>> ret_fut;
+                ret_fut.reserve(end-start);
                 std::vector<return_type> ret;
+                ret.reserve(end-start);
                 int j = start;
                 //while con controllo se job send, se non inviato elimina nullopt e non aggiorna j cosi da riprovare finche non lo invia
                 //molto costoso ma necessario per avere certezza send all job
@@ -477,6 +485,7 @@ namespace fdapde{
             void parallel_for_sure(int start, int end, F&& f){
                 using return_type = std::invoke_result_t<F, int>; // sarebbe void
                 std::vector<std::future<return_type>> ret_fut;
+                ret_fut.reserve(end-start);
                 int j = start;
                 while(j<end){
                     std::optional<std::future<return_type>> opt_fut= this->send_task_round(std::forward<F>(f),j);
@@ -485,14 +494,14 @@ namespace fdapde{
                         j++;
                     }
                 }
-                for (size_t k= 0; k<ret_fut.size(); k++){
-                    ret_fut[k].get(); //get per aasicurarsi esecuzione completata
-                    //TODO: capire se ha senso parallelizzare i get()--> NON SI PUO, poi si dovrebbe fare get() dei get()
+                
+                for(std::future<void>& fut : ret_fut){
+                    fut.get(); //OSS: parallelizzare i get()--> NON SI PUO, poi si dovrebbe fare get() dei get()
                 }
                 return;
             } 
 
-            //versione che parallelizza dividendo il range iniziale in n blocchi.
+            //versione che parallelizza dividendo il range iniziale in n blocchi: n = numero job inviati a threadpool.
             //ridurre i send, job() non sono l' esecuzione della singola body function f(i) ma sono for(k in subset_of_({start-end})){f(k)}
             template<typename F> 
             requires std::is_same_v<std::invoke_result_t<F,int>, void>
@@ -514,12 +523,13 @@ namespace fdapde{
                     */
                     return;
                 }
-                int n_job = (end-start) / n; //numero job in ogni blocco 
+                int n_body_fun = (end-start) / n; //numero body_function in ogni blocco(job) 
                 std::vector<std::future<return_type>> ret_fut; //no optinal<future> perché se nullopt non pushato quindi solo future
+                ret_fut.reserve(n); //per evitare riallocameto memoria 
                 int j = 0;
                 while(j< n){
                     std::optional<std::future<return_type>> opt_fut = this->send_task_round([&,j](){ //j gia catturata in & credo non serve
-                        for(int k=j*n_job; k<(j+1)*n_job; k++ ){
+                        for(int k=j*n_body_fun; k<(j+1)*n_body_fun; k++ ){
                             f(k);
                         }
                     });
@@ -529,9 +539,9 @@ namespace fdapde{
                         j++;
                     }
                 }
-                for (size_t k= 0; k<ret_fut.size(); k++){
-                    ret_fut[k].get(); //get per aasicurarsi esecuzione completata
-                    //TODO: capire se ha senso parallelizzare i get()--> NON SI PUO, poi si dovrebbe fare get() dei get()
+                //get dei future void per assicurarsi che tutti i job siano stati eseguiti dopo uso parallel_for in main
+                for(std::future<void>& fut : ret_fut){
+                    fut.get();
                 }
                 return;
             } 
@@ -550,13 +560,15 @@ namespace fdapde{
                 }
                 std::vector<int> seq={0}; //seq sara vettore di somme parziali (es np.cumsum) con primo elemento pero 0 cosi da pterlo usare in divisione di for piu comodamente
                 int sum_seq = 0;
-                for(size_t l = 0; l<vect.size(); l++){
+                size_t vect_size = vect.size();
+                for(size_t l = 0; l<vect_size; l++){
                     sum_seq += vect[l];
                     seq.push_back(sum_seq);
                 }
                 std::vector<std::future<return_type>> ret_fut;
+                ret_fut.reserve(vect_size);
                 size_t j = 0;
-                while(j< vect.size()){
+                while(j< vect_size){
                     std::optional<std::future<return_type>> opt_fut = this->send_task_round([&,j](){ //j gia catturata in & credo non serve
                         for(int k=seq[j]; k<seq[j+1]; k++ ){
                             f(k);
@@ -567,9 +579,9 @@ namespace fdapde{
                         j++;
                     }
                 }
-                for (size_t k= 0; k<ret_fut.size(); k++){
-                    ret_fut[k].get(); //get per aasicurarsi esecuzione completata
-                    //TODO: capire se ha senso parallelizzare i get()--> NON SI PUO, poi si dovrebbe fare get() dei get()
+            
+                for(std::future<void>& fut : ret_fut){
+                    fut.get();
                 }
                 return;
             } 
