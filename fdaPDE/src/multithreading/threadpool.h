@@ -353,7 +353,7 @@ namespace fdapde{
 
            //send_task_mostfree
             template<typename F, typename... Args>
-            auto send_task(F&& f,Args... args) -> std::optional<std::future<decltype(f(args...))>>{
+            auto send_task(F&& f,Args&&... args) -> std::optional<std::future<decltype(f(args...))>>{
                 //wrap 
                 using return_type = decltype(f(args...));
                 std::shared_ptr<std::packaged_task<return_type()>> ptr_task = std::make_shared<std::packaged_task<return_type()>> ([fun = std::forward<F>(f), ...args_catturati = std::forward<Args>(args) ]()mutable{return fun(args_catturati...);});
@@ -377,7 +377,7 @@ namespace fdapde{
             //send a giro usando struct indxw 
             
             template<typename F, typename... Args>
-            auto send_task_round(F&& f,Args... args) -> std::optional<std::future<decltype(f(args...))>>{
+            auto send_task_round(F&& f,Args&&... args) -> std::optional<std::future<decltype(f(args...))>>{
                 //wrap 
                 using return_type = decltype(f(args...));
                 std::shared_ptr<std::packaged_task<return_type()>> ptr_task = std::make_shared<std::packaged_task<return_type()>> ([fun = std::forward<F>(f), ...args_catturati = std::forward<Args>(args) ]()mutable{return fun(args_catturati...);});
@@ -400,7 +400,7 @@ namespace fdapde{
             //send a sola meta di worker per debug/ test di steal job. 
             
             template<typename F, typename... Args>
-            auto send_task_only_to_some(F&& f,Args... args) -> std::optional<std::future<decltype(f(args...))>>{
+            auto send_task_only_to_some(F&& f,Args&&... args) -> std::optional<std::future<decltype(f(args...))>>{
                 //wrap 
                 using return_type = decltype(f(args...));
                 std::shared_ptr<std::packaged_task<return_type()>> ptr_task = std::make_shared<std::packaged_task<return_type()>> ([fun = std::forward<F>(f), ...args_catturati = std::forward<Args>(args) ]()mutable{return fun(args_catturati...);});
@@ -423,7 +423,7 @@ namespace fdapde{
 
             //send a sola  a un worker (0 perche sicuro esiste sempre) per debug/ test di steal job. 
             template<typename F, typename... Args>
-            auto send_task_only_to_zero(F&& f,Args... args) -> std::optional<std::future<decltype(f(args...))>>{
+            auto send_task_only_to_zero(F&& f,Args&&... args) -> std::optional<std::future<decltype(f(args...))>>{
                 //wrap 
                 using return_type = decltype(f(args...));
                 std::shared_ptr<std::packaged_task<return_type()>> ptr_task = std::make_shared<std::packaged_task<return_type()>> ([fun = std::forward<F>(f), ...args_catturati = std::forward<Args>(args) ]()mutable{return fun(args_catturati...);});
@@ -480,6 +480,7 @@ namespace fdapde{
             
             //OVERLOAD per distiguere tipi di parallel_for
             // parallel_for(int,int,F&&) --> ogni iterazione diventa un job (n_block=range)
+            // parallel_for(function<int(int)> incr, int, int, F&&) --> scorre range con incr personalizzato non piu solo i++ 
             // parallel_for(int,int,int n,F&&) --> divide range in n blocchi
             // parallel_for(int,int,vector<int>,F&&) --> divide range in vect.size() blocchi ognuno con numero iterazioni = vect[j] 
 
@@ -505,7 +506,7 @@ namespace fdapde{
                 return;
             } 
 
-            // per iterare con incremento di i personalizzato (es i+2)
+            // per iterare con incremento di i personalizzato (es i+2), ogni iterazioni un job
             template<typename F> 
             requires std::is_same_v<std::invoke_result_t<F,int>, void>
             void parallel_for_sure(std::function<int(int)> incr, int start, int end, F&& f){
@@ -540,9 +541,9 @@ namespace fdapde{
                 ret_fut.reserve(n+1); //per evitare riallocameto memoria, +1 per eventuale ultimo job fatto da ultime (end-start)%n iterazioni  
                 int j = 0;
                 while(j< n){
-                    std::optional<std::future<return_type>> opt_fut = this->send_task_round([&,j](){ //j gia catturata in & credo non serve
+                    std::optional<std::future<return_type>> opt_fut = this->send_task_round([&,j,fun = std::forward<F>(f)](){ //j catturato come copia perchè modificato detro job (j+1) quidi se catturi come reference si sballa tutto !!!
                         for(int k=j*n_body_fun; k<(j+1)*n_body_fun; k++ ){
-                            f(k);
+                            fun(k);
                         }
                     });
                     if(opt_fut){
@@ -554,9 +555,9 @@ namespace fdapde{
                 if(range % n != 0){ //inviamo ultimo job con iterazioni rimanenti 
                     j=0;
                     while(j<1){
-                        std::optional<std::future<return_type>> opt_fut = this->send_task_round([&,j](){ //j gia catturata in & credo non serve
+                        std::optional<std::future<return_type>> opt_fut = this->send_task_round([&,j,fun = std::forward<F>(f)](){ //j gia catturata in & credo non serve
                         for(int k=n*n_body_fun; k<(end-start); k++ ){
-                            f(k);
+                            fun(k);
                         }
                     });
                     if(opt_fut){
@@ -597,9 +598,9 @@ namespace fdapde{
                 ret_fut.reserve(vect_size);
                 size_t j = 0;
                 while(j< vect_size){
-                    std::optional<std::future<return_type>> opt_fut = this->send_task_round([&,j](){ //j gia catturata in & credo non serve
+                    std::optional<std::future<return_type>> opt_fut = this->send_task_round([&,j,fun = std::forward<F>(f)](){ //j gia catturata in & credo non serve
                         for(int k=seq[j]; k<seq[j+1]; k++ ){
-                            f(k);
+                            fun(k);
                         }
                     });
                     if(opt_fut){
@@ -621,7 +622,7 @@ namespace fdapde{
             auto parallel_reduce_sum(int start, int end, F&& f)-> std::invoke_result_t<F, int>{
                 using return_type = std::invoke_result_t<F, int>;
 
-                std::vector<return_type> results = parallel_for_sure(start,end,f);
+                std::vector<return_type> results = parallel_for_sure(start,end,std::forward<F>(f));
 
                 return_type ret = results[0];
                                 
@@ -635,7 +636,7 @@ namespace fdapde{
             auto parallel_reduce_dot(int start, int end, F&& f)-> std::invoke_result_t<F, int>{
                 using return_type = std::invoke_result_t<F, int>;
 
-                std::vector<return_type> results = parallel_for_sure(start,end,f);
+                std::vector<return_type> results = parallel_for_sure(start,end,std::forward<F>(f));
 
                 return_type ret = results[0];
 
