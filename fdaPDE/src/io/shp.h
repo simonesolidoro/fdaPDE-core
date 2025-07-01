@@ -444,7 +444,7 @@ class SHPFile {
         std::filesystem::path filepath(filename);
         if (!std::filesystem::exists(filepath)) { throw std::runtime_error("File " + filename + " not found."); }
         if (filepath.extension() == ".shp") {
-            filename_ = filepath.parent_path() / filepath.stem();
+            filename_ = (filepath.parent_path() / filepath.stem()).string();
         } else {
             throw std::runtime_error(filename + ": not a valid .shp file.");
         }
