@@ -11,6 +11,7 @@ touch $1".txt"
 for i in `seq 1 $2`; do
     # Esegui il programma e salva l'output nel file
     ./$1 $3 $4 >>$1".txt"
+    sleep 0.1  # evita congestione
 done
 
 

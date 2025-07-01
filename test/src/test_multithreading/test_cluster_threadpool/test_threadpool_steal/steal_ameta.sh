@@ -8,7 +8,7 @@
 
 
 # n_thread= []
-threads=(4 7)
+threads=(1 4 7)
 
 
 ################# a meta ###############################
@@ -30,6 +30,7 @@ for i in $(seq 1 "$1"); do
             # Esegui il programma N volte e salva l'output
             output_file="${exe}_numthread${th}.txt"
             ./"$exe" "$th" "$2" "$3" "$4" >> "$output_file" 
+            sleep 0.1  # evita congestione
         done
     done
 done
@@ -52,6 +53,7 @@ for run in $(seq 1 "$1"); do
         for exe in "${executables[@]}"; do
             output_file="${exe}_numthread${th}.txt"
             ./"$exe" "$th" "$2" "$3" "$4" >> "$output_file"
+            sleep 0.1  # evita congestione
         done
     done
 done
