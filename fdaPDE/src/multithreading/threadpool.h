@@ -512,24 +512,10 @@ namespace fdapde{
             void parallel_for_sure(int start, int end,int n, F&& f){
                 using return_type = std::invoke_result_t<F, int>;
                 //range va da start a end-1--> end-start= dimensione range
-                if((end-start) % n != 0){
-                    std::cerr<<"n deve essere divisore di end-start"<<std::endl;
-                    /*
-                    //TODO: se n inserito non divisore modificarlo in divisore piu vicino minore, minore perche limite 1 sicuro divisore (n=1 significa parallel_for == for non ha sensp ma meglio di interruzione programma credo) 
-                    int new_n = n;
-                    while (new_n>1){
-                        new_n--;
-                        if((end-start)%new_n==0){
-                            break; //esce da while
-                        }
-                    }
-                    n = new_n;
-                    */
-                    return;
-                }
-                int n_body_fun = (end-start) / n; //numero body_function in ogni blocco(job) 
+                int range = (end-start);
+                int n_body_fun = range / n; //numero body_function in ogni blocco(job) 
                 std::vector<std::future<return_type>> ret_fut; //no optinal<future> perché se nullopt non pushato quindi solo future
-                ret_fut.reserve(n); //per evitare riallocameto memoria 
+                ret_fut.reserve(n+1); //per evitare riallocameto memoria, +1 per eventuale ultimo job fatto da ultime (end-start)%n iterazioni  
                 int j = 0;
                 while(j< n){
                     std::optional<std::future<return_type>> opt_fut = this->send_task_round([&,j](){ //j gia catturata in & credo non serve
@@ -543,11 +529,27 @@ namespace fdapde{
                         j++;
                     }
                 }
+                if(range % n != 0){ //inviamo ultimo job con iterazioni rimanenti 
+                    j=0;
+                    while(j<1){
+                        std::optional<std::future<return_type>> opt_fut = this->send_task_round([&,j](){ //j gia catturata in & credo non serve
+                        for(int k=n*n_body_fun; k<(end-start); k++ ){
+                            f(k);
+                        }
+                    });
+                    if(opt_fut){
+                        //se send andato a buon push di fut in ret_fut e incrementa j
+                        ret_fut.push_back(std::move(opt_fut.value())); //move perche future non copiabili
+                        j++;
+                    }
+                    }
+                }
                 //get dei future void per assicurarsi che tutti i job siano stati eseguiti dopo uso parallel_for in main
                 for(std::future<void>& fut : ret_fut){
                     fut.get();
                 }
                 return;
+        
             } 
 
             //riceve vettore per far scegliere a utente come suddividere le iterazioni nei blocchi 
