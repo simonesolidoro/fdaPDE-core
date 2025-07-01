@@ -505,6 +505,28 @@ namespace fdapde{
                 return;
             } 
 
+            // per iterare con incremento di i personalizzato (es i+2)
+            template<typename F> 
+            requires std::is_same_v<std::invoke_result_t<F,int>, void>
+            void parallel_for_sure(std::function<int(int)> incr, int start, int end, F&& f){
+                using return_type = std::invoke_result_t<F, int>; // sarebbe void
+                std::vector<std::future<return_type>> ret_fut;
+                ret_fut.reserve(end-start);
+                int j = start;
+                while(j<end){
+                    std::optional<std::future<return_type>> opt_fut= this->send_task_round(std::forward<F>(f),j);
+                    if(opt_fut){
+                        ret_fut.push_back(std::move(opt_fut.value()));
+                        j = incr(j);
+                    }
+                }
+                
+                for(std::future<void>& fut : ret_fut){
+                    fut.get(); //OSS: parallelizzare i get()--> NON SI PUO, poi si dovrebbe fare get() dei get()
+                }
+                return;
+            } 
+
             //versione che parallelizza dividendo il range iniziale in n blocchi: n = numero job inviati a threadpool.
             //ridurre i send, job() non sono l' esecuzione della singola body function f(i) ma sono for(k in subset_of_({start-end})){f(k)}
             template<typename F> 
