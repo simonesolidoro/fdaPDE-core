@@ -524,7 +524,7 @@ namespace fdapde{
                 ret_fut.reserve(n+1); //per evitare riallocameto memoria, +1 per eventuale ultimo job fatto da ultime (end-start)%n iterazioni  
                 int j = 0;
                 while(j< n){
-                    std::optional<std::future<return_type>> opt_fut = this->send_task_round([&,j,fun = std::forward<F>(f)](){ //j catturato come copia perchè modificato detro job (j+1) quidi se catturi come reference si sballa tutto !!!
+                    std::optional<std::future<return_type>> opt_fut = this->send_task_round([&,j,fun = std::forward<F>(f)]()mutable{ //j catturato come copia perchè modificato detro job (j+1) quidi se catturi come reference si sballa tutto !!!
                         for(int k=j*n_body_fun; k<(j+1)*n_body_fun; k++ ){
                             fun(k);
                         }
@@ -538,7 +538,7 @@ namespace fdapde{
                 if(range % n != 0){ //inviamo ultimo job con iterazioni rimanenti 
                     j=0;
                     while(j<1){
-                        std::optional<std::future<return_type>> opt_fut = this->send_task_round([&,j,fun = std::forward<F>(f)](){ //j gia catturata in & credo non serve
+                        std::optional<std::future<return_type>> opt_fut = this->send_task_round([&,j,fun = std::forward<F>(f)]()mutable{ //j gia catturata in & credo non serve
                         for(int k=n*n_body_fun; k<(end-start); k++ ){
                             fun(k);
                         }
@@ -581,7 +581,7 @@ namespace fdapde{
                 ret_fut.reserve(vect_size);
                 size_t j = 0;
                 while(j< vect_size){
-                    std::optional<std::future<return_type>> opt_fut = this->send_task_round([&,j,fun = std::forward<F>(f)](){ //j gia catturata in & credo non serve
+                    std::optional<std::future<return_type>> opt_fut = this->send_task_round([&,j,fun = std::forward<F>(f)]()mutable{ //j gia catturata in & credo non serve
                         for(int k=seq[j]; k<seq[j+1]; k++ ){
                             fun(k);
                         }
