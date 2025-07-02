@@ -29,7 +29,7 @@ struct point_layer_descriptor {
 };
 struct polygon_layer_descriptor {
     using layer_tag = areal_layer_tag;
-    template <int LocalDim, int EmbedDim> using value_type = MultiPolygon<LocalDim, EmbedDim>;
+    template <int LocalDim, int EmbedDim> using value_type = BinaryMatrix<Dynamic, 1>;
 };
 
 template <typename LayerTag, typename Triangulation>
@@ -155,8 +155,9 @@ struct random_access_geo_row_view :
     template <typename Iterator>
     random_access_geo_row_view(GeoLayer* geo_data, Iterator begin, Iterator end) :
         Base(std::addressof(geo_data->data()), begin, end), geo_data_(geo_data) {
-        fdapde_assert(
-          std::all_of(begin FDAPDE_COMMA end FDAPDE_COMMA [this](index_t i) { return i < geo_data_->rows(); }));
+        fdapde_assert(std::all_of(begin FDAPDE_COMMA end FDAPDE_COMMA [this](index_t i) {
+            return std::cmp_less(i FDAPDE_COMMA geo_data_->rows());
+        }));
     }
     template <typename Filter>
         requires(requires(Filter f, index_t i) {
@@ -244,12 +245,12 @@ struct GeoLayer {
    public:
     // constructor
     GeoLayer(triangulation_t triangulation) :
-        triangulation_(triangulation), data_(), geo_data_(), n_rows_(0), strides_(), extents_(), structured_(false) {
+        data_(), geo_data_(), triangulation_(triangulation), n_rows_(0), strides_(), extents_(), structured_(false) {
         std::fill(strides_.begin(), strides_.end(), 1);   // default to unstructured layer
     }
     template <typename GeoData_>
     GeoLayer(triangulation_t triangulation, const GeoData_& geo_data) :
-        triangulation_(triangulation), data_(), geo_data_(), n_rows_(0), strides_(), extents_(), structured_(false) {
+        data_(), geo_data_(), triangulation_(triangulation), n_rows_(0), strides_(), extents_(), structured_(false) {
         std::fill(strides_.begin(), strides_.end(), 1);   // default to unstructured layer
 
         if constexpr (Order == 1 || (!internals::is_tuple_v<GeoData_> && is_full_geo_point)) {
@@ -280,8 +281,8 @@ struct GeoLayer {
     template <typename LayerType>
         requires(LayerType::Order == Order && std::is_same_v<typename LayerType::GeoInfo, GeoInfo>)
     GeoLayer(const internals::random_access_geo_row_view<LayerType>& row_filter, const std::vector<std::string>& cols) :
-        triangulation_(row_filter.geo_data().triangulation()),
         data_(row_filter, cols),
+        triangulation_(row_filter.geo_data().triangulation()),
         n_rows_(row_filter.rows()),
         strides_(),
         extents_(),
@@ -293,7 +294,7 @@ struct GeoLayer {
               typename std::tuple_element_t<Ns, GeoInfo>::template value_type<local_dim[Ns], embed_dim[Ns]>>...> {};
         }));
         mem_t geo_data;
-        for (int i = 0; i < row_filter.rows(); ++i) {
+        for (int i = 0, n = row_filter.rows(); i < n; ++i) {
             auto geometry = row_filter.geometry(i);
             internals::for_each_index_in_pack<Order>([&]<int Ns_>() {
                 if constexpr (is_geo_v<Ns_, POINT>) {
@@ -308,7 +309,7 @@ struct GeoLayer {
         internals::for_each_index_in_pack<Order>([&, this]<int Ns_>() {
             std::get<Ns_>(geo_data_) =
               std::tuple_element_t<Ns_, geo_storage_t>(std::get<Ns_>(triangulation_), std::get<Ns_>(geo_data));
-        });	
+        });
     }
     template <typename LayerType>
         requires(LayerType::Order == Order && std::is_same_v<typename LayerType::GeoInfo, GeoInfo>)
@@ -457,6 +458,7 @@ struct GeoLayer {
         std::string filename_ = std::filesystem::current_path().string() + "/" + filename;
         if (!std::filesystem::exists(filename_)) { throw std::runtime_error("file " + filename_ + " not found."); }
         SHPFile shp(filename_);
+        n_rows_ = shp.n_records();
         // dispatch to processing logic
         switch (shp.shape_type()) {
         case shp_reader::Polygon: {
@@ -477,7 +479,6 @@ struct GeoLayer {
                 }
             }
             std::get<0>(geo_data_) = std::tuple_element_t<0, geo_storage_t>(std::get<0>(triangulation_), regions);
-            n_rows_ = shp.n_records();
             break;
         }
         }
@@ -494,7 +495,7 @@ struct GeoLayer {
         fdapde_assert(colnames.size() == sizeof...(data));
         internals::for_each_index_and_args<sizeof...(data)>(
           [&, this]<int Ns_, typename Ts_>(const Ts_& ts) {
-              fdapde_assert(ts.size() == n_rows_);
+              fdapde_assert(std::cmp_equal(ts.size() FDAPDE_COMMA n_rows_));
               data_.append_vec(colnames[Ns_], ts);
           },
           data...);
@@ -508,7 +509,7 @@ struct GeoLayer {
     }
   
     template <typename T> void load_blk(const std::string& colname, const T& data) {
-        fdapde_assert(data.rows() == n_rows_);
+        fdapde_assert(std::cmp_equal(data.rows() FDAPDE_COMMA n_rows_));
         data_.append_blk(colname, data);
         return;
     }
@@ -749,12 +750,14 @@ struct GeoLayer {
         if (!std::filesystem::exists(filepath)) { throw std::runtime_error("file " + filename + " not found."); }
 	// check if able to parse
         std::set<std::string> supported_extensions({".csv", ".txt"});
-        if (!supported_extensions.contains(filepath.extension())) { throw std::runtime_error("not supported format."); }
-	// read file
+        if (!supported_extensions.contains(filepath.extension().string())) {
+            throw std::runtime_error("not supported format.");
+        }
+        // read file
         Eigen::Matrix<Scalar, Dynamic, Dynamic> data;
-        if (filepath.extension() == ".csv") data = read_csv<Scalar>(filename, header, index_col).as_matrix();
-	if (filepath.extension() == ".txt") data = read_txt<Scalar>(filename, header, index_col).as_matrix();
-	return data;
+        if (filepath.extension().string() == ".csv") data = read_csv<Scalar>(filename, header, index_col).as_matrix();
+        if (filepath.extension().string() == ".txt") data = read_txt<Scalar>(filename, header, index_col).as_matrix();
+        return data;
     }
     // load geometry
     void load_geometry_(const Eigen::Matrix<double, Dynamic, Dynamic>& coords) {
