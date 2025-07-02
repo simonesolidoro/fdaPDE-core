@@ -6,19 +6,11 @@
 #$3 pesantezza body function (numero operazioni= $4 * 4)
 #$4 is the number of threads, if needed
 #$5 size queue of worker
+#$6 
 
-
-# test_for.txt 
-#rm -f "test_for.txt"
-touch "test_for.txt"
-
-# Esegui il programma N volte e salva l'output
-for i in $(seq 1 "$1"); do
-    ./"test_for" "$2" "$3" >> "test_for.txt" 
-done
 
 # n_blocchi = []
-blocchi=(1 2 4 6 10 12 15 30 60)
+blocchi=($6)
 
 # Per ogni eseguibile nella lista
 for nb in "${blocchi[@]}"; do
@@ -30,6 +22,8 @@ for nb in "${blocchi[@]}"; do
     # Esegui il programma N volte e salva l'output
     for i in $(seq 1 "$1"); do
         ./"test_parallel_for_sure_n" "$2" "$3" "$4" "$5" "$nb">> "$output_file" 
+        #sleep 0.1  # evita congestione
     done
+    #sleep 0.1  # evita congestione
 done
 

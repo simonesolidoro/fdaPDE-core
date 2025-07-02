@@ -28,24 +28,24 @@ int main(int argc, char** argv){
 //parallel_for_sure_n
     auto start2 = std::chrono::high_resolution_clock::now();
 
-    tp.parallel_for_sure_n(0,n_range_for,n_blocchi,[&](int i){
+    tp.parallel_for_sure(0,n_range_for,n_blocchi,[=](int i){
         // for inutile simula lavoro di body function
-        /*
+        
         int b = 0;
         for (int j = 0; j< operazioni_in_singola_body_function; j++){
             b ++;
             b --;
             b ++;
             b --;
-        }*/
-        std::this_thread::sleep_for(std::chrono::milliseconds(1)); //usato al posto di operazioi pr dimostrare che speedup o ottimale dovuto a cosumo di cpu
-        a++;
+        }
+        //std::this_thread::sleep_for(std::chrono::milliseconds(1)); //usato al posto di operazioi pr dimostrare che speedup o ottimale dovuto a cosumo di cpu
+        //a++;
         });
     
     auto end2 = std::chrono::high_resolution_clock::now();
     auto duration2 = std::chrono::duration_cast<std::chrono::microseconds>(end2 - start2); 
     //stampa risultato solo se tutti i job eseguiti. (poi check lunghezza dati in python per verificare che tutti run eseguiti correttamente. se cosi non è ce bug in threadpool da risolvere)
-    if (a.load() == n_range_for) 
+    //if (a.load() == n_range_for) 
         //std::cout<<"for - incrementata a da 0 ad: "<<a.load()<<"  impiegato:"<<duration2.count()<< " microsecondi\n";
         std::cout<<duration2.count()<<",";
 

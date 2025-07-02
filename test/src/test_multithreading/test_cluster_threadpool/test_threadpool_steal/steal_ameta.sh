@@ -5,10 +5,10 @@
 #$2 size worker_queue
 #$3 n_cicli in singolo job (ogni ciclo 4 operation)
 #$4 n_job totali
-
+#$5 _thread (uo per volta perche a computer uico .sh co for affatica)
 
 # n_thread= []
-threads=(1 4 7)
+threads=($5)
 
 
 ################# a meta ###############################

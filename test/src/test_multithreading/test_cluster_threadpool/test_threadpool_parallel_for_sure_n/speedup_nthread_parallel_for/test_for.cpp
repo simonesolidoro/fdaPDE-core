@@ -35,9 +35,9 @@ int main(int argc, char** argv){
             b ++;
             b --;
         }
-    
+        
         //std::this_thread::sleep_for(std::chrono::milliseconds(1)); //usato al posto di operazioi pr dimostrare che speedup o ottimale dovuto a cosumo di cpu
-        //a++;
+        //a.fetch_add(1,std::memory_order_relaxed);
     };
 //for non parallel
     auto start2 = std::chrono::high_resolution_clock::now();

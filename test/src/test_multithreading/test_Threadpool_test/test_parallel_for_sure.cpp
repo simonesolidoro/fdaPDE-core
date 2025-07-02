@@ -51,7 +51,7 @@ int main(int argc,char** argv)
     int n_block = std::stoi(argv[1]); //numero di blocchi in cui dividere range di for
     auto start3 = std::chrono::high_resolution_clock::now();
 
-    tp.parallel_for_sure_n(0,n,n_block,[&](int i){a++;
+    tp.parallel_for_sure(0,n,n_block,[&](int i){a++;
     std::this_thread::sleep_for(std::chrono::microseconds(10));
     });
     
@@ -65,7 +65,7 @@ int main(int argc,char** argv)
     std::vector<int> vect = {n/4,n/4,n/4-10,n/4+10};
     start3 = std::chrono::high_resolution_clock::now();
 
-    tp.parallel_for_sure_vect(0,n,vect,[&](int i){a++;
+    tp.parallel_for_sure(0,n,vect,[&](int i){a++;
     std::this_thread::sleep_for(std::chrono::microseconds(10));
     });
     
@@ -73,8 +73,19 @@ int main(int argc,char** argv)
     duration3 = std::chrono::duration_cast<std::chrono::microseconds>(end3 - start3);  
     std::cout<<"par_for_sure_vect - incrementata a da 0 ad: "<<a.load()<<"  impiegato:"<<duration3.count()<< " microsecondi\n";
 
+// parallel_for con incremento personalizzato 
+    a.store(0);
+    start = std::chrono::high_resolution_clock::now();
 
-    return 0; ///
+    tp.parallel_for_sure([](int i){return i+4;},0,n,[&](int i){
+        a++;
+        std::this_thread::sleep_for(std::chrono::microseconds(10));
+    });
+    
+    end = std::chrono::high_resolution_clock::now();
+    duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start);  
+    std::cout<<"par_for_sure_incr - incrementata a da 0 ad: "<<a.load()<<"  impiegato:"<<duration.count()<< " microsecondi\n";
+    return 0; //
 }
 
 /*
