@@ -90,7 +90,6 @@ namespace fdapde{
             std::deque<std::atomic<int>> count_job_; //deque perché atomic<int> non movable e quindi non si puo fare vector,ideale sarebbe array perché cache friendly (utile perché get_count_all_job lo scorre) ma non va bene threadpool<sizeArray>
             int n_worker_ ;
             int queue_size_; // forse non costante poi
-            int threadpool_volume_; //oss: se queue_size non costante fai funzione get thteadpool volume che lo calcola
             indx_worker indxw_; 
             std::shared_mutex m_threadpool_; 
             std::condition_variable_any cv_threadpool_;
@@ -100,7 +99,6 @@ namespace fdapde{
             friend class Worker; //poi togliere tutti get e sostituire con accesso diretto
             //n = size code, k = numero worker
             Threadpool(int n,int k):n_worker_(k),queue_size_(n),gen(std::random_device{}()){
-                threadpool_volume_ = k * n;
                 std::unique_lock<std::shared_mutex> loc(m_threadpool_);
                 //if(k> std::thread::hardware_concurrency()){std::cout<<"thread richiesti > thread supportati: "<<std::thread::hardware_concurrency()<<std::endl; }
                 workers_.reserve(k);
@@ -330,19 +328,6 @@ namespace fdapde{
                 }
             }
 
-            //send generico combina send_round e send_most_free. se job in threadpool alto allora manda a chi piu libero, se basso manda a giro. (alto basso per ora segnato da threadpool_volume_/2)
-            //TODO: se viene tolto togliere ache membro threadpool volume
-            template<typename F, typename... Args>
-            auto send(F&& f,Args... args)-> std::optional<std::future<decltype(f(args...))>>{
-                if(get_count_all_job()> threadpool_volume_/2){
-                    //std::cout<<"sendFree"<<std::endl;
-                    return send_task(f,args...);
-                }
-                else{
-                    //std::cout<<"sendround"<<std::endl;
-                    return send_task_round(f,args...);
-                }
-            }
 
            //TODO: tutti i send uguali cambia solo scelta indice, ma non si puo fare template<typename F, typename... Args, typename tipo_send> perche templeta parameter deduction è un tutto o niente, come fare allora per semplificare ?
 
@@ -374,8 +359,7 @@ namespace fdapde{
                 return std::nullopt;  //OSSERVAZIONE:return optional e non future cosi possibilita di fallire per push e non è necessario fare while(). spostato check se push e quindi send a buon fine fuori da threadpool perche usando hold queue per esempio non puo fallire il push e quindi ci sarebbe un while inutile              
             };
 
-            //send a giro usando struct indxw 
-            
+            //send a giro usando struct indxw             
             template<typename F, typename... Args>
             auto send_task_round(F&& f,Args&&... args) -> std::optional<std::future<decltype(f(args...))>>{
                 //wrap 
@@ -398,7 +382,6 @@ namespace fdapde{
             };
 
             //send a sola meta di worker per debug/ test di steal job. 
-            
             template<typename F, typename... Args>
             auto send_task_only_to_some(F&& f,Args&&... args) -> std::optional<std::future<decltype(f(args...))>>{
                 //wrap 
@@ -421,7 +404,7 @@ namespace fdapde{
                 return std::nullopt;
             };
 
-            //send a sola  a un worker (0 perche sicuro esiste sempre) per debug/ test di steal job. 
+            //send sola a un worker (0 perche sicuro esiste sempre) per debug/ test di steal job. 
             template<typename F, typename... Args>
             auto send_task_only_to_zero(F&& f,Args&&... args) -> std::optional<std::future<decltype(f(args...))>>{
                 //wrap 
@@ -506,7 +489,7 @@ namespace fdapde{
                 return;
             } 
 
-            // per iterare con incremento di i personalizzato (es i+2), ogni iterazioni un job
+            // per iterare con incremento di i personalizzato (es i+2  incr = [](int i){return i+2;}), ogni iterazioni un job
             template<typename F> 
             requires std::is_same_v<std::invoke_result_t<F,int>, void>
             void parallel_for_sure(std::function<int(int)> incr, int start, int end, F&& f){
