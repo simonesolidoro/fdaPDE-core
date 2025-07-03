@@ -558,6 +558,53 @@ namespace fdapde{
         
             } 
 
+            // non piu n = numero di blocchi in cui dividere range. perche es range 80, n=35 perche 7 thread---> ogni job ha due iteraoni(80/35) ma poi ultimo con quello che avanza è unico job da 10 iterazioni :(. (possibile sistemare questa parte modificando secondo while di parallel_for_sure_n)
+            // ma n = iterazioni in singolo blocco (job)
+            template<typename F> 
+            requires std::is_same_v<std::invoke_result_t<F,int>, void>
+            void parallel_for_sure_granularity(int start, int end,int n_it_per_job, F&& f){
+                using return_type = std::invoke_result_t<F, int>;
+                //range va da start a end-1--> end-start= dimensione range
+                int range = (end-start); 
+                int n = range / n_it_per_job; //numero job con n_it_per_job iterazioni, se poi c'è resto le ultime iterazioni messe in ultimo job
+                std::vector<std::future<return_type>> ret_fut; //no optinal<future> perché se nullopt non pushato quindi solo future
+                ret_fut.reserve(n+1); //per evitare riallocameto memoria, +1 per eventuale ultimo job fatto da ultime (end-start)%n_it_per_job iterazioni  
+                int j = 0;
+                while(j< n){
+                    std::optional<std::future<return_type>> opt_fut = this->send_task_round([n_it_per_job,j,start,fun = f]()mutable{ //j catturato come copia perchè modificato detro job (j+1) quidi se catturi come reference si sballa tutto !!!
+                        for(int k=j*n_it_per_job+start; k<(j+1)*n_it_per_job+start; k++ ){
+                            fun(k);
+                        }
+                    });
+                    if(opt_fut){
+                        //se send andato a buon push di fut in ret_fut e incrementa j
+                        ret_fut.push_back(std::move(opt_fut.value())); //move perche future non copiabili
+                        j++;
+                    }
+                }
+                if(range % n_it_per_job > 0){ //inviamo ultimo job con iterazioni rimanenti 
+                    j=0;
+                    while(j<1){
+                        std::optional<std::future<return_type>> opt_fut = this->send_task_round([n_it_per_job,n,start,end,j,fun = f]()mutable{ //j gia catturata in & credo non serve
+                        for(int k=n*n_it_per_job+start; k<end; k++ ){
+                            fun(k);
+                        }
+                    });
+                    if(opt_fut){
+                        //se send andato a buon push di fut in ret_fut e incrementa j
+                        ret_fut.push_back(std::move(opt_fut.value())); //move perche future non copiabili
+                        j++;
+                    }
+                    }
+                }
+                //get dei future void per assicurarsi che tutti i job siano stati eseguiti dopo uso parallel_for in main
+                for(std::future<void>& fut : ret_fut){
+                    fut.get();
+                }
+                return;
+        
+            } 
+
             //riceve vettore per far scegliere a utente come suddividere le iterazioni nei blocchi 
             // es vect=[1,5,5,4] for(0,15)  lo divide in 4 blocchi primo 1 it, secondo 5 it ecc...
             //utile se si conosce gia sbilanciamento in iterazioni di for
