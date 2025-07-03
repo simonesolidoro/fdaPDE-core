@@ -633,18 +633,18 @@ template <int Rows, int Cols, typename Derived> struct MatrixBase {
     constexpr auto squared_norm() const {
         typename Derived::Scalar norm_ = 0;
         for (int i = 0; i < derived().rows(); ++i) {
-            for (int j = 0; j < derived().cols(); ++j) { norm_ += std::pow(derived().operator()(i, j), 2); }
+            for (int j = 0; j < derived().cols(); ++j) { norm_ += fdapde::pow(derived().operator()(i, j), 2); }
         }
         return norm_;
     }
-    constexpr auto norm() const { return std::sqrt(squared_norm()); }
+    constexpr auto norm() const { return fdapde::sqrt(squared_norm()); }
     // maximum norm (L^\infinity norm)
     constexpr auto inf_norm() const {
         using Scalar = typename Derived::Scalar;
         Scalar norm_ = std::numeric_limits<Scalar>::min();
         for (int i = 0; i < derived().rows(); ++i) {
             for (int j = 0; j < derived().cols(); ++j) {
-                Scalar tmp = std::abs(derived().operator()(i, j));
+                Scalar tmp = fdapde::abs(derived().operator()(i, j));
                 if (tmp > norm_) norm_ = tmp;
             }
         }
@@ -902,7 +902,7 @@ template <typename MatrixType> class PartialPivLU {
             // find pivotal element
             Scalar pivot = -std::numeric_limits<Scalar>::infinity();
             for (int j = i; j < Size; ++j) {
-                Scalar abs_ = std::abs(m_(P[j], i));
+                Scalar abs_ = fdapde::abs(m_(P[j], i));
                 if (pivot < abs_) {
                     pivot = abs_;
                     pivot_index = j;

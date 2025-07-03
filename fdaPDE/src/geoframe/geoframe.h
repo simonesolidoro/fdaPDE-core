@@ -75,8 +75,14 @@ template <typename... Triangulation_> struct GeoFrame {
             return data_->template col<T>(colname);
         }
         // modifiers
-        template <typename DataT> void add_column(const std::string& colname, const DataT& data) {
+        template <typename DataT>
+            requires(internals::is_vector_like_v<DataT>)
+        void add_column(const std::string& colname, const DataT& data) {
             data_->append_vec(colname, data);
+        }
+        template <typename T>
+        void add_block(const std::string& colname, const Eigen::Matrix<T, Dynamic, Dynamic>& data) {
+            data_->append_blk(colname, data);
         }
         // output stream
         friend std::ostream& operator<<(std::ostream& os, const layer_t& layer) {
