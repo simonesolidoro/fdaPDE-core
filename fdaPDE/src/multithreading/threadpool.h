@@ -535,11 +535,11 @@ namespace fdapde{
                         j++;
                     }
                 }
-                if(range % n != 0){ //inviamo ultimo job con iterazioni rimanenti 
+                if(range % n > 0){ //inviamo ultimo job con iterazioni rimanenti 
                     j=0;
                     while(j<1){
                         std::optional<std::future<return_type>> opt_fut = this->send_task_round([&,j,fun = std::forward<F>(f)]()mutable{ //j gia catturata in & credo non serve
-                        for(int k=n*n_body_fun; k<(end-start); k++ ){
+                        for(int k=n*n_body_fun+start; k<end; k++ ){
                             fun(k);
                         }
                     });
@@ -570,8 +570,8 @@ namespace fdapde{
                     std::cerr<<"somma di elem in vect deve essere uguale a range (end-start)"<<std::endl;
                     return;
                 }
-                std::vector<int> seq={0}; //seq sara vettore di somme parziali (es np.cumsum) con primo elemento pero 0 cosi da pterlo usare in divisione di for piu comodamente
-                int sum_seq = 0;
+                std::vector<int> seq={start}; //seq sara vettore di somme parziali (es np.cumsum) con primo elemento pero 0 cosi da pterlo usare in divisione di for piu comodamente
+                int sum_seq = start;
                 size_t vect_size = vect.size();
                 for(size_t l = 0; l<vect_size; l++){
                     sum_seq += vect[l];
