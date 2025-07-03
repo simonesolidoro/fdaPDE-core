@@ -524,8 +524,8 @@ namespace fdapde{
                 ret_fut.reserve(n+1); //per evitare riallocameto memoria, +1 per eventuale ultimo job fatto da ultime (end-start)%n iterazioni  
                 int j = 0;
                 while(j< n){
-                    std::optional<std::future<return_type>> opt_fut = this->send_task_round([&,j,fun = f]()mutable{ //j catturato come copia perchè modificato detro job (j+1) quidi se catturi come reference si sballa tutto !!!
-                        for(int k=j*n_body_fun; k<(j+1)*n_body_fun; k++ ){
+                    std::optional<std::future<return_type>> opt_fut = this->send_task_round([&,j,start,fun = f]()mutable{ //j catturato come copia perchè modificato detro job (j+1) quidi se catturi come reference si sballa tutto !!!
+                        for(int k=j*n_body_fun+start; k<(j+1)*n_body_fun+start; k++ ){
                             fun(k);
                         }
                     });
