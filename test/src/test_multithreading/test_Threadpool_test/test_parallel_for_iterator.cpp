@@ -18,16 +18,31 @@
 
 int main(int argc,char** argv)
 {//parallel_for_sure
-    int n = 10000;
+    int gran = std::stoi(argv[1]);
     fdapde::Threadpool<fdapde::steal::random> tp(64,8);
     std::atomic<int> a=0; //usata per verifica tutti jo vengano eseguiti (a deve arrivare ad n)
 
     std::vector<int> V = {1,2,3,4,5,6,7,8,9,0};
+    std::list<int> W= {1,2,3,4,5,6,7,8,9,0};
 
     tp.parallel_for_sure_iterator(V.begin(),V.end(),[=](std::vector<int>::iterator iter){
         std::cout<<*iter<<" da thread: "<<std::this_thread::get_id()<<std::endl;
     });
-/*
+
+    std::cout<<"-------------------------------------- granularity random acces ----------------------------------------"<<std::endl;
+
+    tp.parallel_for_sure_iterator(V.begin(),V.end(),gran,[=](std::vector<int>::iterator iter){
+        std::cout<<*iter<<" da thread: "<<std::this_thread::get_id()<<std::endl;
+    });
+
+    
+    std::cout<<"-------------------------------------- granularity non random acces (list,map,set)----------------------------------------"<<std::endl;
+
+    tp.parallel_for_sure_iterator(W.begin(),W.end(),gran,[=](std::list<int>::iterator iter){
+        std::cout<<*iter<<" da thread: "<<std::this_thread::get_id()<<std::endl;
+    });
+    /*
+
 //for non parallel
     a.store(0);
     auto start2 = std::chrono::high_resolution_clock::now();

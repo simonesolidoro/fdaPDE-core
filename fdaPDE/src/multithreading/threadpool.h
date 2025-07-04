@@ -668,6 +668,124 @@ namespace fdapde{
                 return;
             } 
 
+            //versione di parallel_for_iterator con granularity per iteratori che supportano +n (random acces)
+            // per chi non lo supporta (map,set,list) poi lo faccio con divisione scorrendo prima una volta tutto container con it++. piu costoso ecco perche due versioni
+            template<typename F,typename It> 
+            requires std::is_same_v<std::invoke_result_t<F,It>, void> && std::random_access_iterator<It>
+            void parallel_for_sure_iterator(It start, It end,int n_it_per_job, F&& f){
+                using return_type = void;
+                //range va da start a end-1--> end-start= dimensione range
+                int range = (end-start); 
+                int n = range / n_it_per_job; //numero job con n_it_per_job iterazioni, se poi c'è resto le ultime iterazioni messe in ultimo job
+                std::vector<std::future<return_type>> ret_fut; //no optinal<future> perché se nullopt non pushato quindi solo future
+                ret_fut.reserve(n+1); //per evitare riallocameto memoria, +1 per eventuale ultimo job fatto da ultime (end-start)%n_it_per_job iterazioni  
+                int j = 0;
+                while(j< n){
+                    std::optional<std::future<return_type>> opt_fut = this->send_task_round([n_it_per_job,fun = f](auto it)mutable{ //j catturato come copia perchè modificato detro job (j+1) quidi se catturi come reference si sballa tutto !!!
+                        for(int k=0; k<n_it_per_job; k++ ){
+                            fun(it+k);
+                        }
+                    },j*n_it_per_job+start);
+                    if(opt_fut){
+                        //se send andato a buon push di fut in ret_fut e incrementa j
+                        ret_fut.push_back(std::move(opt_fut.value())); //move perche future non copiabili
+                        j++;
+                    }
+                }
+                int resto = range % n_it_per_job;
+                if(resto > 0){ //inviamo ultimo job con iterazioni rimanenti 
+                    j=0;
+                    while(j<1){
+                        std::optional<std::future<return_type>> opt_fut = this->send_task_round([resto,fun = f](auto it)mutable{ //j gia catturata in & credo non serve
+                        for(int k=0; k<resto; k++ ){
+                            fun(it+k);
+                        }
+                    }, n*n_it_per_job+start );
+                    if(opt_fut){
+                        //se send andato a buon push di fut in ret_fut e incrementa j
+                        ret_fut.push_back(std::move(opt_fut.value())); //move perche future non copiabili
+                        j++;
+                    }
+                    }
+                }
+                //get dei future void per assicurarsi che tutti i job siano stati eseguiti dopo uso parallel_for in main
+                for(std::future<void>& fut : ret_fut){
+                    fut.get();
+                }
+                return;
+        
+            } 
+
+
+            // per chi non supporta random acces (map,set,list) poi lo faccio con divisione scorrendo prima una volta tutto container con it++. piu costoso ecco perche due versioni
+            template<typename F,typename It> 
+            requires std::is_same_v<std::invoke_result_t<F,It>, void> && (!std::random_access_iterator<It>)
+            void parallel_for_sure_iterator(It start, It end,int n_it_per_job, F&& f){
+                using return_type = void;
+                //scorriamo prima tutto range cosi da copiare iteratori ogni start+k*n_it_per_job in vector its
+                int range = 0;
+                std::vector<It> its; 
+                its.push_back(start);
+                for (It it= start; it!= end; it++){
+                    range ++;
+                    if(range % n_it_per_job == 0){
+                        its.push_back(it);
+                    }
+                } 
+                int n = range / n_it_per_job; //numero job con n_it_per_job iterazioni, se poi c'è resto le ultime iterazioni messe in ultimo job
+                std::vector<std::future<return_type>> ret_fut; //no optinal<future> perché se nullopt non pushato quindi solo future
+                ret_fut.reserve(n+1); //per evitare riallocameto memoria, +1 per eventuale ultimo job fatto da ultime (end-start)%n_it_per_job iterazioni  
+                int j = 0;
+                while(j< n){
+                    std::optional<std::future<return_type>> opt_fut = this->send_task_round([n_it_per_job,fun = f](auto it)mutable{ //j catturato come copia perchè modificato detro job (j+1) quidi se catturi come reference si sballa tutto !!!
+                        for(int k=0; k<n_it_per_job; k++ ){
+                            fun(it);
+                            it++;
+                        }
+                    },its[j]);
+                    if(opt_fut){
+                        //se send andato a buon push di fut in ret_fut e incrementa j
+                        ret_fut.push_back(std::move(opt_fut.value())); //move perche future non copiabili
+                        j++;
+                    }
+                }
+                int resto = range % n_it_per_job;
+                if(resto > 0){ //inviamo ultimo job con iterazioni rimanenti 
+                    j=0;
+                    while(j<1){
+                        std::optional<std::future<return_type>> opt_fut = this->send_task_round([resto,fun = f](auto it)mutable{ //j gia catturata in & credo non serve
+                        for(int k=0; k<resto; k++ ){
+                            fun(it);
+                            it++;
+                        }
+                    }, its[n] );
+                    if(opt_fut){
+                        //se send andato a buon push di fut in ret_fut e incrementa j
+                        ret_fut.push_back(std::move(opt_fut.value())); //move perche future non copiabili
+                        j++;
+                    }
+                    }
+                }
+                //get dei future void per assicurarsi che tutti i job siano stati eseguiti dopo uso parallel_for in main
+                for(std::future<void>& fut : ret_fut){
+                    fut.get();
+                }
+                return;
+        
+            } 
+
+
+
+
+
+
+
+
+
+
+
+
+
             //parallel reduce con funzioni dipendenti da j
             template<typename F>
             auto parallel_reduce_sum(int start, int end, F&& f)-> std::invoke_result_t<F, int>{
