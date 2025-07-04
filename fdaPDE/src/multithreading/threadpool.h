@@ -645,8 +645,13 @@ namespace fdapde{
                 return;
             } 
 
-            //parallel_for che riceve iterator begin e end e function void(iterator). con granularity = 1 
-            // granularity a scelta da implementare
+            //PARALLEL_FOR_ITERATOR:
+            //body_function f = void(iterator)
+            //1)void parallel_for_sure_iterator(It start, It end, F&& f)                     per tutti i container, granularity=1 default
+            //2)void parallel_for_sure_iterator(It start, It end,int n_it_per_job, F&& f)    per random acces container, granularity come input
+            //3)void parallel_for_sure_iterator(It start, It end,int n_it_per_job, F&& f)    per NON random acces container, granularity come input
+
+            //1
             template<typename F,typename It> 
             requires std::is_same_v<std::invoke_result_t<F,It>, void>
             void parallel_for_sure_iterator(It start, It end, F&& f){
@@ -655,7 +660,7 @@ namespace fdapde{
                 ret_fut.reserve(end-start);
                 It j = start;
                 while(j<end){
-                    std::optional<std::future<return_type>> opt_fut= this->send_task_round(f,j);
+                    std::optional<std::future<return_type>> opt_fut= this->send_task_round(f,j); //j è iterator 
                     if(opt_fut){
                         ret_fut.push_back(std::move(opt_fut.value()));
                         j++;
@@ -663,13 +668,12 @@ namespace fdapde{
                 }
                 
                 for(std::future<void>& fut : ret_fut){
-                    fut.get(); //OSS: parallelizzare i get()--> NON SI PUO, poi si dovrebbe fare get() dei get()
+                    fut.get();
                 }
                 return;
             } 
 
-            //versione di parallel_for_iterator con granularity per iteratori che supportano +n (random acces)
-            // per chi non lo supporta (map,set,list) poi lo faccio con divisione scorrendo prima una volta tutto container con it++. piu costoso ecco perche due versioni
+            //2 (it+n ok)
             template<typename F,typename It> 
             requires std::is_same_v<std::invoke_result_t<F,It>, void> && std::random_access_iterator<It>
             void parallel_for_sure_iterator(It start, It end,int n_it_per_job, F&& f){
@@ -685,7 +689,7 @@ namespace fdapde{
                         for(int k=0; k<n_it_per_job; k++ ){
                             fun(it+k);
                         }
-                    },j*n_it_per_job+start);
+                    },j*n_it_per_job+start); //passa funzione e iterator_start_subfor e lo incrementa n_it_per_job volte
                     if(opt_fut){
                         //se send andato a buon push di fut in ret_fut e incrementa j
                         ret_fut.push_back(std::move(opt_fut.value())); //move perche future non copiabili
@@ -717,7 +721,7 @@ namespace fdapde{
             } 
 
 
-            // per chi non supporta random acces (map,set,list) poi lo faccio con divisione scorrendo prima una volta tutto container con it++. piu costoso ecco perche due versioni
+            //3 (it+n NONok)
             template<typename F,typename It> 
             requires std::is_same_v<std::invoke_result_t<F,It>, void> && (!std::random_access_iterator<It>)
             void parallel_for_sure_iterator(It start, It end,int n_it_per_job, F&& f){
