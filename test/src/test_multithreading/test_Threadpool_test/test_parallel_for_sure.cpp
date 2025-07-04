@@ -51,7 +51,7 @@ int main(int argc,char** argv)
     int n_block = std::stoi(argv[1]); //numero di blocchi in cui dividere range di for
     auto start3 = std::chrono::high_resolution_clock::now();
 
-    tp.parallel_for_sure(5,9,n_block,[&](int i){a++;
+    tp.parallel_for_sure(12,15,n_block,[&](int i){a++;
         std::cout<<i<<std::endl;
     std::this_thread::sleep_for(std::chrono::microseconds(10));
     });
@@ -79,10 +79,10 @@ int main(int argc,char** argv)
     a.store(0);
     start = std::chrono::high_resolution_clock::now();
 
-    tp.parallel_for_sure([](int i){return i+4;},0,n,[&](int i){
+    tp.parallel_for_sure(0,n,[&](int i){
         a++;
         std::this_thread::sleep_for(std::chrono::microseconds(10));
-    });
+    },[](int i){return i+4;});
     
     end = std::chrono::high_resolution_clock::now();
     duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start);  

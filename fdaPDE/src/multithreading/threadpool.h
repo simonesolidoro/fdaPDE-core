@@ -492,7 +492,7 @@ namespace fdapde{
             // per iterare con incremento di i personalizzato (es i+2  incr = [](int i){return i+2;}), ogni iterazioni un job
             template<typename F> 
             requires std::is_same_v<std::invoke_result_t<F,int>, void>
-            void parallel_for_sure(std::function<int(int)> incr, int start, int end, F&& f){
+            void parallel_for_sure(int start, int end, F&& f, std::function<int(int)> incr){
                 using return_type = std::invoke_result_t<F, int>; // sarebbe void
                 std::vector<std::future<return_type>> ret_fut;
                 ret_fut.reserve(end-start);
@@ -605,7 +605,7 @@ namespace fdapde{
         
             } 
 
-            //riceve vettore per far scegliere a utente come suddividere le iterazioni nei blocchi 
+            //riceve vettore per far scegliere a utente come suddividere le iterazioni 
             // es vect=[1,5,5,4] for(0,15)  lo divide in 4 blocchi primo 1 it, secondo 5 it ecc...
             //utile se si conosce gia sbilanciamento in iterazioni di for
             template<typename F> 
@@ -645,7 +645,28 @@ namespace fdapde{
                 return;
             } 
 
-
+            //parallel_for che riceve iterator begin e end e function void(iterator). con granularity = 1 
+            // granularity a scelta da implementare
+            template<typename F,typename It> 
+            requires std::is_same_v<std::invoke_result_t<F,It>, void>
+            void parallel_for_sure_iterator(It start, It end, F&& f){
+                using return_type = void; 
+                std::vector<std::future<return_type>> ret_fut;
+                ret_fut.reserve(end-start);
+                It j = start;
+                while(j<end){
+                    std::optional<std::future<return_type>> opt_fut= this->send_task_round(f,j);
+                    if(opt_fut){
+                        ret_fut.push_back(std::move(opt_fut.value()));
+                        j++;
+                    }
+                }
+                
+                for(std::future<void>& fut : ret_fut){
+                    fut.get(); //OSS: parallelizzare i get()--> NON SI PUO, poi si dovrebbe fare get() dei get()
+                }
+                return;
+            } 
 
             //parallel reduce con funzioni dipendenti da j
             template<typename F>
