@@ -372,8 +372,8 @@ namespace fdapde{
                 bool flag = workers_[indxw_.indx_]->push_back(j);
                 if(flag){
                     count_job_[indxw_.indx_].fetch_add(1,std::memory_order_release);
-                    indxw_.next(n_worker_); //dentro mutex per sincronizzazione visione (se solo un thread manda non necessario)
                     lock.unlock();
+                    indxw_.next(n_worker_); 
                     workers_[indxw_.indx_]->cv_.notify_one();// notifica solo a chi riceve e non notifica a tutti, perchè tanto cv manda a dormire quando non ci sono job e poi quando vengono inviati ogni worker riceve una notifica un job ogni $n_worker inviati, tanto basta 
                     return fut;
                 }
