@@ -7,10 +7,9 @@
 
 # test_for.txt 
 #rm -f "test_for.txt"
-touch "test_for_matrix.txt"
+touch "test_Eigen_for.txt"
 
 # Esegui il programma N volte e salva l'output
 for i in $(seq 1 "$1"); do
-    ./"test_for_matrix" "$2" >> "test_for_matrix.txt" 
-    sleep 0.1
+    ./"test_Eigen_for" "$2" >> "test_Eigen_for.txt" 
 done

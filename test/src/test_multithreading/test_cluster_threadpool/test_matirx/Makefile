@@ -1,6 +1,6 @@
 # Variabili
 CXX = g++ # Compilatore C++
-CXXFLAGS = -std=c++20 -pthread -Wall -I../../../../../ -I${mkEigenInc}# Flag di compilazione con include
+CXXFLAGS = -std=c++20 -pthread -Wall -I../../../../../ -I${mkEigenInc} -fopenmp# Flag di compilazione con include
 SOURCES = $(wildcard test_*.cpp) # Trova tutti i file test_*.cpp
 EXECUTABLES = $(SOURCES:.cpp=) # Rinomina i file .cpp in .exe
 

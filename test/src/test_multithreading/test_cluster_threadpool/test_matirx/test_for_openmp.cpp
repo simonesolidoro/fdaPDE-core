@@ -1,4 +1,3 @@
-
 // This file is part of fdaPDE, a C++ library for physics-informed
 // spatial and functional data analysis.
 //
@@ -27,48 +26,41 @@ void printmatrix(std::vector<std::vector<int>> M, int size){
 }
 
 int main(int argc, char** argv){
-    int size = std::stoi(argv[1]); 
+    int size = std::stoi(argv[1]); //numero cicli in contafino // lunghezza singolo job
     int n_thread = std::stoi(argv[2]);
-    int size_coda = std::stoi(argv[3]);
-    int n_gran = std::stoi(argv[4]); //granularity
-    fdapde::Threadpool<fdapde::steal::most_busy> tp(size_coda,n_thread);
-
     std::vector<std::vector<int>> A;
     std::vector<std::vector<int>> B;
     std::vector<std::vector<int>> C;
+
     for (int i = 0; i<size; i++){
         A.emplace_back(size,1);
         B.emplace_back(size,1);
         C.emplace_back(size,0);
     }
-
-
-//parallel_for_sure_n
+   
     auto start2 = std::chrono::high_resolution_clock::now();
-
     /*
-    // solo reference (problemi scala poco da 2 a 4 worker)
-    tp.parallel_for_sure_granularity(0,size,n_gran,[&](int i){
+    #pragma omp parallel for num_threads(n_thread) shared(A,B,C)
+    for(int i = 0; i<size; i++){
         for(int j=0; j<size; j++){
             C[i][j] = A[i][j] + B[i][j];
         }
-    });
-    */
-    //copie di colonne cosi da non dover accedere a stesso vector size volte ogni iterazione(riga)
-    tp.parallel_for_sure_granularity(0,size,n_gran,[&](int i){
+    }
+*/
+    //copia col
+    #pragma omp parallel for num_threads(n_thread) shared(A,B,C)
+    for(int i = 0; i<size; i++){
         std::vector<int> A_col_i (A[i]);
         std::vector<int> B_col_i (B[i]);
         for(int j=0; j<size; j++){
             C[i][j] = A_col_i[j] + B_col_i[j];
         }
-    });
-    
+    }
 
-    
     auto end2 = std::chrono::high_resolution_clock::now();
     auto duration2 = std::chrono::duration_cast<std::chrono::microseconds>(end2 - start2); 
-        
-    std::cout<<duration2.count()<<",";
     //printmatrix(C,size);
+    std::cout<<duration2.count()<<",";
     return 0;
+
 }
