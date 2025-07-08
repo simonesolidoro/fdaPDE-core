@@ -118,6 +118,7 @@ namespace fdapde{
             Threadpool(): Threadpool(256){}
 
             ~Threadpool(){
+                //TODO: capire se vale la pena lasciare che tutti i job vengano eseguiti, le funzioni mandate alla threadpool, anche void, hanno tutte un future associato, possibile togliere while qui e semantica diventa: chi usa la threadpool deve assicurarsi di fare il get di quel future quando manda una funzione
                 //std::unique_lock<std::mutex> loc_t(m_threadpool_);
                 //active_= false;
                 //loc_t.unlock();
@@ -171,24 +172,21 @@ namespace fdapde{
                     if(done_own_job){
                         continue; //passa a iterazione di while successiva evitando steal ecc
                     }
-                    if( get_count_all_job()>0){ //aggiunto tentativo di steal qui cosi che si passi da mutex (che ricordiamo viene lock anche ad ogni send) solo quando non c'è job in nessuna coda. 
-                        //steal
-                        if constexpr(T == steal::random){
-                            indx_steal = indx_random_from_busy();
-                        }
-                        if constexpr(T == steal::most_busy){
-                            indx_steal = indx_most_busy();
-                        }
-                        if constexpr(T == steal::random_half_most_busy){
-                            indx_steal = indx_random_from_half_most_busy();
-                            //oss: steal_random_from_most_busy_and_do() ha senso solo per N > 5 (perche dimezza i worker con job tra cui sceglie random)
-                        } 
-
-                        if(indx_steal != -1){
-                            //do job steal
-                            try_do(workers_[indx_steal]->pop_back(),indx_steal);
-                        }
-                        continue;                             
+                    //al posto di get_count>0 e poi indice qui direttamente tentativo di trovare indice da cui fare steal != -1 
+                    if constexpr(T == steal::random){
+                    indx_steal = indx_random_from_busy();
+                    }
+                    if constexpr(T == steal::most_busy){
+                        indx_steal = indx_most_busy();
+                    }
+                    if constexpr(T == steal::random_half_most_busy){
+                        indx_steal = indx_random_from_half_most_busy();
+                        //oss: steal_random_from_most_busy_and_do() ha senso solo per N > 5 (perche dimezza i worker con job tra cui sceglie random)
+                    } 
+                    if( indx_steal != -1){ //aggiunto tentativo di steal qui cosi che si passi da mutex (che ricordiamo viene lock anche ad ogni send) solo quando non c'è job in nessuna coda. 
+                        //do job steal
+                        try_do(workers_[indx_steal]->pop_back(),indx_steal);
+                        continue;
                     }
                     //arrivare qui significa nessun job in coda probabilmente e quindi va a dormire in CV, non certo perche count_job non sincronizzato quindi non attendibile, ma cosi si evita blocco di mutex che viene bloccato anche ad ogni send e quindi rallentava molto il parallel_for_sure se range_for grande
                     std::unique_lock<std::mutex> loc(workers_[i]->m_); //OSS:mutex in Worker serve solo per avere cv che manda a dormire. get_count_job_all() invece vede sincronizzati solo i count_job[i]++ perche avvengono in mutex con push, pro: se ce push chi non lha ricevuto si sveglia per rubare, contro: possibile svegliarsi e invece non ce niente da rubare perche count_job[i]-- gia fatto ma non letto perche non sincornizzato 
@@ -525,7 +523,8 @@ namespace fdapde{
                 int j = 0;
                 while(j< n){
                     std::optional<std::future<return_type>> opt_fut = this->send_task_round([&,j,start,fun = f]()mutable{ //j catturato come copia perchè modificato detro job (j+1) quidi se catturi come reference si sballa tutto !!!
-                        for(int k=j*n_body_fun+start; k<(j+1)*n_body_fun+start; k++ ){
+                        int stop = (j+1)*n_body_fun+start; //per non doverla ricalcolare ad ogni iterazione
+                        for(int k=j*n_body_fun+start; k<stop; k++ ){
                             fun(k);
                         }
                     });
@@ -562,7 +561,7 @@ namespace fdapde{
             // ma n = iterazioni in singolo blocco (job)
             template<typename F> 
             requires std::is_same_v<std::invoke_result_t<F,int>, void>
-            void parallel_for_sure_granularity(int start, int end,int n_it_per_job, F&& f){
+            void parallel_for_sure_granularity(int start, int end,int n_it_per_job, F&& f){ //TODO cambiare n_it_per_job on granularity
                 using return_type = std::invoke_result_t<F, int>;
                 //range va da start a end-1--> end-start= dimensione range
                 int range = (end-start); 
@@ -572,7 +571,8 @@ namespace fdapde{
                 int j = 0;
                 while(j< n){
                     std::optional<std::future<return_type>> opt_fut = this->send_task_round([n_it_per_job,j,start,fun = f]()mutable{ //j catturato come copia perchè modificato detro job (j+1) quidi se catturi come reference si sballa tutto !!!
-                        for(int k=j*n_it_per_job+start; k<(j+1)*n_it_per_job+start; k++ ){
+                        int stop = (j+1)*n_it_per_job+start;
+                        for(int k=j*n_it_per_job+start; k<stop; k++ ){
                             fun(k);
                         }
                     });
@@ -582,6 +582,8 @@ namespace fdapde{
                         j++;
                     }
                 }
+                //?= possibile evitare questo if mettendo sopra while(j<n+1) e poi ultimo se range % n_it_per_job == 0 ultimo job mandato sara for(k=end, k<end){f()} cioè job "vuoto"
+                //risposta: no perchè poi bisognerebbe mettere controllo se (j+1)*n_it_per_job+start > end, perchè in ultimo job di avanzi k<end non k<(j+1)*n_it_per_job+start 
                 if(range % n_it_per_job > 0){ //inviamo ultimo job con iterazioni rimanenti 
                     j=0;
                     while(j<1){
