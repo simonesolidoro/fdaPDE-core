@@ -59,7 +59,7 @@ template <int N, typename... Args> class Newton {
     }
     template <typename ObjectiveT, typename... Functor>
         requires(sizeof...(Functor) < 2) && ((requires(Functor f, double value) { f(value); }) && ...)
-    vector_t optimize(ObjectiveT& objective, const vector_t& x0, Functor&&... func) {
+    vector_t optimize(ObjectiveT&& objective, const vector_t& x0, Functor&&... func) {
         fdapde_static_assert(
           std::is_same<decltype(std::declval<ObjectiveT>().operator()(vector_t())) FDAPDE_COMMA double>::value,
           INVALID_CALL_TO_OPTIMIZE__OBJECTIVE_FUNCTOR_NOT_ACCEPTING_VECTORTYPE);
