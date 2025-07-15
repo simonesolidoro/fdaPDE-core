@@ -116,7 +116,7 @@ struct sp_assembler_base {
         for (auto it = begin_; it != end_; ++it) {
             double a = it->nodes()[0], b = it->nodes()[1];
             for (int j = 0; j < quad_nodes__.rows(); ++j) {
-                quad_nodes_(i, 0) = (b - a) / 2 * quad_nodes__(j, 0) + (b + a) / 2;
+                quad_nodes_(i, 0) = (quad_nodes__(j, 0) + 1) * (b - a) * 0.5 + a;
                 i++;
             }
         }
