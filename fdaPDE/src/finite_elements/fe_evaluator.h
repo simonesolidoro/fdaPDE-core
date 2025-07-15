@@ -27,14 +27,16 @@ template <typename Form_> struct fe_pointwise_evaluator_loop {
     static constexpr int local_dim = FeSpace::local_dim;
     static constexpr int embed_dim = FeSpace::embed_dim;
     static constexpr int n_components = FeSpace::n_components;
-    using Form =
-      std::decay_t<decltype(xpr_wrap<FeMap, decltype([]<typename Xpr>() {
-                                         return !(
-                                           std::is_invocable_v<Xpr, fe_assembler_packet<embed_dim>> ||
-                                           requires(Xpr xpr, int i, int j, fe_assembler_packet<embed_dim> input_type) {
-                                               xpr.eval(i, j, input_type);   // vector case
-                                           });
-                                     })>(std::declval<Form_>()))>;
+   private:
+    using is_not_packet_evaluable = decltype([]<typename Xpr>() {
+        return !(
+          std::is_invocable_v<Xpr, fe_assembler_packet<embed_dim>> ||
+          requires(Xpr xpr, int i, int j, fe_assembler_packet<embed_dim> input_type) {
+              xpr.eval(i, j, input_type);   // vector case
+          });
+    });
+   public:
+    using Form = std::decay_t<decltype(xpr_wrap<FeMap, is_not_packet_evaluable>(std::declval<Form_>()))>;
     using FeType = typename FeSpace::FeType;
     using DofHandlerType = DofHandler<local_dim, embed_dim, finite_element_tag>;
     using discretization_category = typename FeSpace::discretization_category;
@@ -44,13 +46,7 @@ template <typename Form_> struct fe_pointwise_evaluator_loop {
 
     fe_pointwise_evaluator_loop() = default;
     fe_pointwise_evaluator_loop(const Form_& form, const Eigen::Matrix<double, Dynamic, Dynamic>& locs) :
-        form_(xpr_wrap<FeMap, decltype([]<typename Xpr>() {
-                           return !(
-                             std::is_invocable_v<Xpr, fe_assembler_packet<embed_dim>> ||
-                             requires(Xpr xpr, int i, int j, fe_assembler_packet<embed_dim> input_type) {
-                                 xpr.eval(i, j, input_type);   // vector case
-                             });
-                       })>(form)),
+        form_(xpr_wrap<FeMap, is_not_packet_evaluable>(form)),
         dof_handler_(&internals::test_space(form_).dof_handler()),
         fe_space_(&internals::test_space(form_)),
         locs_(locs) {
