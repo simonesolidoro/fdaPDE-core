@@ -683,6 +683,27 @@ template <int Rows, int Cols, typename XprType> class BinMtxBase {
 	}
         return masked_mtx;
     }
+
+    // conversion to Eigen matrix
+    auto as_eigen_matrix() const {
+        if constexpr ((Rows == Dynamic || Cols == Dynamic)){ 
+            Eigen::Matrix<BitPackType, Rows, Cols> m;
+            m.resize(n_rows_ * n_cols_); 
+            for (int i = 0; i < n_rows_; ++i){
+                for( int j = 0; j < n_cols_; ++j){
+                 m[i] = operator()(i, j);
+                }
+            }
+            return m;
+        } 
+        Eigen::Matrix<BitPackType, Rows, Cols> m;
+        for (int i = 0; i < Rows; ++i){
+            for( int j = 0; j < Cols; ++j){
+                m(i,j) = operator()(i, j);
+            }
+        }
+        return m;
+        }
 #endif
   
     // block-repeat operation

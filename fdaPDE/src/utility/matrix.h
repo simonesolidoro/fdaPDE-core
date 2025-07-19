@@ -650,6 +650,28 @@ template <int Rows, int Cols, typename Derived> struct MatrixBase {
         }
         return norm_;
     }
+    // reducing 
+    constexpr double sum() const {
+        using Scalar = typename Derived::Scalar;
+        Scalar value = 0.;
+        for(int i = 0; i < derived().rows(); ++i){
+            for(int j = 0; j < derived().cols(); ++j){
+                value += derived().operator()(i,j);
+            }
+        }
+        return value; 
+    }
+    constexpr double prod() const {
+        using Scalar = typename Derived::Scalar;
+        Scalar value = 1.;
+        for(int i = 0; i < derived().rows(); ++i){
+            for(int j = 0; j < derived().cols(); ++j){
+                value *= derived().operator()(i,j);
+            }
+        }
+        return value; 
+    }
+    constexpr double mean() const { return derived().sum()/derived().size(); }
     // transpose
     constexpr Transpose<Derived> transpose() const { return Transpose<Derived>(derived()); }
     // block operations
@@ -684,7 +706,7 @@ template <int Rows, int Cols, typename Derived> struct MatrixBase {
                                              (Cols == 1 && (Rows == RhsRows || Rows == RhsCols))),
           INVALID_OPERANDS_DIMENSIONS_FOR_DOT_PRODUCT);
         std::decay_t<typename Derived::Scalar> dot_ = 0;
-        for (int i = 0; i < Cols; ++i) { dot_ += derived().operator[](i) * rhs.derived().operator[](i); }
+        for (int i = 0; i < max(Rows, Cols); ++i) { dot_ += derived().operator[](i) * rhs.derived().operator[](i); }
         return dot_;
     }
     // trace of matrix
