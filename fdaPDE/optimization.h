@@ -26,11 +26,11 @@
 
 // callbacks
 #include "src/optimization/callbacks.h"
-#include "src/optimization/backtracking_line_search.h"
-#include "src/optimization/wolfe_line_search.h"
+#include "src/optimization/backtracking.h"
+#include "src/optimization/wolfe.h"
 
 // algorithms
-#include "src/optimization/grid.h"
+#include "src/optimization/grid_search.h"
 #include "src/optimization/newton.h"
 #include "src/optimization/gradient_descent.h"
 #include "src/optimization/conjugate_gradient.h"

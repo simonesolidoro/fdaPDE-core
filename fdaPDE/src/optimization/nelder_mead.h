@@ -21,7 +21,6 @@
 
 namespace fdapde {
 
-// Nelder-Mead algorithm for gradient-free unconstrained nonlinear optimization
 template <int N> class NelderMead {
    private:
     using vector_t = std::conditional_t<N == Dynamic, Eigen::Matrix<double, Dynamic, 1>, Eigen::Matrix<double, N, 1>>;
@@ -33,7 +32,7 @@ template <int N> class NelderMead {
     int max_iter_;     // maximum number of iterations before forced stop
     double tol_;       // tolerance on error before forced stop
     int n_iter_ = 0;   // current iteration number
-    int seed_;
+    int seed_;         // employed for random centroid perturbation
     double alpha_;     // reflexion coeff
     double beta_;      // expension coeff
     double gamma_;     // outer contraction coeff
@@ -48,9 +47,7 @@ template <int N> class NelderMead {
     NelderMead(int max_iter, double tol, int seed = fdapde::random_seed) :
         max_iter_(max_iter), tol_(tol), seed_(seed) { }
 
-    template <typename ObjectiveT, typename... Functor>
-        requires(sizeof...(Functor) < 2) && ((requires(Functor f, double value) { f(value); }) && ...)
-    vector_t optimize(ObjectiveT&& objective, const vector_t& x0, Functor&&... func) {
+    template <typename ObjectiveT> vector_t optimize(ObjectiveT&& objective, const vector_t& x0) {
         fdapde_static_assert(
           std::is_same<decltype(std::declval<ObjectiveT>().operator()(vector_t())) FDAPDE_COMMA double>::value,
           INVALID_CALL_TO_OPTIMIZE__OBJECTIVE_FUNCTOR_NOT_ACCEPTING_VECTORTYPE);
@@ -73,7 +70,7 @@ template <int N> class NelderMead {
         double c_h = std::min(std::max(x0.template lpNorm<Eigen::Infinity>(), 1.0), 10.0);
 	simplex_ = x0.replicate(1, dims + 1);
         simplex_.block(0, 0, dims, dims) += vector_t::Constant(dims, c_h).asDiagonal();
-        simplex_.col(dims).array() += c_h * (1.0 - std::sqrt(dims + 1)) / dims;;
+        simplex_.col(dims).array() += c_h * (1.0 - std::sqrt(dims + 1)) / dims;
         for (int i = 0; i < dims + 1; ++i) { vertices_values_.push_back(objective(simplex_.col(i))); }
         for (int i = 0; i < dims + 1; ++i) { vertices_rank_.push_back(i); }
         // sort vertices according to their objective value
@@ -160,7 +157,7 @@ template <int N> class NelderMead {
         return optimum_;
     }
     // getters
-    vector_t optimum() const { return optimum_; }
+    const vector_t& optimum() const { return optimum_; }
     double value() const { return value_; }
     int n_iter() const { return n_iter_; }
 };
