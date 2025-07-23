@@ -37,6 +37,8 @@ template <int N, typename DirectionUpdate> class conjugate_gradient_impl {
     double tol_;       // tolerance on error before forced stop
     double step_;      // update step
    public:
+    static constexpr bool gradient_free = false;
+    static constexpr int static_input_size = N;
     vector_t x_old, x_new, update, grad_old, grad_new;
     double h;
     // constructor

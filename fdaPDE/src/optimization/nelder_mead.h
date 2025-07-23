@@ -42,17 +42,23 @@ template <int N> class NelderMead {
     std::vector<double> vertices_values_;               // objective values at simplex vertices
     std::vector<int> vertices_rank_;                    // simplex vertices sorted from lower to higher objective value
    public:
+    vector_t x_curr;
+    double obj_curr;
+    static constexpr bool gradient_free = true;
+    static constexpr int static_input_size = N;
     // constructors
     NelderMead() = default;
     NelderMead(int max_iter, double tol, int seed = fdapde::random_seed) :
         max_iter_(max_iter), tol_(tol), seed_(seed) { }
 
-    template <typename ObjectiveT> vector_t optimize(ObjectiveT&& objective, const vector_t& x0) {
+    template <typename ObjectiveT, typename... Callbacks>
+    vector_t optimize(ObjectiveT&& objective, const vector_t& x0, Callbacks&&... callbacks) {
         fdapde_static_assert(
           std::is_same<decltype(std::declval<ObjectiveT>().operator()(vector_t())) FDAPDE_COMMA double>::value,
           INVALID_CALL_TO_OPTIMIZE__OBJECTIVE_FUNCTOR_NOT_ACCEPTING_VECTORTYPE);
-	fdapde_assert(x0.rows() > 0);
-	double dims = x0.rows();
+        fdapde_assert(x0.rows() > 0);
+        std::tuple<Callbacks...> callbacks_ {callbacks...};
+        double dims = x0.rows();
         bool stop = false;
         bool shrink = false;
         n_iter_ = 0;
@@ -71,7 +77,12 @@ template <int N> class NelderMead {
 	simplex_ = x0.replicate(1, dims + 1);
         simplex_.block(0, 0, dims, dims) += vector_t::Constant(dims, c_h).asDiagonal();
         simplex_.col(dims).array() += c_h * (1.0 - std::sqrt(dims + 1)) / dims;
-        for (int i = 0; i < dims + 1; ++i) { vertices_values_.push_back(objective(simplex_.col(i))); }
+        for (int i = 0; i < dims + 1; ++i) {
+            x_curr = simplex_.col(i);
+            obj_curr = objective(simplex_.col(i));
+            stop |= internals::exec_eval_hooks(*this, objective, callbacks_);
+            vertices_values_.push_back(obj_curr);
+        }
         for (int i = 0; i < dims + 1; ++i) { vertices_rank_.push_back(i); }
         // sort vertices according to their objective value
         std::sort(vertices_rank_.begin(), vertices_rank_.end(), [&](int a, int b) {
@@ -101,27 +112,43 @@ template <int N> class NelderMead {
             double fb_val = vertices_values_[vertices_rank_[0]];
             double fw_val = vertices_values_[vertices_rank_[dims]];
             double sw_val = vertices_values_[vertices_rank_[dims - 1]];
-
-            if (fb_val <= xr_val && xr_val < sw_val) {   // reflection
+	    x_curr = xr;
+	    obj_curr = xr_val;
+            stop |= internals::exec_eval_hooks(*this, objective, callbacks_);
+	    
+            if (fb_val <= xr_val && xr_val < sw_val) {
+                // reflection
                 simplex_.col(vertices_rank_[dims]) = xr;
                 vertices_values_[vertices_rank_[dims]] = xr_val;
-            } else if (xr_val < fb_val) {   // expansion
+            } else if (xr_val < fb_val) {
+                // expansion
                 vector_t xe = perturbed_centroid + beta_ * (xr - perturbed_centroid);
                 double xe_val = objective(xe);
+                x_curr = xe;
+                obj_curr = xe_val;
+                stop |= internals::exec_eval_hooks(*this, objective, callbacks_);
                 simplex_.col(vertices_rank_[dims]) = xe_val < xr_val ? xe : xr;
                 vertices_values_[vertices_rank_[dims]] = xe_val < xr_val ? xe_val : xr_val;
-            } else if (sw_val <= xr_val && xr_val < fw_val) {   // outer contraction
+            } else if (sw_val <= xr_val && xr_val < fw_val) {
+                // outer contraction
                 vector_t xoc = centroid + gamma_ * (xr - centroid);
                 double xoc_val = objective(xoc);
+                x_curr = xoc;
+                obj_curr = xoc_val;
+                stop |= internals::exec_eval_hooks(*this, objective, callbacks_);
                 if (xoc_val <= xr_val) {
                     simplex_.col(vertices_rank_[dims]) = xoc;
                     vertices_values_[vertices_rank_[dims]] = xoc_val;
                 } else {
                     shrink = true;
                 }
-            } else {   // inner Contraction
+            } else {
+                // inner contraction
                 vector_t xic = centroid - gamma_ * (xr - centroid);
                 double xic_val = objective(xic);
+                x_curr = xic;
+                obj_curr = xic_val;
+                stop |= internals::exec_eval_hooks(*this, objective, callbacks_);
                 if (xic_val < fb_val) {
                     simplex_.col(vertices_rank_[dims]) = xic;
                     vertices_values_[vertices_rank_[dims]] = xic_val;
@@ -150,6 +177,7 @@ template <int N> class NelderMead {
             std::sort(vertices_rank_.begin(), vertices_rank_.end(), [&](int a, int b) {
                 return vertices_values_[a] < vertices_values_[b];
             });
+	    stop |= internals::exec_stop_if(*this, objective);
             n_iter_++;
         }
         optimum_ = simplex_.col(vertices_rank_[0]);

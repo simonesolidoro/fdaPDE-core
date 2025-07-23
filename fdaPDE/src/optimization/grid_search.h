@@ -31,13 +31,13 @@ template <int N> class GridSearch {
     std::vector<double> values_;   // explored objective values during optimization
     int size_;
    public:
-    vector_t x_old, x_new;
-    double obj_old, obj_new;
+    static constexpr bool gradient_free = true;
+    static constexpr int static_input_size = N;
+    vector_t x_curr;
+    double obj_curr;
     // constructor
-    GridSearch()
-        requires(N != Dynamic)
-        : size_(N) { }
-    GridSearch(int size) : size_(N == Dynamic ? size : N) { }
+    GridSearch() : size_(N) { fdapde_static_assert(N != Dynamic, THIS_METHOD_IS_FOR_STATIC_SIZED_GRID_SEARCH_ONLY); }
+    GridSearch(int size) : size_(N == Dynamic ? size : N) { fdapde_assert(N == Dynamic || size == N); }
     GridSearch(const GridSearch& other) : size_(other.size_) { }
     GridSearch& operator=(const GridSearch& other) {
         size_ = other.size_;
@@ -61,29 +61,26 @@ template <int N> class GridSearch {
             grid_ = grid_t(grid.data(), grid.rows(), size_);
         }
         bool stop = false;   // asserted true in case of forced stop
-        grid_.row(0).assign_to(x_old);
-        x_new = vector_t::Constant(size_, NaN);
-        obj_old = objective(x_old);
-        obj_new = NaN;
+        grid_.row(0).assign_to(x_curr);
+        obj_curr = objective(x_curr);
         stop |= internals::exec_eval_hooks(*this, objective, callbacks_);
-        values_.push_back(obj_old);
-        if (obj_old < value_) {
-            value_ = obj_old;
-            optimum_ = x_old;
+        values_.push_back(obj_curr);
+        if (obj_curr < value_) {
+            value_ = obj_curr;
+            optimum_ = x_curr;
         }
         // optimize field over supplied grid
         for (std::size_t i = 1; i < grid_.rows() && !stop; ++i) {
-            grid_.row(i).assign_to(x_new);
-            obj_new = objective(x_new);
+            grid_.row(i).assign_to(x_curr);
+            obj_curr = objective(x_curr);
             stop |= internals::exec_eval_hooks(*this, objective, callbacks_);
-            values_.push_back(obj_new);
+            values_.push_back(obj_curr);
             // update minimum if better optimum found
-            if (obj_new < value_) {
-                value_ = obj_new;
-                optimum_ = x_new;
+            if (obj_curr < value_) {
+                value_ = obj_curr;
+                optimum_ = x_curr;
             }
-            obj_old = obj_new;
-            x_old = x_new;
+            stop |= internals::exec_stop_if(*this, objective);
         }
         return optimum_;
     }

@@ -38,6 +38,8 @@ template <int N> class Newton {
     matrix_t hessian_;
     Eigen::PartialPivLU<matrix_t> inv_hessian_;
    public:
+    static constexpr bool gradient_free = false;
+    static constexpr int static_input_size = N;
     vector_t x_old, x_new, update, grad_old, grad_new;
     double h;
     // constructor

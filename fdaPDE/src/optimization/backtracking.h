@@ -21,7 +21,7 @@
 
 namespace fdapde {
 
-// implementation of the backatracking line search method for step selection
+// backtracking line search method for adaptive step size
 class BacktrackingLineSearch {
    private:
     double alpha_, beta_, gamma_;
@@ -32,6 +32,7 @@ class BacktrackingLineSearch {
 
     // backtracking based step search
     template <typename Opt, typename Obj> bool adapt_hook(Opt& opt, Obj& obj) {
+        fdapde_static_assert(is_gradient_based_opt_v<Opt>, THIS_METHOD_IS_FOR_GRADIENT_BASED_OPTIMIZATION_ONLY);
         double alpha = alpha_;   // restore to user defined settings
         double m = opt.grad_old.dot(opt.update);
         if (m < 0) {                                                      // descent direction
