@@ -23,7 +23,7 @@ namespace fdapde {
 
 template <int N> class GridSearch {
    private:
-    using vector_t = std::conditional_t<N == Dynamic, std::vector<double>, std::array<double, N>>;
+    using vector_t = std::conditional_t<N == Dynamic, Eigen::Matrix<double, Dynamic, 1>, Eigen::Matrix<double, N, 1>>;
     using grid_t = MdMap<const double, MdExtents<Dynamic, Dynamic>>;
 
     vector_t optimum_;
@@ -64,6 +64,7 @@ template <int N> class GridSearch {
         grid_.row(0).assign_to(x_curr);
         obj_curr = objective(x_curr);
         stop |= internals::exec_eval_hooks(*this, objective, callbacks_);
+        values_.clear();
         values_.push_back(obj_curr);
         if (obj_curr < value_) {
             value_ = obj_curr;
