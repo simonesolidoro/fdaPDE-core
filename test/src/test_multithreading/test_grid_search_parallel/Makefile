@@ -1,5 +1,5 @@
-CXX = g++ # Compilatore C++
-CXXFLAGS = -std=c++20 -pthread -Wall -I/home/simo/eigen-3.4.0 -I../../../../ # Flag di compilazione con include
+CXX = g++-13 # Compilatore C++
+CXXFLAGS = -std=c++23 -pthread -I/home/simo/eigen-3.4.0 -I../../../../ # Flag di compilazione con include
 SOURCES = $(wildcard test_*.cpp) # Trova tutti i file test_*.cpp
 EXECUTABLES = $(SOURCES:.cpp=) # Rinomina i file .cpp in .exe
 
