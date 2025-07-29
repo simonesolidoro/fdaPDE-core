@@ -162,7 +162,7 @@ struct sp_assembler_base {
     eval_shape_dxx(BasisType__&& basis, const std::vector<int>& active_dofs, IteratorType cell, DstMdArray& dst) const {
         eval_shape_derivative(basis, active_dofs, cell, dst, 2);
     }
-    void distribute_quadrature_nodes(dof_iterator begin, dof_iterator end) {
+    void distribute_quadrature_nodes(dof_iterator begin, dof_iterator end) const {
         Eigen::Matrix<double, Dynamic, Dynamic> quad_nodes;
         quad_nodes.resize(n_quadrature_nodes_ * (end_.index() - begin_.index()), embed_dim);
         int local_cell_id = 0;
