@@ -75,7 +75,7 @@ constexpr auto scalar_or_kth_component_of(const T& t, std::size_t k) {
     if constexpr (std::is_floating_point_v<T>) {
         return t;
     } else {
-        fdapde_constexpr_assert(k < t.size());
+        fdapde_constexpr_assert(std::cmp_less(k FDAPDE_COMMA t.size()));
         return t[k];
     }
 }
@@ -145,13 +145,8 @@ template <typename Triangulation_, typename Xpr_, int Options_, typename... Quad
         static constexpr int order = 0;
     };
     template <typename... Quad_>
-    using maybe_empty_quadrature = decltype([]() {
-        if constexpr (sizeof...(Quadrature_) == 0) {
-            return empty_quadrature<Quadrature_...> {};
-        } else {
-            return std::tuple_element_t<0, std::tuple<Quadrature_...>> {};
-        }
-    }());
+    using maybe_empty_quadrature = std::conditional_t<
+      sizeof...(Quad_) == 0, empty_quadrature<Quad_...>, std::tuple_element_t<0, std::tuple<Quad_...>>>;
     using Quadrature = maybe_empty_quadrature<Quadrature_...>;
   
     Xpr_ xpr_;
@@ -195,7 +190,7 @@ template <typename Triangulation, int Options, typename... Quadrature> class int
     integrator_dispatch() = default;
     template <typename Iterator>
     integrator_dispatch(const Iterator& begin, const Iterator& end, const Quadrature&... quadrature) :
-        begin_(begin), end_(end), quadrature_(std::make_tuple(quadrature...)) { }
+        quadrature_(std::make_tuple(quadrature...)), begin_(begin), end_(end) { }
 
     template <typename Form> auto operator()(const Form& form) const {
         static constexpr bool trial_space_detected = xpr_any_of<
@@ -204,7 +199,6 @@ template <typename Triangulation, int Options, typename... Quadrature> class int
           decltype([]<typename Xpr_>() { return requires { typename Xpr_::TestSpace;  }; }), std::decay_t<Form>>();
 
         if constexpr (trial_space_detected && test_space_detected) {   // discretizing bilinear form
-            using TrialSpace = std::decay_t<decltype(trial_space(form))>;
             using TestSpace  = std::decay_t<decltype(test_space (form))>;
             if constexpr (sizeof...(Quadrature) == 0) {
                 return typename TestSpace::template bilinear_form_assembly_loop<Triangulation, Form, Options> {
@@ -274,6 +268,83 @@ auto integral(
       range.first, range.second, quadrature...);
 }
 
+// geometric object operators
+
+enum class geo_assembler_flags {
+    compute_geo_id      = 0x10000,
+    compute_face_normal = 0x20000
+};
+  
+namespace internals {
+
+template <int EmbedDim> struct geo_assembler_packet {
+    static constexpr int embed_dim = EmbedDim;
+    geo_assembler_packet() : geo_id(0), measure(0), normal() { }
+    geo_assembler_packet(geo_assembler_packet&&) noexcept = default;
+    geo_assembler_packet(const geo_assembler_packet&) noexcept = default;
+
+    int geo_id;   // active geo identifier
+    double measure;
+    MdArray<double, MdExtents<embed_dim, 1>> normal;
+};
+
+}   // namespace internals
+
+template <typename Triangulation_>
+struct CellDiameter :
+    ScalarFieldBase<Triangulation_::embed_dim, CellDiameter<Triangulation_>> {
+    using Base = ScalarFieldBase<Triangulation_::embed_dim, CellDiameter<Triangulation_>>;
+    using Triangulation = std::decay_t<Triangulation_>;
+    using InputType = internals::geo_assembler_packet<Triangulation::embed_dim>;
+    using Scalar = double;
+    static constexpr int StaticInputSize = Triangulation::embed_dim;
+    static constexpr int NestAsRef = 0;
+    static constexpr int XprBits = 0 | int(geo_assembler_flags::compute_geo_id);
+
+    constexpr CellDiameter() noexcept : triangulation_(nullptr) { }
+    constexpr CellDiameter(const Triangulation_& triangulation) noexcept :
+        triangulation_(std::addressof(triangulation)) {
+        fdapde_assert(triangulation_->n_nodes() != 0 && triangulation_->n_cells() != 0);
+    }
+    // assembly evaluation
+    constexpr Scalar operator()(const InputType& geo_packet) const {
+        return std::sqrt(triangulation_->cell(geo_packet.geo_id).measure() * 2);
+    }
+    constexpr int input_size() const { return StaticInputSize; }
+   private:
+    const Triangulation* triangulation_;
+};
+
+template <typename Triangulation_>
+struct FaceNormal :
+    MatrixFieldBase<Triangulation_::embed_dim, FaceNormal<Triangulation_>> {
+    using Base = MatrixFieldBase<Triangulation_::embed_dim, FaceNormal<Triangulation_>>;
+    using Triangulation = std::decay_t<Triangulation_>;
+    using InputType = internals::geo_assembler_packet<Triangulation::embed_dim>;
+    using Scalar = double;
+    static constexpr int StaticInputSize = Triangulation::embed_dim;
+    static constexpr int Rows = Triangulation::embed_dim;
+    static constexpr int Cols = 1;
+    static constexpr int NestAsRef = 0;
+    static constexpr int XprBits = 0 | int(geo_assembler_flags::compute_face_normal);
+
+    constexpr FaceNormal() noexcept : triangulation_(nullptr) { }
+    constexpr FaceNormal(const Triangulation_& triangulation) noexcept :
+        triangulation_(std::addressof(triangulation)) {
+        fdapde_assert(triangulation_->n_nodes() != 0 && triangulation_->n_cells() != 0);
+    }
+    // assembly evaluation
+    constexpr Eigen::Matrix<double, Rows, Cols> operator()(const InputType& geo_packet) const {
+        return geo_packet.normal;
+    }
+    constexpr Scalar eval(int i, const InputType& geo_packet) const { return geo_packet.normal[i]; }
+    constexpr int rows() const { return Rows; }
+    constexpr int cols() const { return Cols; }
+    constexpr int input_size() const { return StaticInputSize; }
+   private:
+    const Triangulation* triangulation_;
+};  
+  
 }   // namespace fdapde
 
 #endif   // __FDAPDE_ASSEMBLY_H__

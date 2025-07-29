@@ -69,7 +69,7 @@ class BSplineBasis {
 	}
         // define basis system
         basis_.reserve(knots_.size() - order_ + 1);
-        for (int i = 0; i < knots_.size() - order_ - 1; ++i) { basis_.emplace_back(knots_, i, order_); }
+        for (std::size_t i = 0; i < knots_.size() - order_ - 1; ++i) { basis_.emplace_back(knots_, i, order_); }
     }
     // getters
     constexpr const Spline& operator[](int i) const { return basis_[i]; }

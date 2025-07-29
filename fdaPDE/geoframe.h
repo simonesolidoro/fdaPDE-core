@@ -19,28 +19,18 @@
 
 // clang-format off
 
-#include <charconv>
-#include <filesystem>
-#include <fstream>
-
 // include required modules
 #include "linear_algebra.h"    // pull Eigen first
 #include "utility.h"
 #include "geometry.h"
-
-// input/outupt
-#include "src/geoframe/batched_istream.h"
-#include "src/geoframe/parsing.h"
-#include "src/geoframe/csv.h"
-#include "src/geoframe/shp.h"
-#include "src/geoframe/txt.h"
+#include "io.h"
 
 // define basic symbols
 namespace fdapde {
 
 [[maybe_unused]] constexpr int MESH_NODES = 0;
-struct areal_layer_tag {} gf_areal;
-struct point_layer_tag {} gf_point;
+inline struct areal_layer_tag {} gf_areal;
+inline struct point_layer_tag {} gf_point;
 enum class ltype : int { point = 0, areal = 1 };
   
 namespace internals {
@@ -49,12 +39,12 @@ namespace internals {
 
 namespace data_t {
 
-struct flt64_ : std::type_identity<double      > { internals::dtype type_id = internals::dtype::flt64; } flt64;
-struct flt32_ : std::type_identity<float       > { internals::dtype type_id = internals::dtype::flt32; } flt32;
-struct int64_ : std::type_identity<std::int64_t> { internals::dtype type_id = internals::dtype::int64; } int64;
-struct int32_ : std::type_identity<std::int32_t> { internals::dtype type_id = internals::dtype::int32; } int32;
-struct bin_   : std::type_identity<bool        > { internals::dtype type_id = internals::dtype::bin;   } bin;
-struct str_   : std::type_identity<std::string > { internals::dtype type_id = internals::dtype::str;   } str;
+inline struct flt64_ : std::type_identity<double      > { internals::dtype type_id = internals::dtype::flt64; } flt64;
+inline struct flt32_ : std::type_identity<float       > { internals::dtype type_id = internals::dtype::flt32; } flt32;
+inline struct int64_ : std::type_identity<std::int64_t> { internals::dtype type_id = internals::dtype::int64; } int64;
+inline struct int32_ : std::type_identity<std::int32_t> { internals::dtype type_id = internals::dtype::int32; } int32;
+inline struct bin_   : std::type_identity<bool        > { internals::dtype type_id = internals::dtype::bin;   } bin;
+inline struct str_   : std::type_identity<std::string > { internals::dtype type_id = internals::dtype::str;   } str;
   
 }   // namespace data_t
 
@@ -107,7 +97,6 @@ template <typename F_, typename... Args> void foreach_dtype(F_&& f, Args&&... ar
 #include "src/geoframe/point_layer.h"
 #include "src/geoframe/geo_layer.h"
 #include "src/geoframe/geoframe.h"
-
 
 // clang-format on
 

@@ -22,6 +22,7 @@
 // include required modules
 #include "linear_algebra.h"    // pull Eigen first
 #include "utility.h"
+#include "io.h"
 
 // minimal geometric entites
 #include "src/geometry/utility.h"

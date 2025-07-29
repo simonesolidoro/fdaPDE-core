@@ -17,9 +17,6 @@
 #ifndef __FDAPDE_TP_SPACE_H__
 #define __FDAPDE_TP_SPACE_H__
 
-#include "linear_algebra/mdarray.h"
-#include "utils/traits.h"
-
 namespace fdapde {
 
 // tensor product space
@@ -104,7 +101,7 @@ class TpSpace {
             return dof_tensorize_(std::array<index_t, tp_order> {static_cast<index_t>(idxs)...});
         }
         template <typename IndexType>
-            requires(is_subscriptable<IndexType, index_t>)
+            requires(internals::is_subscriptable<IndexType, index_t>)
         std::vector<index_t> active_dofs(const IndexType& idx) const {
             return dof_tensorize_(idx);
         }
@@ -114,7 +111,7 @@ class TpSpace {
        private:
         // given a multi-index (idx_1, idx_2, ..., idx_{tp_order}), compute the dof tensorization
         template <typename IndexType>
-            requires(is_subscriptable<IndexType, index_t>)
+            requires(internals::is_subscriptable<IndexType, index_t>)
         std::vector<index_t> dof_tensorize_(const IndexType& idx) const {
             if constexpr (tp_order == 2) {   // optimized case for order 2 tensor product
                 std::vector<index_t> lhs_active_dofs;
@@ -126,10 +123,10 @@ class TpSpace {
                 // perform dof tensor product
                 std::vector<index_t> tp_dofs;
                 tp_dofs.reserve(n_dofs_per_cell());
-                int rhs_offset = std::get<1>(tp_dof_handler_)->n_dofs();
-                for (int i = 0; i < n_lhs_dofs; ++i) {
-                    for (int j = 0; j < n_rhs_dofs; ++j) {
-                        tp_dofs.push_back(lhs_active_dofs[i] * rhs_offset + rhs_active_dofs[j]);
+                int lhs_offset = std::get<0>(tp_dof_handler_)->n_dofs();
+                for (int i = 0; i < n_rhs_dofs; ++i) {
+                    for (int j = 0; j < n_lhs_dofs; ++j) {
+                        tp_dofs.push_back(lhs_active_dofs[j] + lhs_offset * rhs_active_dofs[i]);
                     }
                 }
                 return tp_dofs;
@@ -178,7 +175,7 @@ class TpSpace {
     static constexpr int tp_order = sizeof...(FunctionSpace);
     static constexpr std::array<int, tp_order> local_dims {FunctionSpace::local_dim...};
     static constexpr std::array<int, tp_order> embed_dims {FunctionSpace::embed_dim...};
-    static constexpr std::array<int, tp_order> sobolev_regularity {FunctinSpace::sobolev_regularity...};
+    static constexpr std::array<int, tp_order> sobolev_regularity {FunctionSpace::sobolev_regularity...};
 
     TpSpace() noexcept = default;
     TpSpace(const FunctionSpace&... function_space) :

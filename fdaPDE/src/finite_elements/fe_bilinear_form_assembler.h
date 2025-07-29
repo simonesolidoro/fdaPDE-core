@@ -112,28 +112,27 @@ class fe_bilinear_form_assembly_loop :
         iterator end  (Base::end_.index(),   test_dof_handler(), Base::end_.marker()  );
         // prepare assembly loop
 	Eigen::Matrix<int, Dynamic, 1> test_active_dofs, trial_active_dofs;
-        MdArray<double, MdExtents<n_test_basis,  n_quadrature_nodes, local_dim, n_test_components >> test_grads;
-        MdArray<double, MdExtents<n_trial_basis, n_quadrature_nodes, local_dim, n_trial_components>> trial_grads;
+        MdArray<double, MdExtents<n_test_basis,  n_quadrature_nodes, embed_dim, n_test_components >> test_grads;
+        MdArray<double, MdExtents<n_trial_basis, n_quadrature_nodes, embed_dim, n_trial_components>> trial_grads;
         Matrix<double, n_test_basis , n_quadrature_nodes> test_divs;
         Matrix<double, n_trial_basis, n_quadrature_nodes> trial_divs;
-        MdArray<double, MdExtents<n_test_basis,  n_quadrature_nodes, n_test_components,  local_dim, local_dim>>
+        MdArray<double, MdExtents<n_test_basis,  n_quadrature_nodes, n_test_components,  embed_dim, embed_dim>>
 	  test_hess;
-        MdArray<double, MdExtents<n_trial_basis, n_quadrature_nodes, n_trial_components, local_dim, local_dim>>
+        MdArray<double, MdExtents<n_trial_basis, n_quadrature_nodes, n_trial_components, embed_dim, embed_dim>>
           trial_hess;
 
         if constexpr (Form::XprBits & int(fe_assembler_flags::compute_physical_quad_nodes)) {
             Base::distribute_quadrature_nodes(begin, end);
         }
-
+        // start assembly loop
+        internals::fe_assembler_packet<embed_dim> fe_packet(n_trial_components, n_test_components);
+	// if hessians are zero, assemble physical hessian once and never update
         constexpr bool test_hess_is_zero = std::all_of(
           test_shape_hess_.data(), test_shape_hess_.data() + test_shape_hess_.size(), [](double x) { return x == 0; });
         constexpr bool trial_hess_is_zero =
           std::all_of(trial_shape_hess_.data(), trial_shape_hess_.data() + trial_shape_hess_.size(), [](double x) {
               return x == 0;
           });
-        // start assembly loop
-        internals::fe_assembler_packet<local_dim> fe_packet(n_trial_components, n_test_components);
-	// if hessians are zero, assemble physical hessian once and never update
         if constexpr (test_hess_is_zero ) { std::fill_n(fe_packet.test_hess.data(), fe_packet.test_hess.size(), 0.0); }
         if constexpr (trial_hess_is_zero) {
             std::fill_n(fe_packet.trial_hess.data(), fe_packet.trial_hess.size(), 0.0);
@@ -142,14 +141,20 @@ class fe_bilinear_form_assembly_loop :
         int local_cell_id = 0;
         for (iterator it = begin; it != end; ++it) {
             // update fe_packet content based on form requests
-            fe_packet.cell_measure = it->measure();
-            if constexpr (Form::XprBits & int(fe_assembler_flags::compute_cell_id)) { fe_packet.cell_id = it->id(); }
+            fe_packet.measure = it->measure();
+            if constexpr (Form::XprBits & int(geo_assembler_flags::compute_geo_id)) { fe_packet.geo_id = it->id(); }
+            if constexpr (Form::XprBits & int(geo_assembler_flags::compute_face_normal)) {
+                fdapde_static_assert(Options_ == FaceMajor, BILINEAR_FORM_REQUIRES_A_FACE_MAJOR_ASSEMBLY_LOOP);
+                fe_packet.normal.assign_inplace_from(it->normal());
+            }
             if constexpr (Form::XprBits & int(fe_assembler_flags::compute_shape_grad)) {
                 Base::eval_shape_grads_on_cell(it, test_shape_grads_, test_grads);
                 if constexpr (is_petrov_galerkin) Base::eval_shape_grads_on_cell(it, trial_shape_grads_, trial_grads);
             }
             if constexpr (Form::XprBits & int(fe_assembler_flags::compute_shape_div)) {
-                // divergence is defined only for vector elements, skeep computation for scalar element case
+                fdapde_static_assert(
+                  n_test_components != 1 || n_trial_components != 1,
+                  DIVERGENCE_OPERATOR_IS_DEFINED_ONLY_FOR_VECTOR_ELEMENTS);
                 if constexpr (n_test_components != 1) Base::eval_shape_div_on_cell(it, test_shape_grads_, test_divs);
                 if constexpr (is_petrov_galerkin && n_trial_components != 1)
                     Base::eval_shape_div_on_cell(it, trial_shape_grads_, trial_divs);
@@ -197,7 +202,7 @@ class fe_bilinear_form_assembly_loop :
                     }
                     triplet_list.emplace_back(
                       test_active_dofs[j], is_galerkin ? test_active_dofs[i] : trial_active_dofs[i],
-                      value * fe_packet.cell_measure);
+                      value * fe_packet.measure);
                 }
             }
             local_cell_id++;
@@ -248,7 +253,7 @@ template <typename DofHandler, typename FeType> class scalar_fe_grad_grad_assemb
         // prepare assembly loop
         std::vector<Eigen::Triplet<double>> triplet_list;
         Eigen::Matrix<int, Dynamic, 1> active_dofs;
-        std::array<Matrix<double, local_dim, n_quadrature_nodes>, n_basis> shape_grad;
+        std::array<Matrix<double, embed_dim, n_quadrature_nodes>, n_basis> shape_grad;
         for (typename DofHandler::cell_iterator it = dof_handler_->cells_begin(); it != dof_handler_->cells_end();
              ++it) {
             active_dofs = it->dofs();

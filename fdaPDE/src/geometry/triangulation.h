@@ -35,11 +35,12 @@ template <typename Triangulation> struct BoundaryIterator : public Triangulation
   
 template <int LocalDim, int EmbedDim> class Triangulation;
 template <int LocalDim, int EmbedDim, typename Derived> class TriangulationBase {
+    using dbl_matrix_t = Eigen::Matrix<double, Dynamic, Dynamic>;
+    using int_matrix_t = Eigen::Matrix<int, Dynamic, Dynamic>;
    public:
     static constexpr int local_dim = LocalDim;
     static constexpr int embed_dim = EmbedDim;
     static constexpr int n_nodes_per_cell = local_dim + 1;
-    static constexpr int n_neighbors_per_cell = local_dim + 1;
     static constexpr bool is_manifold = !(local_dim == embed_dim);
     using CellType = std::conditional_t<
       local_dim == 1, Segment<Derived>, std::conditional_t<local_dim == 2, Triangle<Derived>, Tetrahedron<Derived>>>;
@@ -57,37 +58,47 @@ template <int LocalDim, int EmbedDim, typename Derived> class TriangulationBase 
     };
 
     TriangulationBase() = default;
-    TriangulationBase(
-      const Eigen::Matrix<double, Dynamic, Dynamic>& nodes, const Eigen::Matrix<int, Dynamic, Dynamic>& cells,
-      const Eigen::Matrix<int, Dynamic, Dynamic>& boundary, int flags) :
+    TriangulationBase(const dbl_matrix_t& nodes, const int_matrix_t& cells, const int_matrix_t& boundary, int flags) :
         nodes_(nodes), cells_(cells), boundary_markers_(boundary), flags_(flags) {
         fdapde_assert(
           nodes.rows() > 0 && nodes.cols() == embed_dim && cells.rows() > 0 && cells.cols() == n_nodes_per_cell &&
           boundary.rows() == nodes.rows() && boundary.cols() == 1);
+        fdapde_assert(cells.minCoeff() >= 0);
+	int min = cells.minCoeff();
+        if (min != 0) { cells_ = cells_.array() - min; }   // scale cell numbering to start from zero
         // store number of nodes and number of cells
         n_nodes_ = nodes_.rows();
         n_cells_ = cells_.rows();
-        // compute mesh limits
-        range_.row(0) = nodes_.colwise().minCoeff();
-        range_.row(1) = nodes_.colwise().maxCoeff();
-        // -1 in neighbors_'s column i implies no neighbor adjacent to the edge opposite to vertex i
-        neighbors_ = Eigen::Matrix<int, Dynamic, Dynamic>::Constant(n_cells_, n_neighbors_per_cell, -1);
+        // compute mesh bounding box
+        bbox_.row(0) = nodes_.colwise().minCoeff();
+        bbox_.row(1) = nodes_.colwise().maxCoeff();
+	// set-up markers
+	cells_markers_.resize(n_cells_, Unmarked);
+	nodes_markers_.resize(n_nodes_, Unmarked);
     }
+    TriangulationBase(const dbl_matrix_t& nodes, const int_matrix_t& cells, const int_matrix_t& boundary) :
+        TriangulationBase(nodes, cells, boundary, /* flags = */ 0) { }
     TriangulationBase(
-      const Eigen::Matrix<double, Dynamic, Dynamic>& nodes, const Eigen::Matrix<int, Dynamic, Dynamic>& cells,
-      const Eigen::Matrix<int, Dynamic, Dynamic>& boundary) :
-        TriangulationBase(nodes, cells, boundary, /*flags = */ 0) { }
+      const std::string& nodes, const std::string& cells, const std::string& boundary, bool header, bool index_col,
+      int flags) :
+        TriangulationBase(
+          read_table<double>(nodes, header, index_col).as_matrix(),
+          read_table<int>(cells, header, index_col).as_matrix(),
+          read_table<int>(boundary, header, index_col).as_matrix(), flags) { }
+    TriangulationBase(
+      const std::string& nodes, const std::string& cells, const std::string& boundary, bool header, bool index_col) :
+        TriangulationBase(nodes, cells, boundary, header, index_col, /* flags = */ 0) { }
+
     // getters
     Eigen::Matrix<double, embed_dim, 1> node(int id) const { return nodes_.row(id); }
     bool is_node_on_boundary(int id) const { return boundary_markers_[id]; }
     const Eigen::Matrix<double, Dynamic, Dynamic>& nodes() const { return nodes_; }
     const Eigen::Matrix<int, Dynamic, Dynamic, Eigen::RowMajor>& cells() const { return cells_; }
-    const Eigen::Matrix<int, Dynamic, Dynamic, Eigen::RowMajor>& neighbors() const { return neighbors_; }
     const BinaryVector<Dynamic>& boundary_nodes() const { return boundary_markers_; }
     int n_cells() const { return n_cells_; }
     int n_nodes() const { return n_nodes_; }
     int n_boundary_nodes() const { return boundary_markers_.count(); }
-    Eigen::Matrix<double, 2, embed_dim> range() const { return range_; }
+    Eigen::Matrix<double, 2, embed_dim> bbox() const { return bbox_; }
     double measure() const {
         return std::accumulate(
           cells_begin(), cells_end(), 0.0, [](double v, const auto& e) { return v + e.measure(); });
@@ -134,14 +145,14 @@ template <int LocalDim, int EmbedDim, typename Derived> class TriangulationBase 
             { lambda(c) } -> std::same_as<bool>;
         }) {
         fdapde_assert(marker >= 0);
-        cells_markers_.resize(n_cells_);
+        cells_markers_.resize(n_cells_, Unmarked);
         for (cell_iterator it = cells_begin(); it != cells_end(); ++it) {
             cells_markers_[it->id()] = lambda(*it) ? marker : Unmarked;
         }
     }
     template <int Rows, typename XprType> void mark_cells(const BinMtxBase<Rows, 1, XprType>& mask) {
         fdapde_assert(mask.rows() == n_cells_);
-        cells_markers_.resize(n_cells_);
+        cells_markers_.resize(n_cells_, Unmarked);
         for (cell_iterator it = cells_begin(); it != cells_end(); ++it) {
             cells_markers_[it->id()] = mask[it->id()] ? 1 : 0;
         }
@@ -178,17 +189,17 @@ template <int LocalDim, int EmbedDim, typename Derived> class TriangulationBase 
         }
        public:
         using TriangulationType = Derived;
-      boundary_node_iterator() = default;
-      boundary_node_iterator(int index, const Derived* mesh, int marker) :
-          Base(
-            index, 0, mesh->n_nodes_,
-            marker == BoundaryAll ? mesh->boundary_markers_ :   // apply no custom filter
-              make_binary_vector(mesh->nodes_markers().begin(), mesh->nodes_markers().end(), marker) &
-                mesh->boundary_markers_),
-          mesh_(mesh) {
-          for (; index_ < Base::end_ && !Base::filter_[index_]; ++index_);
-          if (index_ != Base::end_) { operator()(index_); }
-      }
+        boundary_node_iterator() = default;
+        boundary_node_iterator(int index, const Derived* mesh, int marker) :
+            Base(
+              index, 0, mesh->n_nodes_,
+              marker == BoundaryAll ? mesh->boundary_markers_ :   // apply no custom filter
+                make_binary_vector(mesh->nodes_markers().begin(), mesh->nodes_markers().end(), marker) &
+                  mesh->boundary_markers_),
+            mesh_(mesh) {
+            for (; index_ < Base::end_ && !Base::filter_[index_]; ++index_);
+            if (index_ != Base::end_) { operator()(index_); }
+        }
     };
     boundary_node_iterator boundary_nodes_begin(int marker = BoundaryAll) const {
         return boundary_node_iterator(0, static_cast<const Derived*>(this), marker);
@@ -231,11 +242,10 @@ template <int LocalDim, int EmbedDim, typename Derived> class TriangulationBase 
         return {one_ring.begin(), one_ring.end()};
     }
    protected:
-    Eigen::Matrix<double, Dynamic, Dynamic> nodes_ {};                     // physical coordinates of mesh's vertices
-    Eigen::Matrix<int, Dynamic, Dynamic, Eigen::RowMajor> cells_ {};       // nodes composing each cell
-    Eigen::Matrix<int, Dynamic, Dynamic, Eigen::RowMajor> neighbors_ {};   // adjacent cells ids (-1: no adjacent cell)
-    BinaryVector<Dynamic> boundary_markers_ {};   // j-th element is 1 \iff node j is on boundary
-    Eigen::Matrix<double, 2, embed_dim> range_ {};        // mesh bounding box (column i maps to the i-th dimension)
+    Eigen::Matrix<double, Dynamic, Dynamic> nodes_ {};                 // physical coordinates of mesh's vertices
+    Eigen::Matrix<int, Dynamic, Dynamic, Eigen::RowMajor> cells_ {};   // nodes composing each cell
+    BinaryVector<Dynamic> boundary_markers_ {};                        // j-th element is 1 \iff node j is on boundary
+    Eigen::Matrix<double, 2, embed_dim> bbox_ {};   // mesh bounding box (column i maps to the i-th dimension)
     int n_nodes_ = 0, n_cells_ = 0;
     int flags_ = 0;
     std::vector<int> cells_markers_;   // marker associated to i-th cell
@@ -250,6 +260,8 @@ template <int N> class Triangulation<2, N> : public TriangulationBase<2, N, Tria
     static constexpr int n_nodes_per_edge = 2;
     static constexpr int n_edges_per_cell = 3;
     static constexpr int n_faces_per_edge = 2;
+    static constexpr int n_neighbors_per_cell = 3;
+    static constexpr int n_facets_per_cell = n_edges_per_cell;
     using EdgeType = typename Base::CellType::EdgeType;
     using LocationPolicy = TreeSearch<Triangulation<2, N>>;
     using Base::cells_;      // N \times 3 matrix of node identifiers for each triangle
@@ -260,12 +272,16 @@ template <int N> class Triangulation<2, N> : public TriangulationBase<2, N, Tria
     static constexpr auto edge_pattern =
       Matrix<int, binomial_coefficient(n_nodes_per_cell, n_nodes_per_edge), n_nodes_per_edge>(
         combinations(n_nodes_per_edge, n_nodes_per_cell));
+    static constexpr auto facet_pattern = edge_pattern;
 
     Triangulation() = default;
     Triangulation(
       const Eigen::Matrix<double, Dynamic, Dynamic>& nodes, const Eigen::Matrix<int, Dynamic, Dynamic>& cells,
       const Eigen::Matrix<int, Dynamic, Dynamic>& boundary, int flags = 0) :
         Base(nodes, cells, boundary, flags) {
+        // -1 in neighbors_'s column i implies no neighbor adjacent to the edge opposite to vertex i
+        neighbors_ = Eigen::Matrix<int, Dynamic, Dynamic>::Constant(n_cells_, n_neighbors_per_cell, -1);
+
         if (Base::flags_ & cache_cells) {   // populate cache if cell caching is active
             cell_cache_.reserve(n_cells_);
             for (int i = 0; i < n_cells_; ++i) { cell_cache_.emplace_back(i, this); }
@@ -321,6 +337,13 @@ template <int N> class Triangulation<2, N> : public TriangulationBase<2, N, Tria
         boundary_edges_ = BinaryVector<Dynamic>(boundary_edges.begin(), boundary_edges.end(), n_edges_);
         return;
     }
+    Triangulation(
+      const std::string& nodes, const std::string& cells, const std::string& boundary, bool header, bool index_col,
+      int flags = 0) :
+        Triangulation(
+          read_table<double>(nodes, header, index_col).as_matrix(),
+          read_table<int>(cells, header, index_col).as_matrix(),
+          read_table<int>(boundary, header, index_col).as_matrix(), flags) { }
     // static constructors
     static Triangulation<2, N>
     Rectangle(double a_x, double b_x, double a_y, double b_y, int nx, int ny, int flags = 0) {
@@ -356,8 +379,91 @@ template <int N> class Triangulation<2, N> : public TriangulationBase<2, N, Tria
         return Triangulation<2, N>::Rectangle(a, b, a, b, n_nodes, n_nodes, flags);
     }
     static Triangulation<2, N> UnitSquare(int n_nodes, int flags = 0) { return Square(0.0, 1.0, n_nodes, flags); }
-  
+    // icoshpere surface generation
+    static Triangulation<2, N> Sphere(double radius, int n_refinments, int flags = 0) {
+        fdapde_static_assert(N == 3, THIS_METHOD_IS_FOR_THREE_DIMENSIONAL_SURFACE_TRIANGULATIONS_ONLY);
+        fdapde_assert(radius > 0 && n_refinments > 0);
+        // unit icosahedron construction
+        constexpr double a = 1.0;
+        constexpr double b = 1.0 / std::numbers::phi;   // inverse golden ratio
+        std::vector<double> ico_nodes = {
+	  -a, 0, b,  a, 0,  b, -a,  0, -b,  a,  0, -b,
+	   0, b, a,  0, b, -a,  0, -b,  a,  0, -b, -a,
+	   b, a, 0, -b, a,  0,  b, -a,  0, -b, -a,  0};
+	std::vector<int> ico_cells = {
+	   0, 4,  6, 0,  6, 11, 0, 2, 11, 0,  9, 2, 0,  9,  4,  3,  8, 5, 3,  5, 7,
+	   3, 7, 10, 3, 10,  1, 3, 1,  8, 1, 10, 6, 6, 11, 10, 10, 11, 7, 7, 11, 2,
+	   7, 2,  5, 2,  5,  9, 9, 5,  8, 9,  4, 8, 4,  8,  1,  4,  1, 6};
+        // normalize to unit sphere
+        constexpr double norm = fdapde::sqrt(a * a + b * b);
+        std::for_each(ico_nodes.begin(), ico_nodes.end(), [&](double& v) { v /= norm; });
+
+	// refinment
+        using edge_t = std::array<int, n_nodes_per_edge>;
+        using hash_t = internals::std_array_hash<int, n_nodes_per_edge>;
+        std::unordered_map<edge_t, int, hash_t> edges_map;   // for each edge, the ID of its midpoint
+        edge_t edge;
+        // mesh construction
+        std::vector<double> nodes = ico_nodes;
+        int node_id = nodes.size() / n_nodes_per_cell;
+        std::vector<int> cells = ico_cells, refined_cells;
+        for (int i = 0; i < n_refinments; ++i) {
+            refined_cells.clear();
+            edges_map.clear();
+	    // split each triangle
+            for (int cell_id = 0; cell_id < cells.size() / n_nodes_per_cell; ++cell_id) {
+                // Loop subdivision algorithm with spherical projection
+                std::vector<int> n(6);
+                for (int j = 0; j < n_nodes_per_cell; ++j) { n[j] = cells[cell_id * n_nodes_per_cell + j]; }
+                for (int j = 0; j < edge_pattern.rows(); ++j) {
+                    // construct edge
+                    for (int k = 0; k < n_nodes_per_edge; ++k) {
+                        edge[k] = cells[cell_id * n_nodes_per_cell + edge_pattern(j, k)];
+                    }
+                    std::sort(edge.begin(), edge.end());   // normalize wrt node ordering
+                    auto it = edges_map.find(edge);
+                    if (it == edges_map.end()) {   // never processed edge
+                        edges_map.emplace(edge, node_id);
+                        n[n_nodes_per_cell + j] = node_id;
+                        node_id++;
+                        // compute slerp interpolation
+                        double dot_prod = 0;
+                        for (int i = 0; i < embed_dim; ++i) {
+                            dot_prod += nodes[edge[0] * embed_dim + i] * nodes[edge[1] * embed_dim + i];
+                        }
+                        double rho = std::acos(dot_prod);
+                        // midpoint along circular arc
+                        double a = std::sin(0.5 * rho), b = std::sin(rho);
+                        for (int i = 0; i < embed_dim; ++i) {
+                            nodes.push_back(a / b * (nodes[edge[0] * embed_dim + i] + nodes[edge[1] * embed_dim + i]));
+                        }
+                    } else {
+                        n[n_nodes_per_cell + j] = edges_map.at(edge);
+                    }
+                }
+                // compute cell numbering (exploit edge_ordering structure)
+                std::vector<int> cvec = {
+		  n[0], n[3], n[4],
+		  n[1], n[3], n[5],
+		  n[5], n[2], n[4],
+		  n[4], n[3], n[5]
+		};
+                refined_cells.insert(refined_cells.end(), cvec.begin(), cvec.end());
+            }
+            cells = refined_cells;
+        }
+        Eigen::Map<Eigen::Matrix<double, Dynamic, Dynamic, Eigen::RowMajor>> nodes_mtx(
+          nodes.data(), nodes.size() / embed_dim, embed_dim);
+	// scale to requested radius
+	if(radius != 1.0) { nodes_mtx *= radius; }
+        Eigen::Map<Eigen::Matrix<int, Dynamic, Dynamic, Eigen::RowMajor>> cells_mtx(
+          refined_cells.data(), refined_cells.size() / n_nodes_per_cell, n_nodes_per_cell);
+        Eigen::Matrix<int, Dynamic, Dynamic> boundary = Eigen::Matrix<int, Dynamic, Dynamic>::Zero(nodes_mtx.rows(), 1);
+        return Triangulation<2, N>(nodes_mtx, cells_mtx, boundary, flags);
+    }
+    static Triangulation<2, N> UnitSphere(int n_refinments, int flags = 0) { return Sphere(1.0, n_refinments, flags); }
     // getters
+    const Eigen::Matrix<int, Dynamic, Dynamic, Eigen::RowMajor>& neighbors() const { return neighbors_; }
     const typename Base::CellType& cell(int id) const {
         if (Base::flags_ & cache_cells) {   // cell caching enabled
             return cell_cache_[id];
@@ -442,14 +548,18 @@ template <int N> class Triangulation<2, N> : public TriangulationBase<2, N, Tria
         fdapde_assert(marker >= 0);
         edges_markers_.resize(n_edges_);
         for (boundary_edge_iterator it = boundary_edges_begin(); it != boundary_edges_end(); ++it) {
-            edges_markers_[it->id()] = lambda(*it) ? marker : Unmarked;
+            if (lambda(*it)) {
+                edges_markers_[it->id()] = marker;
+            }
         }
     }
     template <int Rows, typename XprType> void mark_boundary(const BinMtxBase<Rows, 1, XprType>& mask) {
         fdapde_assert(mask.rows() == n_edges_);
-        edges_markers_.resize(n_edges_);
+        edges_markers_.resize(n_edges_, 0);
         for (boundary_edge_iterator it = boundary_edges_begin(); it != boundary_edges_end(); ++it) {
-            edges_markers_[it->id()] = mask[it->id()] ? 1 : 0;
+            if(mask[it->id()]){
+                edges_markers_[it->id()] = 1;
+            }  
         }
     }
     template <typename Iterator> void mark_boundary(Iterator first, Iterator last) {
@@ -491,8 +601,9 @@ template <int N> class Triangulation<2, N> : public TriangulationBase<2, N, Tria
         return location_policy_->all_locate(Base::node(id));
     }
    protected:
-    std::vector<int> edges_ {};                        // nodes (as row indexes in nodes_ matrix) composing each edge
-    std::vector<int> edge_to_cells_ {};                // for each edge, the ids of adjacent cells
+    Eigen::Matrix<int, Dynamic, Dynamic, Eigen::RowMajor> neighbors_ {};   // adjacent cells ids (-1: no adjacent cell)
+    std::vector<int> edges_ {};           // nodes (as row indexes in nodes_ matrix) composing each edge
+    std::vector<int> edge_to_cells_ {};   // for each edge, the ids of adjacent cells
     Eigen::Matrix<int, Dynamic, Dynamic, Eigen::RowMajor> cell_to_edges_ {};   // ids of edges composing each cell
     BinaryVector<Dynamic> boundary_edges_ {};   // j-th element is 1 \iff edge j is on boundary
     std::vector<int> edges_markers_ {};
@@ -512,6 +623,8 @@ template <> class Triangulation<3, 3> : public TriangulationBase<3, 3, Triangula
     static constexpr int n_edges_per_face = 3;
     static constexpr int n_faces_per_cell = 4;
     static constexpr int n_edges_per_cell = 6;
+    static constexpr int n_neighbors_per_cell = 4;
+    static constexpr int n_facets_per_cell = n_faces_per_cell;
     using FaceType = typename Base::CellType::FaceType;
     using EdgeType = typename Base::CellType::EdgeType;
     using LocationPolicy = TreeSearch<Triangulation<3, 3>>;
@@ -521,15 +634,19 @@ template <> class Triangulation<3, 3> : public TriangulationBase<3, 3, Triangula
     static constexpr auto face_pattern =
       Matrix<int, binomial_coefficient(n_nodes_per_cell, n_nodes_per_face), n_nodes_per_face>(
         combinations(n_nodes_per_face, n_nodes_per_cell));
+    static constexpr auto facet_pattern = face_pattern;
     static constexpr auto edge_pattern =
       Matrix<int, binomial_coefficient(n_nodes_per_face, n_nodes_per_edge), n_nodes_per_edge>(
         combinations(n_nodes_per_edge, n_nodes_per_face));
-
+  
     Triangulation() = default;
     Triangulation(
       const Eigen::Matrix<double, Dynamic, Dynamic>& nodes, const Eigen::Matrix<int, Dynamic, Dynamic>& cells,
       const Eigen::Matrix<int, Dynamic, Dynamic>& boundary, int flags = 0) :
         Base(nodes, cells, boundary, flags) {
+        // -1 in neighbors_'s column i implies no neighbor adjacent to the edge opposite to vertex i
+        neighbors_ = Eigen::Matrix<int, Dynamic, Dynamic>::Constant(n_cells_, n_neighbors_per_cell, -1);
+
         using face_t = std::array<int, n_nodes_per_face>;
         using edge_t = std::array<int, n_nodes_per_edge>;
         struct face_info {
@@ -614,6 +731,13 @@ template <> class Triangulation<3, 3> : public TriangulationBase<3, 3, Triangula
         }
         return;
     }
+    Triangulation(
+      const std::string& nodes, const std::string& cells, const std::string& boundary, bool header, bool index_col,
+      int flags = 0) :
+        Triangulation(
+          read_table<double>(nodes, header, index_col).as_matrix(),
+          read_table<int>(cells, header, index_col).as_matrix(),
+          read_table<int>(boundary, header, index_col).as_matrix(), flags) { }
     // cubic mesh static constructors (nx, ny, nz: number of nodes along x,y,z axis respectively)
     static Triangulation<3, 3> Parallelepiped(
       double a_x, double b_x, double a_y, double b_y, double a_z, double b_z, int nx, int ny, int nz, int flags = 0) {
@@ -661,6 +785,7 @@ template <> class Triangulation<3, 3> : public TriangulationBase<3, 3, Triangula
         return Triangulation<3, 3>::Cube(0.0, 1.0, n_nodes, flags);
     }
     // getters
+    const Eigen::Matrix<int, Dynamic, Dynamic, Eigen::RowMajor>& neighbors() const { return neighbors_; }
     const typename Base::CellType& cell(int id) const {
         if (Base::flags_ & cache_cells) {   // cell caching enabled
             return cell_cache_[id];
@@ -671,7 +796,6 @@ template <> class Triangulation<3, 3> : public TriangulationBase<3, 3, Triangula
     }
     bool is_face_on_boundary(int id) const { return boundary_faces_[id]; }
     bool is_edge_on_boundary(int id) const { return boundary_edges_[id]; }
-    const Eigen::Matrix<int, Dynamic, Dynamic, Eigen::RowMajor>& neighbors() const { return neighbors_; }
     Eigen::Map<const Eigen::Matrix<int, Dynamic, Dynamic, Eigen::RowMajor>> faces() const {
         return Eigen::Map<const Eigen::Matrix<int, Dynamic, Dynamic, Eigen::RowMajor>>(
           faces_.data(), n_faces_, n_nodes_per_face);
@@ -885,13 +1009,14 @@ template <> class Triangulation<3, 3> : public TriangulationBase<3, 3, Triangula
         return location_policy_->all_locate(Base::node(id));
     }
    protected:
+    Eigen::Matrix<int, Dynamic, Dynamic, Eigen::RowMajor> neighbors_ {};   // adjacent cells ids (-1: no adjacent cell)
     std::vector<int> faces_, edges_;   // nodes (as row indexes in nodes_ matrix) composing each face and edge
     std::vector<int> face_to_cells_;   // for each face, the ids of adjacent cells
     std::unordered_map<int, std::unordered_set<int>> edge_to_cells_;   // for each edge, the ids of insisting cells
     Eigen::Matrix<int, Dynamic, Dynamic, Eigen::RowMajor> cell_to_faces_ {};   // ids of faces composing each cell
     std::vector<int> face_to_edges_;                                           // ids of edges composing each face
-    BinaryVector<Dynamic> boundary_faces_ {};           // j-th element is 1 \iff face j is on boundary
-    BinaryVector<Dynamic> boundary_edges_ {};           // j-th element is 1 \iff edge j is on boundary
+    BinaryVector<Dynamic> boundary_faces_ {};   // j-th element is 1 \iff face j is on boundary
+    BinaryVector<Dynamic> boundary_edges_ {};   // j-th element is 1 \iff edge j is on boundary
     std::vector<int> faces_markers_;
     std::vector<int> edges_markers_;
     int n_faces_ = 0, n_edges_ = 0;

@@ -34,10 +34,10 @@ template <typename XprType> struct is_eigen_dense_xpr {
 template <typename XprType> constexpr bool is_eigen_dense_xpr_v = is_eigen_dense_xpr<XprType>::value;
 template <typename XprType> class is_eigen_dense_vec {
    private:
+    using XprType_ = std::decay_t<XprType>;
     static constexpr bool check_() {
-        if constexpr (is_eigen_dense_xpr_v<std::decay_t<XprType>>) {
-            if constexpr (XprType::ColsAtCompileTime == 1) { return true; }
-            return false;
+        if constexpr (is_eigen_dense_xpr_v<XprType_>) {
+	    return XprType_::IsVectorAtCompileTime;
         }
         return false;
     }

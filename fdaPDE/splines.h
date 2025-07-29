@@ -45,6 +45,8 @@ struct spline_tag { };
 #include "src/splines/bs_space.h"
 // weak forms
 #include "src/splines/sp_objects.h"
+// tensor product spaces
+#include "src/tp_space.h"
 
 // clang-format on
 

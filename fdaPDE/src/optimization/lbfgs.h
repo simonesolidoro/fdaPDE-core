@@ -14,14 +14,14 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-#ifndef __FDAPDE_BFGS_H__
-#define __FDAPDE_BFGS_H__
+#ifndef __FDAPDE_LBFGS_H__
+#define __FDAPDE_LBFGS_H__
 
 #include "header_check.h"
 
 namespace fdapde {
 
-template <int N> class BFGS {
+template <int N> class LBFGS {
    private:
     using vector_t = std::conditional_t<N == Dynamic, Eigen::Matrix<double, Dynamic, 1>, Eigen::Matrix<double, N, 1>>;
     using matrix_t =
@@ -31,24 +31,30 @@ template <int N> class BFGS {
     double value_;                 // objective value at optimum
     int n_iter_ = 0;               // current iteration number
     std::vector<double> values_;   // explored objective values during optimization
-    matrix_t inv_hessian_;
-  
-    int max_iter_;     // maximum number of iterations before forced stop
-    double tol_;       // tolerance on error before forced stop
-    double step_;      // update step
+
+    int max_iter_;        // maximum number of iterations before forced stop
+    double tol_;          // tolerance on error before forced stop
+    double step_;         // update step
+    int mem_size_ = 10;   // number of vector used for approximating the objective hessian
+    Eigen::Matrix<double, Dynamic, Dynamic> grad_mem_, x_mem_;
    public:
     static constexpr bool gradient_free = false;
     static constexpr int static_input_size = N;
     vector_t x_old, x_new, update, grad_old, grad_new;
     double h;
-    // constructor
-    BFGS() : max_iter_(500), tol_(1e-5), step_(1e-2) { }
-    BFGS(int max_iter, double tol, double step) : max_iter_(max_iter), tol_(tol), step_(step) { }
-    BFGS(const BFGS& other) : max_iter_(other.max_iter_), tol_(other.tol_), step_(other.step_) { }
-    BFGS& operator=(const BFGS& other) {
+    // constructors
+    LBFGS() : max_iter_(500), tol_(1e-5), step_(1e-2) { }
+    LBFGS(int max_iter, double tol, double step, int mem_size) :
+        max_iter_(max_iter), tol_(tol), step_(step), mem_size_(mem_size) {
+        fdapde_assert(mem_size_ >= 0);
+    }
+    LBFGS(const LBFGS& other) :
+        max_iter_(other.max_iter_), tol_(other.tol_), step_(other.step_), mem_size_(other.mem_size_) { }
+    LBFGS& operator=(const LBFGS& other) {
         max_iter_ = other.max_iter_;
         tol_ = other.tol_;
         step_ = other.step_;
+        mem_size_ = other.mem_size_;
         return *this;
     }
     template <typename ObjectiveT, typename... Callbacks>
@@ -60,52 +66,61 @@ template <int N> class BFGS {
         std::tuple<Callbacks...> callbacks_ {callbacks...};
         bool stop = false;   // asserted true in case of forced stop
         double error = std::numeric_limits<double>::max();
+        double gamma = 1.0;
         int size = N == Dynamic ? x0.rows() : N;
         auto grad = objective.gradient();
         h = step_;
         n_iter_ = 0;
         x_old = x0, x_new = vector_t::Constant(size, NaN);
         grad_old = grad(x_old), grad_new = vector_t::Constant(size, NaN);
-        if constexpr (N == Dynamic) {   // inv_hessian approximated with identity matrix
-            inv_hessian_ = matrix_t::Identity(size, size);
-        } else {
-            inv_hessian_ = matrix_t::Identity();
-	}
-	update = -inv_hessian_ * grad_old;
-	stop |= internals::exec_grad_hooks(*this, objective, callbacks_);
+        update = -grad_old;
+        stop |= internals::exec_grad_hooks(*this, objective, callbacks_);
         error = grad_old.norm();
         values_.push_back(objective(x_old));
+        x_mem_.resize(x0.rows(), mem_size_);
+        grad_mem_.resize(x0.rows(), mem_size_);
 
         while (n_iter_ < max_iter_ && error > tol_ && !stop) {
             stop |= internals::exec_adapt_hooks(*this, objective, callbacks_);
             // update along descent direction
             x_new = x_old + h * update;
             grad_new = grad(x_new);
-            // update inverse hessian approximation
-            vector_t delta_x = x_new - x_old;
-            vector_t delta_grad = grad_new - grad_old;
-            double xg = delta_x.dot(delta_grad);
-            vector_t hx = inv_hessian_ * delta_grad;
-
-            matrix_t U = (1 + (delta_grad.dot(hx)) / xg) * ((delta_x * delta_x.transpose()) / xg);
-            matrix_t V = ((hx * delta_x.transpose() + delta_x * hx.transpose())) / xg;
-            inv_hessian_ += (U - V);
-            // prepare next iteration
-            update = -inv_hessian_ * grad_new;
+	    // prepare next iteration
+            // update inverse Hessian approximation
+            int col_idx = n_iter_ % mem_size_;
+            grad_mem_.col(col_idx) = grad_new - grad_old;
+            x_mem_.col(col_idx) = x_new - x_old;
+            gamma = x_mem_.col(col_idx).dot(grad_mem_.col(col_idx)) / grad_mem_.col(col_idx).norm();
+            // compute update direction
+            vector_t q = grad_new;
+	    n_iter_++;
+            int current_mem = n_iter_ < mem_size_ ? n_iter_: mem_size_;
+            std::vector<double> alpha(current_mem, 0);
+            for (int i = 0; std::cmp_less(i, current_mem); ++i) {
+                int k = (n_iter_ + mem_size_ - i - 1) % mem_size_;
+                alpha[i] = x_mem_.col(k).dot(q) / grad_mem_.col(k).dot(x_mem_.col(k));
+                q -= alpha[i] * grad_mem_.col(k);
+            }
+            // H_0^k = I (initial guess of the inverse hessian)
+            update = -gamma * q;
+            for (int i = current_mem - 1; i >= 0; --i) {
+                int k = (n_iter_ + mem_size_ - i - 1) % mem_size_;
+                double beta = grad_mem_.col(k).dot(update) / grad_mem_.col(k).dot(x_mem_.col(k));
+                update -= x_mem_.col(k) * (alpha[i] + beta);
+            }
             stop |=
               (internals::exec_grad_hooks(*this, objective, callbacks_) || internals::exec_stop_if(*this, objective));
             x_old = x_new;
             grad_old = grad_new;
             error = grad_new.norm();
-            values_.push_back(objective(x_old));
-            n_iter_++;
-        }	
+	    values_.push_back(objective(x_old));
+        }
         optimum_ = x_old;
         value_ = values_.back();
         return optimum_;
     }
     // observers
-    const vector_t& optimum() const { return optimum_; }
+    vector_t optimum() const { return optimum_; }
     double value() const { return value_; }
     int n_iter() const { return n_iter_; }
     const std::vector<double>& values() const { return values_; }
@@ -113,4 +128,4 @@ template <int N> class BFGS {
 
 }   // namespace fdapde
 
-#endif   // __FDAPDE_BFGS_H__
+#endif   // __FDAPDE_LBFGS_H__

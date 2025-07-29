@@ -51,10 +51,12 @@ template <typename DofHandler> class DofConstraints {
     // guarantees that the linear system Ax = b is such that all (affine) constraints are respected
     template <typename T> void enforce_constraints(T&& t) const {
         if constexpr (internals::is_subscriptable<std::decay_t<T>, int>) {   // linear system dense rhs
-            for (const Duplet<double>& duplet : constraint_values_) { t[duplet.row()] = duplet.value() * eps; }
+            for (const Duplet<double>& duplet : constraint_values_) { t[duplet.row()] = duplet.value(); }
         } else {   // linear system sparse matrix
             for (const Triplet<double>& triplet : constraint_pattern_) {
-                t.coeffRef(triplet.row(), triplet.col()) = triplet.value() * eps;
+                t.row(triplet.row()) *= 0;
+                t.col(triplet.col()) *= 0;
+                t.coeffRef(triplet.row(), triplet.col()) = triplet.value();
             }
         }
         return;
@@ -88,6 +90,23 @@ template <typename DofHandler> class DofConstraints {
             }
         }
         return;
+    }
+    // return indices of Dirichlet-type dofs
+    std::vector<int> dirichlet_dofs() const {
+        std::vector<int> dofs;
+        dofs.reserve(constraint_pattern_.size());
+        for (auto it = constraint_pattern_.begin(); it != constraint_pattern_.end(); ++it) {
+            dofs.push_back(it->row());
+        }
+        return dofs;
+    }
+    std::vector<double> dirichlet_values() const {
+        std::vector<double> values;
+        values.reserve(constraint_values_.size());
+        for (auto it = constraint_values_.begin(); it != constraint_values_.end(); ++it) {
+            values.push_back(it->value());
+        }
+        return values;
     }
    private:
     const DofHandlerType* dof_handler_;

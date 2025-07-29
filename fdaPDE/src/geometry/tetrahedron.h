@@ -25,6 +25,7 @@ template <typename Triangulation>
 class Tetrahedron : public Simplex<Triangulation::local_dim, Triangulation::embed_dim> {
     fdapde_static_assert(
       Triangulation::local_dim == 3 && Triangulation::embed_dim == 3, THIS_CLASS_IS_FOR_TETRAHEDRAL_MESHES_ONLY);
+    using Base = Simplex<Triangulation::local_dim, Triangulation::embed_dim>;
    public:
     static constexpr int n_nodes_per_edge = 2;
     static constexpr int n_nodes_per_face = 3;
@@ -62,7 +63,8 @@ class Tetrahedron : public Simplex<Triangulation::local_dim, Triangulation::embe
         int id() const { return edge_id_; }
         const std::unordered_set<int>& adjacent_cells() const { return mesh_->edge_to_cells().at(edge_id_); }
         int marker() const {   // mesh edge's marker
-            return mesh_->edges_markers().size() > edge_id_ ? mesh_->edges_markers()[edge_id_] : Unmarked;
+            return std::cmp_greater(mesh_->edges_markers().size(), edge_id_) ? mesh_->edges_markers()[edge_id_] :
+                                                                               Unmarked;
         }
     };
     // a triangulation-aware view of a tetrahedron face
@@ -84,7 +86,8 @@ class Tetrahedron : public Simplex<Triangulation::local_dim, Triangulation::embe
         EdgeType edge(int n) const { return EdgeType(mesh_->face_to_edges()(face_id_, n), mesh_); }
         Eigen::Matrix<int, Dynamic, 1> adjacent_cells() const { return mesh_->face_to_cells().row(face_id_); }
         int marker() const {   // mesh face's marker
-            return mesh_->faces_markers().size() > face_id_ ? mesh_->faces_markers()[face_id_] : Unmarked;
+            return std::cmp_greater(mesh_->faces_markers().size(), face_id_) ? mesh_->faces_markers()[face_id_] :
+                                                                               Unmarked;
         }
     };
 
@@ -98,6 +101,18 @@ class Tetrahedron : public Simplex<Triangulation::local_dim, Triangulation::embe
     FaceType face(int n) const { return FaceType(mesh_->cell_to_faces()(id_, n), mesh_); }
     // cell marker
     int marker() const { return mesh_->cells_markers().size() > id_ ? mesh_->cells_markers()[id_] : Unmarked; }
+    // given the global id of a face, returns its local numbering on this cell, or -1 if the face is not part of it
+    int local_face_id(int face_id) const {
+        int local_id = -1;
+        for (int i = 0; i < Base::n_faces; ++i) {
+            if (mesh_->cell_to_faces()(id_, i) == face_id) {
+                local_id = i;
+                break;
+            }
+        }
+        return local_id;
+    }
+    int local_facet_id(int face_id) const { return local_face_id(face_id); }
 
     // iterator over tetrahedron edges
     class edge_iterator : public internals::index_iterator<edge_iterator, EdgeType> {

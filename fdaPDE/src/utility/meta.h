@@ -42,7 +42,40 @@ constexpr void for_each_index_and_args(F_&& f, Args_&&... args) {
         (f.template operator()<Ns_, Args_>(std::forward<Args_>(args)), ...);
     }(std::make_integer_sequence<int, N_> {});
 }
-  
+
+// a tuple of pairs {{0, T_0}, {1, T_1}, ..., {N, T_N}}
+template <typename... Ts> struct indexed_tuple {
+   private:
+    template <std::size_t N_, typename T_>
+        requires(std::is_default_constructible_v<T_>)
+    struct pair_t {
+        static constexpr int index = N_;
+        using type = T_;
+
+        pair_t() : value() { }
+        pair_t(const T_& value_) : value(value_) { }
+        T_ value;
+    };
+    template <typename IdxList> struct idx_list;
+    template <std::size_t... Idxs> struct idx_list<std::index_sequence<Idxs...>> {
+        using type = std::tuple<pair_t<Idxs, Ts>...>;
+    };
+   public:
+    using type = typename idx_list<std::make_index_sequence<sizeof...(Ts)>>::type;
+
+    indexed_tuple(const Ts&... ts) : value(ts...) { }
+    type value;
+};
+template <typename... Ts> auto make_indexed_tuple(Ts&&... ts) { return indexed_tuple(std::forward<Ts>(ts)...).value; }
+// apply functor F to tuple of indexed pairs
+template <int N_, typename F_, typename... Args_>
+    requires(sizeof...(Args_) == N_)
+constexpr decltype(auto) apply_index_pack_and_args(F_&& f, Args_&&... args) {
+    return [&]<typename... Ts_>(const std::tuple<Ts_...>& tuple) -> decltype(auto) {
+        return f.template operator()<Ts_...>(std::get<Ts_::index>(tuple).value...);
+    }(make_indexed_tuple(args...));
+}
+
 // detect if type is integer-like
 template <typename T> class is_integer {
     using T_ = std::decay_t<T>;
@@ -104,14 +137,62 @@ struct subscript_result_of {
 // deduces returned type of T's subscript operator with arguments Args...
 template <typename T, typename... Args> using subscript_result_of_t = typename subscript_result_of<T, Args...>::type;
 
+// detects if T is callable with Order arguments of type IndexT
+template <typename T, int Order, typename IndexT> class is_indexable {
+    using T_ = std::decay_t<T>;
+   public:
+    static constexpr bool value = []() {
+        return internals::apply_index_pack<Order>([]<int... Ns_>() {
+            if constexpr (requires(T_ t) { t(((void)Ns_, IndexT())...); }) {
+                return true;
+            } else {
+                return false;
+            }
+        });
+    }();
+};
+template <typename T, int Order, typename IndexT>
+static constexpr bool is_indexable_v = is_indexable<T, Order, IndexT>::value;
+  
+// detects if T behaves like a vector
 template <typename T> class is_vector_like {
     using T_ = std::decay_t<T>;
-  public:
-   static constexpr bool value = is_subscriptable<T, int> && requires(T t) {
-       { t.size() } -> std::convertible_to<std::size_t>;
-   };
+   public:
+    static constexpr bool value = []() {
+#ifdef __FDAPDE_HAS_EIGEN__
+        if constexpr (internals::is_eigen_dense_xpr_v<T_>) {
+            return internals::is_eigen_dense_vec_v<T_>;
+        } else
+#endif
+            return (is_subscriptable<T_, int> || (is_indexable_v<T_, 1, int> && !is_indexable_v<T_, 2, int>)) &&
+                   requires(T_ t) {
+                       { t.size() } -> std::convertible_to<int>;
+                   };
+    }();
 };
 template <typename T> static constexpr bool is_vector_like_v = is_vector_like<T>::value;
+
+template <typename T>
+    requires(is_vector_like_v<T>)
+decltype(auto) vector_like_access(T&& data, int index) {
+    using T_ = std::decay_t<T>;
+    if constexpr (is_subscriptable<T_, int>) {
+        return data[index];
+    } else {
+        return data(index);
+    }
+}
+  
+// detect if T behaves like a matrix
+template <typename T> class is_matrix_like {
+    using T_ = std::decay_t<T>;
+  public:
+   static constexpr bool value = internals::is_indexable_v<T_, 2, int> && requires(T_ t) {
+       { t.rows() } -> std::convertible_to<int>;
+       { t.cols() } -> std::convertible_to<int>;
+   };
+};
+template <typename T> static constexpr bool is_matrix_like_v = is_matrix_like<T>::value;
 
 // get i-th element from parameter pack
 template <int N, typename... Ts>
@@ -150,14 +231,16 @@ template <typename T, typename Tuple> struct index_of;
 template <typename T, typename... Ts> struct index_of<T, std::tuple<Ts...>> {
    private:
     template <std::size_t... idx> static constexpr int find_idx(std::index_sequence<idx...>) {
-        bool found = false;
-        int count = 0;
-        ((!found ? (++count, found = std::is_same_v<T, Ts>) : 0) + ...);
-        return found ? count - 1 : -1;
+        constexpr int tuple_size = sizeof...(Ts);
+        int index = tuple_size;
+        int i = 0;
+        void(((std::is_same_v<T, Ts> ? (index = i, false) : (++i, true)) && ...));
+        fdapde_constexpr_assert(index != tuple_size);   // type not found in tuple
+        return index;
     }
    public:
     static constexpr int value = find_idx(std::index_sequence_for<Ts...> {});
-};
+};  
 
 // returns std::true_type if tuple contains type T
 template <typename T, typename Tuple> struct has_type { };
@@ -254,6 +337,43 @@ template <typename XprType> struct ref_select_impl<XprType, false> {
 };
 template <typename XprType> struct ref_select : ref_select_impl<XprType, has_nest_as_ref_bit<XprType>> { };
 template <typename XprType> using ref_select_t = ref_select<XprType>::type;
+
+// selects one between arg1 and arg2 based on condition f
+template <typename Arg1, typename Arg2, typename F>
+    requires(
+      requires(F f, Arg1 arg1, Arg2 arg2) {
+          { f(arg1, arg2) } -> std::same_as<bool>;
+      } ||
+      requires(F f) {
+          { f() } -> std::same_as<bool>;
+      })
+const auto& select_one_between(const Arg1& arg1, const Arg2& arg2, F&& f) {
+    if constexpr ([&]() {
+                      if constexpr (requires(F f, Arg1 arg1, Arg2 arg2) {
+                                        { f(arg1, arg2) } -> std::same_as<bool>;
+                                    }) {
+                          return f(arg1, arg2);
+                      } else {
+                          return f();
+                      }
+                  }()) {
+        return arg1;
+    } else {
+        return arg2;
+    }
+}
+
+// check if two types are related by inheritance
+template <typename T, typename W> struct are_related_by_inheritance {
+    static constexpr bool value = std::is_base_of_v<T, W> || std::is_base_of_v<W, T>;
+};
+template <typename T, typename W> constexpr bool are_related_by_inheritance_v = are_related_by_inheritance<T, W>::value;
+
+// returns the most derived type between T and W, or T otherwise
+template <typename T, typename W> struct prefer_most_derived {
+    using type = std::conditional_t<std::is_same_v<T, W>, T, std::conditional_t<std::is_base_of_v<T, W>, W, T>>;
+};
+template <typename T, typename W> using prefer_most_derived_t = typename prefer_most_derived<T, W>::type;
   
 }   // namespace internals
 }   // namespace fdapde

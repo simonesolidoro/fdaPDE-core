@@ -14,21 +14,6 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-#ifndef __FDAPDE_TXT_H__
-#define __FDAPDE_TXT_H__
-
-#include "header_check.h"
-
-namespace fdapde {
-
-// space separated table of values of type T
-template <typename T>
-internals::table_reader<T> read_txt(const std::string& filename, bool header = true, bool index_col = false) {
-    internals::table_reader<T> txt(
-      filename.c_str(), header, /* sep = */ ' ', index_col, /* skip_quote = */ true, /* chunksize = */ 1000);
-    return txt;
-}
-
-}   // namespace fdapde
-
-#endif   // __FDAPDE_TXT_H__
+#ifndef __FDAPDE_IO_MODULE_H__
+#    error "Include fdaPDE/io.h instead of including internal headers directly."
+#endif

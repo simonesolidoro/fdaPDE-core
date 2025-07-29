@@ -45,7 +45,8 @@ template <typename... Triangulation_> struct GeoFrame {
         layer_t(const std::string& name, const CategoryType& category, const LayerType& geo_data) :
             geo_data_(std::make_shared<LayerType>(geo_data)),
             data_(std::addressof(reinterpret_cast<LayerType*>(geo_data_.get())->data())),
-            name_(name) {
+            name_(name),
+            n_rows_(geo_data.rows()) {
             geoframe_assert(category.size() == Order, "bad layer construction, no matching order.");
             std::copy(category.begin(), category.end(), category_.begin());
 	    // store pointers to spatial indexes
@@ -62,10 +63,10 @@ template <typename... Triangulation_> struct GeoFrame {
         const void* geo_data() const { return geo_data_.get(); }
         const std::array<ltype, Order>& category() const { return category_; }
         bool contains(const std::string& colname) const { return data_->contains(colname); }
-        int rows() const { return data_->rows(); }
+        int rows() const { return n_rows_; }
         int cols() const { return data_->cols(); }
-        int size() const { return data_->size(); }
-      
+        int size() const { return rows() * cols(); }
+        std::vector<std::string> colnames() const { return data_->colnames(); }
         void* geo_index(int n) const { return geo_index_.at(n); }
         // accessors
         template <typename T> decltype(auto) col(size_t col) { return data_->template col<T>(col); }
@@ -74,12 +75,27 @@ template <typename... Triangulation_> struct GeoFrame {
         template <typename T> decltype(auto) col(const std::string& colname) const {
             return data_->template col<T>(colname);
         }
+        // modifiers
+        template <typename DataT>
+            requires(internals::is_vector_like_v<DataT>)
+        void add_column(const std::string& colname, const DataT& data) {
+            data_->append_vec(colname, data);
+        }
+        template <typename T>
+        void add_block(const std::string& colname, const Eigen::Matrix<T, Dynamic, Dynamic>& data) {
+            data_->append_blk(colname, data);
+        }
+        // output stream
+        friend std::ostream& operator<<(std::ostream& os, const layer_t& layer) {
+            return operator<<(os, *layer.data_);
+        }
        private:
         std::shared_ptr<void> geo_data_;       // type erased geometric layer
         std::array<void*, Order> geo_index_;   // pointers to (type-erased) geometric indexes
         storage_t* data_;
         std::array<ltype, Order> category_;
         std::string name_;
+        int n_rows_;
     };
    private:
     template <typename T> constexpr auto ltype_from_layer_tag() const {
@@ -98,13 +114,14 @@ template <typename... Triangulation_> struct GeoFrame {
     explicit GeoFrame(Triangulation_&... triangulation) noexcept :
         triangulation_(std::make_tuple(std::addressof(triangulation)...)), layers_(), n_layers_(0) { }
     // modifiers
-    template <typename... GeoInfo, typename GeoData>
+   private:
+    template <typename... GeoInfo, typename... Args>
         requires(
           sizeof...(GeoInfo) == Order &&
           (internals::is_any_same_v<
              GeoInfo, std::tuple<internals::polygon_layer_descriptor, internals::point_layer_descriptor>> &&
            ...))
-    auto& insert_scalar_layer(const std::string& name, GeoData&& data) {
+    auto& insert_scalar_layer_(const std::string& name, Args&&... args) {
         fdapde_static_assert(sizeof...(GeoInfo) == Order, BAD_LAYER_CONSTRUCTION__NO_MATCHING_ORDER);
 	fdapde_assert(!name.empty() && !has_layer(name));
         using geo_layer_t = GeoLayer<Triangulation, std::tuple<GeoInfo...>>;
@@ -114,10 +131,32 @@ template <typename... Triangulation_> struct GeoFrame {
               return std::array<ltype, sizeof...(GeoInfo)> {ltype_from_layer_tag<typename GeoInfo::layer_tag>()...};
           }),
           internals::apply_index_pack<sizeof...(GeoInfo)>(   // data
-            [&, this]<int... Ns>() { return geo_layer_t(triangulation_, data); }));
+            [&, this]<int... Ns>() { return geo_layer_t(std::forward<Args>(args)...); }));
         layer_name_to_idx_[name] = n_layers_;
         n_layers_++;
         return geo_cast<GeoInfo...>(operator[](name));
+    }
+   public:
+    template <typename... GeoInfo, typename GeoData>
+    auto& insert_scalar_layer(const std::string& name, GeoData&& data) {
+        return insert_scalar_layer_<GeoInfo...>(name, triangulation_, data);
+    }
+    template <typename... GeoInfo, typename LayerType>
+    auto& insert_scalar_layer(
+      const std::string& name, const internals::random_access_geo_row_view<LayerType>& row_filter,
+      const std::vector<std::string>& cols) {
+        return insert_scalar_layer_<GeoInfo...>(name, row_filter, cols);
+    }
+    template <typename... GeoInfo, typename LayerType>
+    auto& insert_scalar_layer(
+      const std::string& name, const internals::random_access_geo_row_view<LayerType>& row_filter) {
+        return insert_scalar_layer_<GeoInfo...>(name, row_filter);
+    }
+    auto& load_shp(const std::string& name, const std::string& filename) {
+        fdapde_assert(!name.empty() && !has_layer(name));
+        auto& l = insert_scalar_layer_<POLYGON>(name, triangulation_);
+        l.load_shp(filename);
+        return geo_cast<POLYGON>(operator[](name));
     }
     // observers
     int n_layers() const { return n_layers_; }
@@ -134,17 +173,27 @@ template <typename... Triangulation_> struct GeoFrame {
         }
         return false;
     }
-    std::vector<std::string> layer_names() const {
+    std::vector<std::string> laynames() const {
         std::vector<std::string> names;
         for (const auto& [name, id] : layer_name_to_idx_) { names.push_back(name); }
+        return names;
+    }
+    std::vector<std::string> colnames() const {
+        std::vector<std::string> names;
+        for (int i = 0; i < n_layers_; ++i) {
+            std::vector<std::string> c = layers_[i].colnames();
+            names.insert(names.end(), c.begin(), c.end());
+        }
         return names;
     }
     template <int N> decltype(auto) triangulation() const { return *std::get<N>(triangulation_); }
     // indexed access
     const layer_t& operator[](int idx) const { return layers_[idx]; }
     layer_t& operator[](int idx) { return layers_[idx]; }
-    const layer_t& operator[](const std::string& colname) const { return layers_.at(layer_name_to_idx_.at(colname)); }
-    layer_t& operator[](const std::string& colname) { return layers_.at(layer_name_to_idx_.at(colname)); }
+    layer_t& operator[](const std::string& layer_name) { return layers_.at(layer_name_to_idx_.at(layer_name)); }
+    const layer_t& operator[](const std::string& layer_name) const {
+        return layers_.at(layer_name_to_idx_.at(layer_name));
+    }
   
     // iterator
     class iterator {
@@ -166,7 +215,7 @@ template <typename... Triangulation_> struct GeoFrame {
             return *this;
         }
         const std::array<ltype, Order>& category() const { return get().category(); }
-        const reference data() const { return operator*(); }
+        reference data() const { return operator*(); }
         const layer_t& get() const { return gf_->layers_[index_]; }
         friend bool operator!=(const iterator& lhs, const iterator& rhs) { return lhs.index_ != rhs.index_; }
         friend bool operator==(const iterator& lhs, const iterator& rhs) { return lhs.index_ == rhs.index_; }

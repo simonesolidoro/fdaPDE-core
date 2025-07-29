@@ -167,9 +167,21 @@ template <int LocalDim, int EmbedDim, typename Derived> class fe_dof_handler_bas
         fdapde_assert(sizeof...(Data) == derived().dof_multiplicity());
         dof_constraints_.set_dirichlet_constraint(on, g...);
     }
-    template <typename... Data> void set_dirichlet_constaint(Data&&... g) {
+    template <typename... Data> void set_dirichlet_constraint(const std::initializer_list<int>& on, Data&&... g) {
+        set_dirichlet_constraint(on.begin(), on.end(), std::forward<Data>(g)...);
+    }
+    template <typename Iterator, typename... Data>
+        requires(std::input_iterator<Iterator>)
+    void set_dirichlet_constraint(Iterator begin, Iterator end, Data&&... g) {
+        fdapde_assert(sizeof...(Data) == derived().dof_multiplicity());
+	for(auto it = begin; it != end; ++it) { dof_constraints_.set_dirichlet_constraint(*it, g...); }
+    }
+    template <typename... Data> void set_dirichlet_constraint(Data&&... g) {
         set_dirichlet_constraint(BoundaryAll, g...);
     }
+    std::vector<int> dirichlet_dofs() const { return dof_constraints_.dirichlet_dofs(); }
+    std::vector<double> dirichlet_values() const { return dof_constraints_.dirichlet_values(); }
+
     template <typename SystemMatrix, typename SystemRhs>
     void enforce_constraints(SystemMatrix&& A, SystemRhs&& b) const {
         dof_constraints_.enforce_constraints(A, b);
@@ -202,7 +214,7 @@ template <int LocalDim, int EmbedDim, typename Derived> class fe_dof_handler_bas
     const TriangulationType* triangulation_;
     Eigen::Matrix<int, Dynamic, Dynamic, Eigen::RowMajor> dofs_;
     BinaryVector<Dynamic> boundary_dofs_;   // whether the i-th dof is on boundary or not
-    std::vector<int> dofs_to_cell_;                 // for each dof, the id of (one of) the cell containing it
+    std::vector<int> dofs_to_cell_;         // for each dof, the id of (one of) the cell containing it
     DofConstraints<Derived> dof_constraints_;
     std::vector<int> dofs_markers_;
     int n_dofs_per_cell_ = 0, n_dofs_ = 0, n_unique_dofs_ = 0;
@@ -245,7 +257,7 @@ template <int LocalDim, int EmbedDim, typename Derived> class fe_dof_handler_bas
         return;
     }
     template <typename FEType> void enumerate([[maybe_unused]] FEType) {
-        using dof_descriptor = typename FEType::cell_dof_descriptor<TriangulationType::local_dim>;
+        using dof_descriptor = typename FEType::template cell_dof_descriptor<TriangulationType::local_dim>;
         fdapde_static_assert(
           dof_descriptor::local_dim == TriangulationType::local_dim, YOU_PROVIDED_A_WRONG_FINITE_ELEMENT_DESCRIPTOR);
         fdapde_static_assert(
@@ -254,7 +266,7 @@ template <int LocalDim, int EmbedDim, typename Derived> class fe_dof_handler_bas
         n_dofs_per_cell_ = dof_descriptor::n_dofs_per_cell * dof_descriptor::dof_multiplicity;
         dofs_.resize(triangulation_->n_cells(), n_dofs_per_cell_);
 	// copy coordinates of dofs defined on reference unit simplex
-	typename FEType::cell_dof_descriptor<TriangulationType::local_dim> fe;
+	typename FEType::template cell_dof_descriptor<TriangulationType::local_dim> fe;
 	reference_dofs_barycentric_coords_.resize(fe.dofs_bary_coords().rows(), fe.dofs_bary_coords().cols());
 	fe.dofs_bary_coords().copy_to(reference_dofs_barycentric_coords_);
 	// start enumeration at geometrical nodes
@@ -305,7 +317,7 @@ class DofHandler<2, EmbedDim, finite_element_tag> :
     DofHandler(const TriangulationType& triangulation) : Base(triangulation) { }
 
     template <typename FEType> void enumerate(FEType fe) {
-        using dof_descriptor = typename FEType::cell_dof_descriptor<TriangulationType::local_dim>;
+        using dof_descriptor = typename FEType::template cell_dof_descriptor<TriangulationType::local_dim>;
         Base::enumerate(fe);   // enumerate dofs at nodes
         n_dofs_internal_per_cell_ = dof_descriptor::n_dofs_internal;
 	n_dofs_per_node_ = dof_descriptor::n_dofs_per_node;
@@ -313,17 +325,17 @@ class DofHandler<2, EmbedDim, finite_element_tag> :
         n_dofs_per_cell_ = n_dofs_per_node_ * TriangulationType::n_nodes_per_cell +
                            n_dofs_per_edge_ * TriangulationType::n_edges_per_cell + n_dofs_internal_per_cell_;
 	dof_multiplicity_ = dof_descriptor::dof_multiplicity;
-        // move geometrical markers on boundary edges to dof markers on nodes. high labeled nodes have higher priority
+        // move geometrical markers on boundary edges to dof markers on nodes.
         if constexpr (dof_descriptor::n_dofs_per_node > 0) {
             for (typename TriangulationType::edge_iterator it = triangulation_->boundary_edges_begin();
                  it != triangulation_->boundary_edges_end(); ++it) {
                 int marker = it->marker();
-                for (int node_id : it->node_ids()) {
-                    // give priority to highly marked edges
-                    if (marker > Base::dofs_markers_[node_id]) { Base::dofs_markers_[node_id] = marker; }
+                for (int node_id : it->node_ids()) { 
+                    if (marker > Base::dofs_markers_[node_id]) { Base::dofs_markers_[node_id] = marker; }    
                 }
             }
         }
+        
         // insert additional dofs if requested by the finite element
 	static constexpr int n_dofs_at_nodes = dof_descriptor::n_dofs_per_node * TriangulationType::n_nodes_per_cell;
         std::unordered_set<std::pair<int, int>, internals::pair_hash> boundary_dofs;
@@ -495,7 +507,7 @@ class DofHandler<3, 3, finite_element_tag> :
     DofHandler(const TriangulationType& triangulation) : Base(triangulation) { }
 
     template <typename FEType> void enumerate(FEType fe) {
-        using dof_descriptor = typename FEType::cell_dof_descriptor<TriangulationType::local_dim>;
+        using dof_descriptor = typename FEType::template cell_dof_descriptor<TriangulationType::local_dim>;
         Base::enumerate(fe);   // enumerate dofs at nodes
         n_dofs_internal_per_cell_ = dof_descriptor::n_dofs_internal;
         n_dofs_per_node_ = dof_descriptor::n_dofs_per_node;
@@ -510,9 +522,8 @@ class DofHandler<3, 3, finite_element_tag> :
             for (typename TriangulationType::face_iterator it = triangulation_->boundary_faces_begin();
                  it != triangulation_->boundary_faces_end(); ++it) {
                 int marker = it->marker();
-                for (int node_id : it->node_ids()) {
-                    // give priority to highly marked edges
-                    if (marker > Base::dofs_markers_[node_id]) { Base::dofs_markers_[node_id] = marker; }
+                for (int node_id : it->node_ids()) { 
+                    if (marker > Base::dofs_markers_[node_id]) { Base::dofs_markers_[node_id] = marker; } 
                 }
             }
         }
@@ -801,7 +812,7 @@ class DofHandler<1, EmbedDim, finite_element_tag> :
     DofHandler(const TriangulationType& triangulation) : Base(triangulation) { }
 
     template <typename FEType> void enumerate(FEType fe) {
-        using dof_descriptor = typename FEType::cell_dof_descriptor<TriangulationType::local_dim>;
+        using dof_descriptor = typename FEType::template cell_dof_descriptor<TriangulationType::local_dim>;
         Base::enumerate(fe);   // enumerate dofs at nodes
         n_dofs_internal_per_cell_ = dof_descriptor::n_dofs_internal;
         n_dofs_per_node_ = dof_descriptor::n_dofs_per_node;
