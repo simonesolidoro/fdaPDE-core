@@ -21,6 +21,8 @@
 namespace fdapde{
     //definizioni di funzioni friend per indx
     //TODO: possiile mettere lock di mutex dentro *_indx function.
+    //TODO: spostare notify() dopo unlock cosi si evita di svegliare e far fare tentativo di lock a thread dormiente quando il thread che notifica ancora ha il mutex lock. (vedi esempio qui: https://en.cppreference.com/w/cpp/thread/condition_variable.html)
+           // oss: forse il compilatore ottimizza trasferendo direttamente la proprietà del mutex e quindi aspetta unlock() dopo notify() e poi sveglia CV, ma non è sicuro meglio spostare notify() dopo unlock direttamente per certezza
     template<typename T,typename M> 
     int push_f_indx(Synchro_queue<T,M> & S){
         if constexpr(std::is_same_v<M,hold_nowait> || std::is_same_v<M,hold_wait>){ //OSS: tolto hold_wait perche wait non puo fallire se inizia è perche CV ha gia checcato che coda non sia piena

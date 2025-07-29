@@ -38,14 +38,14 @@ int main(int argc, char** argv){
     }
    
     auto start2 = std::chrono::high_resolution_clock::now();
-/*
+
     for(int i = 0; i<size; i++){
         for(int j=0; j<size; j++){
             C[i][j] = A[i][j] + B[i][j];
         }
     }
-    */
-   
+    
+/*   
   // copia di colonna ad ogni iterazione 
     for(int i = 0; i<size; i++){
         std::vector<int> A_col_i (A[i]);
@@ -54,7 +54,7 @@ int main(int argc, char** argv){
             C[i][j] = A_col_i[j] + B_col_i[j];
         }
     }
- 
+ */
 
     auto end2 = std::chrono::high_resolution_clock::now();
     auto duration2 = std::chrono::duration_cast<std::chrono::microseconds>(end2 - start2); 

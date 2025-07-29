@@ -16,7 +16,7 @@ for i in $(seq 1 "$1"); do
 done
 
 # n_thread= []
-threads=(6 4 2 1)
+threads=(8 6 4 2 1)
 # Lista di eseguibili (modifica questa parte se serve)
 executables=("test_sendMostfree_stealMostbusy" "test_sendRound_stealMostbusy" "test_sendMostfree_stealRandom" "test_sendRound_stealRandom" )
 

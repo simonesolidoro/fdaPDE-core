@@ -46,14 +46,14 @@ int main(int argc, char** argv){
 //parallel_for_sure_n
     auto start2 = std::chrono::high_resolution_clock::now();
 
-    /*
+    
     // solo reference (problemi scala poco da 2 a 4 worker)
     tp.parallel_for_sure_granularity(0,size,n_gran,[&](int i){
         for(int j=0; j<size; j++){
             C[i][j] = A[i][j] + B[i][j];
         }
     });
-    */
+    /*
     //copie di colonne cosi da non dover accedere a stesso vector size volte ogni iterazione(riga)
     tp.parallel_for_sure_granularity(0,size,n_gran,[&](int i){
         std::vector<int> A_col_i (A[i]);
@@ -62,7 +62,7 @@ int main(int argc, char** argv){
             C[i][j] = A_col_i[j] + B_col_i[j];
         }
     });
-    
+    */
 
     
     auto end2 = std::chrono::high_resolution_clock::now();
