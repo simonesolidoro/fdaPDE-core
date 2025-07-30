@@ -67,7 +67,7 @@ template <int N> class GridSearch {
         std::cout<<grid_.rows()<<"rows grid_"<<std::endl;
         std::cout<<grid_.cols()<<"cols grid_"<<std::endl;
         // debug, grid_.row(0).assign_to(x_curr); dava errore Assertion `row >= 0 && row < rows() && col >= 0 && col < cols()' failed.
-Aborted (core dumped), cambiando x_curr in vettore riga funziona invece  */
+Aborted (core dumped), cambiando x_curr in vettore riga funziona  */
         grid_.row(0).assign_to(x_curr);
         obj_curr = objective(x_curr);
         stop |= internals::exec_eval_hooks(*this, objective, callbacks_);
@@ -92,6 +92,68 @@ Aborted (core dumped), cambiando x_curr in vettore riga funziona invece  */
         }
         return optimum_;
     }
+
+
+    template <typename ObjectiveT, typename GridT, typename... Callbacks>
+        requires((internals::is_vector_like_v<GridT> || internals::is_matrix_like_v<GridT>))
+    vector_t optimize(ObjectiveT&& objective, const GridT& grid, execution::execution_parallel, Callbacks&&... callbacks) { //execution prima di callack perche senno overload amiguo (perchè callback variadic)
+        fdapde_static_assert(
+          std::is_same<decltype(std::declval<ObjectiveT>().operator()(vector_t())) FDAPDE_COMMA double>::value,
+          INVALID_CALL_TO_OPTIMIZE__OBJECTIVE_FUNCTOR_NOT_CALLABLE_AT_VECTOR_TYPE);
+
+        //creazione threadpool
+        fdapde::Threadpool<fdapde::steal::random> Tp(grid.size() / size_); //n_worker = hardwer_thread di defaul, size queue di worker = numero poit da valutare (male che va 1 worker e u jo per ogni iterazioe stao i queue)
+
+        constexpr double NaN = std::numeric_limits<double>::quiet_NaN();
+        std::tuple<Callbacks...> callbacks_ {callbacks...};
+        grid_t grid_;
+        value_ = std::numeric_limits<double>::max();
+        if constexpr (internals::is_vector_like_v<GridT>) {
+            fdapde_assert(grid.size() % size_ == 0);
+            grid_ = grid_t(grid.data(), grid.size() / size_, size_);
+        } else {
+            fdapde_assert(grid.cols() == size_);
+            grid_ = grid_t(grid.data(), grid.rows(), size_);
+        }
+        bool stop = false;   // asserted true in case of forced stop
+        std::cout<<"usata overload exe"<<std::endl; //per debug
+        grid_.row(0).assign_to(x_curr);
+        obj_curr = objective(x_curr);
+        stop |= internals::exec_eval_hooks(*this, objective, callbacks_);
+        values_.clear();       
+        if (obj_curr < value_) {
+            value_ = obj_curr;
+            optimum_ = x_curr;
+        }
+        // optimize field over supplied grid
+        int granularity = 10; //per ora hardcode, poi versioe con gran "optimal" di defaul ( tipo grid_.rows()/Tp.get_n_worker()/10)
+        
+        // variabile locale per ogni thread (evita dover creare una x_curr_local per ogni iterazione)
+        thread_local vector_t x_curr_local_thread = x_curr; // eigen matrix ha operator = 
+        
+        //fix size di vector values_ cosi da modifica threadsafe con accesso tramite indice [i]
+        values_.resize(grid_.rows());
+        values_[0] = obj_curr;
+
+        //TODO: logica di stop anticipato da capire, se possibile aggiungere in metodo tp.paralle_for_reduce il passaggio di una ref a bool stop cosi da stoppare il job e non fare iterazioni. per ora lasciato dentro iterazioni ma cosi il job viene eseguito ma ogni iterazione legge stop e salta credo non sicuro perche non so come funziona stop ora 
+        //      per ora no stop anticipato, si finisce quando scorre tutta griglia
+        std::pair<double,int> min_argmin = Tp.parallel_for_sure_granularity_reduce_min(1,grid_.rows(),granularity, [&, this](int i) -> double {
+            grid_.row(0).assign_to(x_curr_local_thread);
+            double obj_of_iteration = objective(x_curr_local_thread);
+            //stop |= internals::exec_eval_hooks(*this, objective, callbacks_); //TODO verifica che sia solo lettura e quindi thread safe
+            values_[i]= obj_of_iteration;
+            return obj_of_iteration;
+            
+            //stop |= internals::exec_stop_if(*this, objective); //TODO verifica che sia solo lettura e quindi thread safe
+
+        });
+        optimum_ = grid.row(min_argmin.second);
+        value_ = min_argmin.first;
+        return optimum_;
+    }
+
+
+
     // observers
     const vector_t& optimum() const { return optimum_; }
     double value() const { return value_; }
