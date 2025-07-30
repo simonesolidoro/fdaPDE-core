@@ -796,7 +796,7 @@ namespace fdapde{
             //F bodyfunction deve restituire valore da confrontare
             template<typename F> 
             requires (!std::is_same_v<std::invoke_result_t<F,int>, void>)
-            auto parallel_for_sure_granularity_reduce_min(int start, int end,int n_it_per_job, F&& f)->std::invoke_result_t<F, int>{ //TODO cambiare n_it_per_job on granularity
+            auto parallel_for_sure_granularity_reduce_min(int start, int end,int n_it_per_job, F&& f)->std::pair<std::invoke_result_t<F, int>,int>{ //TODO cambiare n_it_per_job on granularity
                 using return_type = std::invoke_result_t<F, int>;
                 //range va da start a end-1--> end-start= dimensione range
                 int range = (end-start); 
@@ -804,26 +804,29 @@ namespace fdapde{
                 std::vector<std::future<void>> ret_fut; //no optinal<future> perché se nullopt non pushato quindi solo future
                 ret_fut.reserve(n+1); //per evitare riallocameto memoria, +1 per eventuale ultimo job fatto da ultime (end-start)%n_it_per_job iterazioni  
 
-                //max_curr di ogni worker
-                std::vector<return_type> min_workers(n_worker_ ,std::numeric_limits<return_type>::max());
+                //min_curr,index_in_loop_associato di ogni worker (bodyFunction F(k)=value, ci salviamo min(value) e k=argmin F(j) )
+                std::vector<std::pair<return_type,int>> min_workers(n_worker_ ,std::make_pair(std::numeric_limits<return_type>::max(),start-1)); //argmin inizializzato a start-1 e non -1 perche  se loop parte con start<0 non va bene -1
 
                 int j = 0;
                 while(j< n){
-                    std::optional<std::future<void>> opt_fut = this->send_task_round([n_it_per_job,j,start,fun = f, &min_workers,this]()mutable{ //j catturato come copia perchè modificato detro job (j+1) quidi se catturi come reference si sballa tutto !!!
+                    std::optional<std::future<void>> opt_fut = this->send_task_round([n_it_per_job,j,start,map_thread_worker_ =this->map_thread_worker_,fun = f, &min_workers]()mutable{ //j catturato come copia perchè modificato detro job (j+1) quidi se catturi come reference si sballa tutto !!!
                         int stop = (j+1)*n_it_per_job+start;
                         //minimi locali in job
                         return_type min_job_local = std::numeric_limits<return_type>::max();
                         return_type min_job_curr;
+                        int argmin_job_local;
                         for(int k=j*n_it_per_job+start; k<stop; k++ ){
                             min_job_curr = fun(k);
                             if(min_job_curr < min_job_local){
                                 min_job_local = min_job_curr;
+                                argmin_job_local = k;
                             }
                         }
                         //job ha confrontato valore di ogni iterazione e ha trovato il migliore ora se meglio di worker_min (minimo di worker che ha eseguito il job) lo aggiorna
                         int indx_worker_from_thread = map_thread_worker_[std::this_thread::get_id()];
-                        if(min_job_local < min_workers[indx_worker_from_thread]){
-                            min_workers[indx_worker_from_thread] = min_job_local;
+                        if(min_job_local < min_workers[indx_worker_from_thread].first){
+                            min_workers[indx_worker_from_thread].first = min_job_local;
+                            min_workers[indx_worker_from_thread].second = argmin_job_local;
                         }
                     });
                     if(opt_fut){
@@ -837,20 +840,23 @@ namespace fdapde{
                 if(range % n_it_per_job > 0){ //inviamo ultimo job con iterazioni rimanenti 
                     j=0;
                     while(j<1){
-                        std::optional<std::future<void>> opt_fut = this->send_task_round([n_it_per_job,n,start,end,j,fun = f,&min_workers, this]()mutable{ //j gia catturata in & credo non serve
+                        std::optional<std::future<void>> opt_fut = this->send_task_round([n_it_per_job,n,start,end,j,map_thread_worker_ =this->map_thread_worker_,fun = f,&min_workers]()mutable{ //j gia catturata in & credo non serve
                         //minimi locali in job
                         return_type min_job_local = std::numeric_limits<return_type>::max();
                         return_type min_job_curr;
+                        int argmin_job_local;
                         for(int k=n*n_it_per_job+start; k<end; k++ ){
                             min_job_curr = fun(k);
                             if(min_job_curr < min_job_local){
                                 min_job_local = min_job_curr;
+                                argmin_job_local = k;
                             }
                         }
                         //job ha confrontato valore di ogni iterazione e ha trovato il migliore ora se meglio di worker_min (minimo di worker che ha eseguito il job) lo aggiorna
                         int indx_worker_from_thread = map_thread_worker_[std::this_thread::get_id()];
-                        if(min_job_local < min_workers[indx_worker_from_thread]){
-                            min_workers[indx_worker_from_thread] = min_job_local;
+                        if(min_job_local < min_workers[indx_worker_from_thread].first){
+                            min_workers[indx_worker_from_thread].first = min_job_local;
+                            min_workers[indx_worker_from_thread].second = argmin_job_local;
                         }
                     });
                     if(opt_fut){
@@ -864,8 +870,23 @@ namespace fdapde{
                 for(std::future<void>& fut : ret_fut){
                     fut.get();
                 }
+
+                /*
+                // per debug vedere minimo di ogni worker 
+                for (size_t k = 0; k<n_worker_; k++){
+                    std::cout<<"worker indx: "<<k<<" minimo: "<<min_workers[k].first<<" argmin: "<<min_workers[k].second<<std::endl;
+                }
+                */
                 //minimo di minimi di ogni worker
-                return *std::min_element(min_workers.begin(), min_workers.end()); // oss no cotrollo che min_element non restituisca end() perchè vettore min_workers non vuoto per costruzione
+                return_type min = min_workers[0].first;
+                int indx_best_in_min_workers = 0;
+                for (size_t k = 1; k<n_worker_; k++){
+                    if(min_workers[k].first < min){
+                        indx_best_in_min_workers = k;
+                        min = min_workers[k].first;
+                    }
+                }
+                return min_workers[indx_best_in_min_workers];
             }
 
 
