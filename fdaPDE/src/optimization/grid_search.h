@@ -135,16 +135,17 @@ Aborted (core dumped), cambiando x_curr in vettore riga funziona  */
         values_.resize(grid_.rows());
         values_[0] = obj_curr;
 
-        //TODO: logica di stop anticipato da capire, se possibile aggiungere in metodo tp.paralle_for_reduce il passaggio di una ref a bool stop cosi da stoppare il job e non fare iterazioni. per ora lasciato dentro iterazioni ma cosi il job viene eseguito ma ogni iterazione legge stop e salta credo non sicuro perche non so come funziona stop ora 
+        //TODO: logica di stop anticipato da capire, se possibile aggiungere in metodo tp.paralle_for_reduce il passaggio di una ref a bool stop cosi da stoppare il job e non fare iterazioni. 
         //      per ora no stop anticipato, si finisce quando scorre tutta griglia
+        // problema: non si puo usare i metodi in callbacks.h perchè *this (e quidi x_curr_, ...) non sono modificati nel mentre, lo fossero bisognerebbe renderli threadsafe ma poi modifica sequenziale
         std::pair<double,int> min_argmin = Tp.parallel_for_sure_granularity_reduce_min(1,grid_.rows(),granularity, [&, this](int i) -> double {
             grid_.row(0).assign_to(x_curr_local_thread);
             double obj_of_iteration = objective(x_curr_local_thread);
-            //stop |= internals::exec_eval_hooks(*this, objective, callbacks_); //TODO verifica che sia solo lettura e quindi thread safe
+            //stop |= internals::exec_eval_hooks(*this, objective, callbacks_); 
             values_[i]= obj_of_iteration;
             return obj_of_iteration;
             
-            //stop |= internals::exec_stop_if(*this, objective); //TODO verifica che sia solo lettura e quindi thread safe
+            //stop |= internals::exec_stop_if(*this, objective); 
 
         });
         optimum_ = grid.row(min_argmin.second);
