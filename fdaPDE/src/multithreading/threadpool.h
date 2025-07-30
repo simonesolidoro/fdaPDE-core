@@ -95,6 +95,7 @@ namespace fdapde{
             std::condition_variable_any cv_threadpool_;
             bool active_ = false; //TODO oss: possibile evitare stop_ di singolo worker e usare active, ma stop_ in singolo worker rende worker indipendente da threadpool (puo terminare anche se threadpool non distrutta) e questo puo essere utile magari in seguito 
             mutable std::mt19937 gen;
+            std::unordered_map<std::thread::id, int> map_thread_worker_; //mappa che associa ad ogni thread l'indice del suo worker in workers, riempita in workerloop()
         public:
             friend class Worker; //poi togliere tutti get e sostituire con accesso diretto
             //n = size code, k = numero worker
@@ -144,6 +145,9 @@ namespace fdapde{
                 }
             }
 
+            //getter
+            int get_n_worker()const{return n_worker_;};
+
             //prova a eseguire job
             //OSS: non fatto bool try_do(i) con workers_[i]->pop dentro funzione perchè pop da front ma in steal pop da back 
             bool try_do(std::optional<job> j, int indx){ //j job da eseguire se non nullopt, i indx di worker da cui si prende il job.
@@ -164,6 +168,12 @@ namespace fdapde{
                 std::shared_lock<std::shared_mutex> lock_shared(m_threadpool_);
                 cv_threadpool_.wait(lock_shared,[this](){return active_;}); //cv.wait(loc) quando ritenta a verificare condition dopo notifica fa loc.lock() (chiama membro lock() di loc) e con loc=shared_lock<std::shared_mutex> il membro lock() è shared_lock(), prima con passaggio di loc= shared_mutex il membro lock() era lock() (cioe blocco in modalita scrittura) :()
                 lock_shared.unlock();
+
+                //inserimento threadsafe in map_thread_worker
+                std::unique_lock<std::shared_mutex> loc_map(m_threadpool_);
+                map_thread_worker_[std::this_thread::get_id()] = i;
+                loc_map.unlock(); 
+
                 bool done_own_job = true; //spostato fuori da while cosi non locale e creato una volta sola 
                 int indx_steal = -1; //indice da cui rubare
                 while(!workers_[i]->stop_){
@@ -782,8 +792,81 @@ namespace fdapde{
 
 
 
+            //reduce min con parallel for granularity, idea: ogni worker avrà suo min, ogni job ha suo min e worker che lo esegue lo confronta con proprio e se migliore lo sostituisce, cosi poi alla fine sequenziale solo il confronto tra n_worker value per trovare min
+            //F bodyfunction deve restituire valore da confrontare
+            template<typename F> 
+            requires (!std::is_same_v<std::invoke_result_t<F,int>, void>)
+            auto parallel_for_sure_granularity_reduce_min(int start, int end,int n_it_per_job, F&& f)->std::invoke_result_t<F, int>{ //TODO cambiare n_it_per_job on granularity
+                using return_type = std::invoke_result_t<F, int>;
+                //range va da start a end-1--> end-start= dimensione range
+                int range = (end-start); 
+                int n = range / n_it_per_job; //numero job con n_it_per_job iterazioni, se poi c'è resto le ultime iterazioni messe in ultimo job
+                std::vector<std::future<void>> ret_fut; //no optinal<future> perché se nullopt non pushato quindi solo future
+                ret_fut.reserve(n+1); //per evitare riallocameto memoria, +1 per eventuale ultimo job fatto da ultime (end-start)%n_it_per_job iterazioni  
 
+                //max_curr di ogni worker
+                std::vector<return_type> min_workers(n_worker_ ,std::numeric_limits<return_type>::max());
 
+                int j = 0;
+                while(j< n){
+                    std::optional<std::future<void>> opt_fut = this->send_task_round([n_it_per_job,j,start,fun = f, &min_workers,this]()mutable{ //j catturato come copia perchè modificato detro job (j+1) quidi se catturi come reference si sballa tutto !!!
+                        int stop = (j+1)*n_it_per_job+start;
+                        //minimi locali in job
+                        return_type min_job_local = std::numeric_limits<return_type>::max();
+                        return_type min_job_curr;
+                        for(int k=j*n_it_per_job+start; k<stop; k++ ){
+                            min_job_curr = fun(k);
+                            if(min_job_curr < min_job_local){
+                                min_job_local = min_job_curr;
+                            }
+                        }
+                        //job ha confrontato valore di ogni iterazione e ha trovato il migliore ora se meglio di worker_min (minimo di worker che ha eseguito il job) lo aggiorna
+                        int indx_worker_from_thread = map_thread_worker_[std::this_thread::get_id()];
+                        if(min_job_local < min_workers[indx_worker_from_thread]){
+                            min_workers[indx_worker_from_thread] = min_job_local;
+                        }
+                    });
+                    if(opt_fut){
+                        //se send andato a buon push di fut in ret_fut e incrementa j
+                        ret_fut.push_back(std::move(opt_fut.value())); //move perche future non copiabili
+                        j++;
+                    }
+                }
+                //?= possibile evitare questo if mettendo sopra while(j<n+1) e poi ultimo se range % n_it_per_job == 0 ultimo job mandato sara for(k=end, k<end){f()} cioè job "vuoto"
+                //risposta: no perchè poi bisognerebbe mettere controllo se (j+1)*n_it_per_job+start > end, perchè in ultimo job di avanzi k<end non k<(j+1)*n_it_per_job+start 
+                if(range % n_it_per_job > 0){ //inviamo ultimo job con iterazioni rimanenti 
+                    j=0;
+                    while(j<1){
+                        std::optional<std::future<void>> opt_fut = this->send_task_round([n_it_per_job,n,start,end,j,fun = f,&min_workers, this]()mutable{ //j gia catturata in & credo non serve
+                        //minimi locali in job
+                        return_type min_job_local = std::numeric_limits<return_type>::max();
+                        return_type min_job_curr;
+                        for(int k=n*n_it_per_job+start; k<end; k++ ){
+                            min_job_curr = fun(k);
+                            if(min_job_curr < min_job_local){
+                                min_job_local = min_job_curr;
+                            }
+                        }
+                        //job ha confrontato valore di ogni iterazione e ha trovato il migliore ora se meglio di worker_min (minimo di worker che ha eseguito il job) lo aggiorna
+                        int indx_worker_from_thread = map_thread_worker_[std::this_thread::get_id()];
+                        if(min_job_local < min_workers[indx_worker_from_thread]){
+                            min_workers[indx_worker_from_thread] = min_job_local;
+                        }
+                    });
+                    if(opt_fut){
+                        //se send andato a buon push di fut in ret_fut e incrementa j
+                        ret_fut.push_back(std::move(opt_fut.value())); //move perche future non copiabili
+                        j++;
+                    }
+                    }
+                }
+                //get dei future void per assicurarsi che tutti i job siano stati eseguiti dopo uso parallel_for in main
+                for(std::future<void>& fut : ret_fut){
+                    fut.get();
+                }
+                //minimo di minimi di ogni worker
+                return *std::min_element(min_workers.begin(), min_workers.end()); // oss no cotrollo che min_element non restituisca end() perchè vettore min_workers non vuoto per costruzione
+            }
 
 
 
