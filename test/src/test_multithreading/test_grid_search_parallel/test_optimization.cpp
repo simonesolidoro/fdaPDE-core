@@ -16,7 +16,8 @@
 
 #include<fdaPDE/multithreading.h>
 #include<fdaPDE/optimization.h>
-
+#include<fdaPDE/fields.h>
+#include<fdaPDE/utility.h>
 int main(){
 
 // funzione x^2 + y^2
@@ -26,14 +27,16 @@ fdapde::ScalarField<2, decltype([](const Eigen::Matrix<double, 2, 1>& p) { retur
 Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic> grid;
 grid.resize(100, 2);
 // grid da popolare con la griglia dei valori da esplorare
-for(int i = 0; i < 100; ++i) {
-        grid(i, 0) = i * 0.1;  // x
-        grid(i, 1) = i * 0.1;  // y
-    }
+for (int i = 0; i< 100; i++){
+    grid(i,0) = i+2.0;
+    grid(i,1) = i+3.0;
+}
+
 
 // definizione dell'ottimizzatore 
 fdapde::GridSearch<2> opt;
 opt.optimize(objective, grid); // <- da modificare questo step
+std::cout<<opt.value();
 
 return 0;
 }

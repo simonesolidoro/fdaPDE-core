@@ -23,7 +23,8 @@ namespace fdapde {
 
 template <int N> class GridSearch {
    private:
-    using vector_t = std::conditional_t<N == Dynamic, Eigen::Matrix<double, Dynamic, 1>, Eigen::Matrix<double, N, 1>>;
+    //using vector_t = std::conditional_t<N == Dynamic, Eigen::Matrix<double, Dynamic, 1>, Eigen::Matrix<double, N, 1>>;
+    using vector_t = Eigen::Matrix<double, 1, 2>;
     using grid_t = MdMap<const double, MdExtents<Dynamic, Dynamic>>;
 
     vector_t optimum_;
@@ -61,6 +62,12 @@ template <int N> class GridSearch {
             grid_ = grid_t(grid.data(), grid.rows(), size_);
         }
         bool stop = false;   // asserted true in case of forced stop
+        /*
+        std::cout<<grid_.size()<<"size grid_"<<std::endl;
+        std::cout<<grid_.rows()<<"rows grid_"<<std::endl;
+        std::cout<<grid_.cols()<<"cols grid_"<<std::endl;
+        // debug, grid_.row(0).assign_to(x_curr); dava errore Assertion `row >= 0 && row < rows() && col >= 0 && col < cols()' failed.
+Aborted (core dumped), cambiando x_curr in vettore riga funziona invece  */
         grid_.row(0).assign_to(x_curr);
         obj_curr = objective(x_curr);
         stop |= internals::exec_eval_hooks(*this, objective, callbacks_);
