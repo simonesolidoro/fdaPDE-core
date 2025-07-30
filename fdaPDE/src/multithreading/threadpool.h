@@ -890,6 +890,103 @@ namespace fdapde{
             }
 
 
+            //reduce max con parallel for granularity, idea: ogni worker avrà suo max, ogni job ha suo max e worker che lo esegue lo confronta con proprio e se migliore lo sostituisce, cosi poi alla fine sequenziale solo il confronto tra n_worker value per trovare min
+            //F bodyfunction deve restituire valore da confrontare
+            template<typename F> 
+            requires (!std::is_same_v<std::invoke_result_t<F,int>, void>)
+            auto parallel_for_sure_granularity_reduce_max(int start, int end,int n_it_per_job, F&& f)->std::pair<std::invoke_result_t<F, int>,int>{ //TODO cambiare n_it_per_job on granularity
+                using return_type = std::invoke_result_t<F, int>;
+                //range va da start a end-1--> end-start= dimensione range
+                int range = (end-start); 
+                int n = range / n_it_per_job; //numero job con n_it_per_job iterazioni, se poi c'è resto le ultime iterazioni messe in ultimo job
+                std::vector<std::future<void>> ret_fut; //no optinal<future> perché se nullopt non pushato quindi solo future
+                ret_fut.reserve(n+1); //per evitare riallocameto memoria, +1 per eventuale ultimo job fatto da ultime (end-start)%n_it_per_job iterazioni  
+
+                //min_curr,index_in_loop_associato di ogni worker (bodyFunction F(k)=value, ci salviamo min(value) e k=argmin F(j) )
+                std::vector<std::pair<return_type,int>> max_workers(n_worker_ ,std::make_pair(std::numeric_limits<return_type>::min(),start-1)); //argmin inizializzato a start-1 e non -1 perche  se loop parte con start<0 non va bene -1
+
+                int j = 0;
+                while(j< n){
+                    std::optional<std::future<void>> opt_fut = this->send_task_round([n_it_per_job,j,start,map_thread_worker_ =this->map_thread_worker_,fun = f, &max_workers]()mutable{ //j catturato come copia perchè modificato detro job (j+1) quidi se catturi come reference si sballa tutto !!!
+                        int stop = (j+1)*n_it_per_job+start;
+                        //minimi locali in job
+                        return_type max_job_local = std::numeric_limits<return_type>::min();
+                        return_type max_job_curr;
+                        int argmax_job_local;
+                        for(int k=j*n_it_per_job+start; k<stop; k++ ){
+                            max_job_curr = fun(k);
+                            if(max_job_curr > max_job_local){
+                                max_job_local = max_job_curr;
+                                argmax_job_local = k;
+                            }
+                        }
+                        //job ha confrontato valore di ogni iterazione e ha trovato il migliore ora se meglio di worker_min (minimo di worker che ha eseguito il job) lo aggiorna
+                        int indx_worker_from_thread = map_thread_worker_[std::this_thread::get_id()];
+                        if(max_job_local > max_workers[indx_worker_from_thread].first){
+                            max_workers[indx_worker_from_thread].first = max_job_local;
+                            max_workers[indx_worker_from_thread].second = argmax_job_local;
+                        }
+                    });
+                    if(opt_fut){
+                        //se send andato a buon push di fut in ret_fut e incrementa j
+                        ret_fut.push_back(std::move(opt_fut.value())); //move perche future non copiabili
+                        j++;
+                    }
+                }
+                //?= possibile evitare questo if mettendo sopra while(j<n+1) e poi ultimo se range % n_it_per_job == 0 ultimo job mandato sara for(k=end, k<end){f()} cioè job "vuoto"
+                //risposta: no perchè poi bisognerebbe mettere controllo se (j+1)*n_it_per_job+start > end, perchè in ultimo job di avanzi k<end non k<(j+1)*n_it_per_job+start 
+                if(range % n_it_per_job > 0){ //inviamo ultimo job con iterazioni rimanenti 
+                    j=0;
+                    while(j<1){
+                        std::optional<std::future<void>> opt_fut = this->send_task_round([n_it_per_job,n,start,end,j,map_thread_worker_ =this->map_thread_worker_,fun = f,&max_workers]()mutable{ //j gia catturata in & credo non serve
+                        //minimi locali in job
+                        return_type max_job_local = std::numeric_limits<return_type>::min();
+                        return_type max_job_curr;
+                        int argmax_job_local;
+                        for(int k=n*n_it_per_job+start; k<end; k++ ){
+                            max_job_curr = fun(k);
+                            if(max_job_curr > max_job_local){
+                                max_job_local = max_job_curr;
+                                argmax_job_local = k;
+                            }
+                        }
+                        //job ha confrontato valore di ogni iterazione e ha trovato il migliore ora se meglio di worker_min (minimo di worker che ha eseguito il job) lo aggiorna
+                        int indx_worker_from_thread = map_thread_worker_[std::this_thread::get_id()];
+                        if(max_job_local > max_workers[indx_worker_from_thread].first){
+                            max_workers[indx_worker_from_thread].first = max_job_local;
+                            max_workers[indx_worker_from_thread].second = argmax_job_local;
+                        }
+                    });
+                    if(opt_fut){
+                        //se send andato a buon push di fut in ret_fut e incrementa j
+                        ret_fut.push_back(std::move(opt_fut.value())); //move perche future non copiabili
+                        j++;
+                    }
+                    }
+                }
+                //get dei future void per assicurarsi che tutti i job siano stati eseguiti dopo uso parallel_for in main
+                for(std::future<void>& fut : ret_fut){
+                    fut.get();
+                }
+
+                /*
+                // per debug vedere max di ogni worker 
+                for (size_t k = 0; k<n_worker_; k++){
+                    std::cout<<"worker indx: "<<k<<" massimo: "<<min_workers[k].first<<" argmax: "<<min_workers[k].second<<std::endl;
+                }
+                */
+                //max di max di ogni worker
+                return_type max = max_workers[0].first;
+                int indx_best_in_max_workers = 0;
+                for (size_t k = 1; k<n_worker_; k++){
+                    if(max_workers[k].first > max){
+                        indx_best_in_max_workers = k;
+                        max = max_workers[k].first;
+                    }
+                }
+                return max_workers[indx_best_in_max_workers];
+            }
+
 
 
 
