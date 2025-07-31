@@ -435,50 +435,17 @@ namespace fdapde{
 
             //parallel_for 
             //TODO: capire se necessario perfect forwarding-> si evita copie di fuzioi se passate come lambda rvalue
-
-            //lasciato versione con body function con return perche magari parallelizzando salvare risultati in vettore non è thread-safe (bisognerebbe salvare in array cosi che non si riallochi la memoria, oppure usare thread safe vector)
-            //ma non chiaro in realta probabimnte non serve 
-
-            //F = body_function di loop, function con input indice i di loop. firma: return_type (int i)
-            template<typename F> 
-            requires (!std::is_same_v<std::invoke_result_t<F,int>, void>)
-            auto parallel_for_sure(int start, int end, F&& f)-> std::vector<std::invoke_result_t<F, int>>{
-                using return_type = std::invoke_result_t<F, int>;
-                std::vector<std::future<return_type>> ret_fut;
-                ret_fut.reserve(end-start);
-                std::vector<return_type> ret;
-                ret.reserve(end-start);
-                int j = start;
-                //while con controllo se job send, se non inviato elimina nullopt e non aggiorna j cosi da riprovare finche non lo invia
-                //molto costoso ma necessario per avere certezza send all job
-                //OSS: se push in syncro_queue fosse garantito (es push_or_wait di hold_wait version) non sarebbe necessario while(){if()} ma basterebbe for
-                //TODO: scrivere diverso parallel_for a seconda di tipo coda in threadpool 
-                while(j<end){
-                    std::optional<std::future<return_type>> opt_fut= this->send_task_round(f,j);
-                    if(opt_fut){
-                        ret_fut.push_back(std::move(opt_fut.value()));
-                        j++;
-                    }
-                }
-                // get di tutti i future cosi da assicurarsi che tutte le body_function di ciclo for siano eseguite prima di termine funzione parallel_for
-                // e copia di return di ogni body_function per return vector<return_type> di parallel_for
-                for (size_t k= 0; k<ret_fut.size(); k++){
-                    ret.push_back(ret_fut[k].get());
-                }
-                return ret;
-            }
-
-            
+           
             //OVERLOAD per distiguere tipi di parallel_for
-            // parallel_for(int,int,F&&) --> ogni iterazione diventa un job (n_block=range)
-            // parallel_for(function<int(int)> incr, int, int, F&&) --> scorre range con incr personalizzato non piu solo i++ 
-            // parallel_for(int,int,int n,F&&) --> divide range in n blocchi
-            // parallel_for(int,int,vector<int>,F&&) --> divide range in vect.size() blocchi ognuno con numero iterazioni = vect[j] 
+            // parallel_for(int,int,F&&) --> ogni iterazione diventa un job (granularity=1). lasciato perche piu veloce di parallel_for_graularyti(gra=1)
+            // parallel_for(function<int(int)> incr, int, int, F&&) --> scorre range con incr personalizzato non piu solo i++, graularuty = 1. TODO: versioe con incremento personalizzato e granularity in input da fare 
+            // parallel_for(int,int,F&&, granularity) --> parallel_for granularity(iterazioni per job) in input
+            // parallel_for(int,int,F&&,vector<int>) --> divide range in vect.size() blocchi ognuno con numero iterazioni = vect[j], granularity non costante ma valori di vettore. se magari si conosce gia lo sbilanciamento (non penso sia utile, ma ormai lho fatta) 
 
             //F = body_function di loop, function con input indice i di loop. firma: void (int i)
             template<typename F> 
             requires std::is_same_v<std::invoke_result_t<F,int>, void>
-            void parallel_for_sure(int start, int end, F&& f){
+            void parallel_for(int start, int end, F&& f){
                 using return_type = std::invoke_result_t<F, int>; // sarebbe void
                 std::vector<std::future<return_type>> ret_fut;
                 ret_fut.reserve(end-start);
@@ -500,7 +467,7 @@ namespace fdapde{
             // per iterare con incremento di i personalizzato (es i+2  incr = [](int i){return i+2;}), ogni iterazioni un job
             template<typename F> 
             requires std::is_same_v<std::invoke_result_t<F,int>, void>
-            void parallel_for_sure(int start, int end, F&& f, std::function<int(int)> incr){
+            void parallel_for(int start, int end, F&& f, std::function<int(int)> incr){
                 using return_type = std::invoke_result_t<F, int>; // sarebbe void
                 std::vector<std::future<return_type>> ret_fut;
                 ret_fut.reserve(end-start);
@@ -519,59 +486,13 @@ namespace fdapde{
                 return;
             } 
 
-            //versione che parallelizza dividendo il range iniziale in n blocchi: n = numero job inviati a threadpool.
-            //ridurre i send, job() non sono l' esecuzione della singola body function f(i) ma sono for(k in subset_of_({start-end})){f(k)}
-            template<typename F> 
-            requires std::is_same_v<std::invoke_result_t<F,int>, void>
-            void parallel_for_sure(int start, int end,int n, F&& f){
-                using return_type = std::invoke_result_t<F, int>;
-                //range va da start a end-1--> end-start= dimensione range
-                int range = (end-start);
-                int n_body_fun = range / n; //numero body_function in ogni blocco(job) 
-                std::vector<std::future<return_type>> ret_fut; //no optinal<future> perché se nullopt non pushato quindi solo future
-                ret_fut.reserve(n+1); //per evitare riallocameto memoria, +1 per eventuale ultimo job fatto da ultime (end-start)%n iterazioni  
-                int j = 0;
-                while(j< n){
-                    std::optional<std::future<return_type>> opt_fut = this->send_task_round([&,j,start,fun = f]()mutable{ //j catturato come copia perchè modificato detro job (j+1) quidi se catturi come reference si sballa tutto !!!
-                        int stop = (j+1)*n_body_fun+start; //per non doverla ricalcolare ad ogni iterazione
-                        for(int k=j*n_body_fun+start; k<stop; k++ ){
-                            fun(k);
-                        }
-                    });
-                    if(opt_fut){
-                        //se send andato a buon push di fut in ret_fut e incrementa j
-                        ret_fut.push_back(std::move(opt_fut.value())); //move perche future non copiabili
-                        j++;
-                    }
-                }
-                if(range % n > 0){ //inviamo ultimo job con iterazioni rimanenti 
-                    j=0;
-                    while(j<1){
-                        std::optional<std::future<return_type>> opt_fut = this->send_task_round([&,j,fun = f]()mutable{ //j gia catturata in & credo non serve
-                        for(int k=n*n_body_fun+start; k<end; k++ ){
-                            fun(k);
-                        }
-                    });
-                    if(opt_fut){
-                        //se send andato a buon push di fut in ret_fut e incrementa j
-                        ret_fut.push_back(std::move(opt_fut.value())); //move perche future non copiabili
-                        j++;
-                    }
-                    }
-                }
-                //get dei future void per assicurarsi che tutti i job siano stati eseguiti dopo uso parallel_for in main
-                for(std::future<void>& fut : ret_fut){
-                    fut.get();
-                }
-                return;
-        
-            } 
+           
 
             // non piu n = numero di blocchi in cui dividere range. perche es range 80, n=35 perche 7 thread---> ogni job ha due iteraoni(80/35) ma poi ultimo con quello che avanza è unico job da 10 iterazioni :(. (possibile sistemare questa parte modificando secondo while di parallel_for_sure_n)
-            // ma n = iterazioni in singolo blocco (job)
+            // ma n = iterazioni in singolo blocco (job) GRANULARUTY
             template<typename F> 
             requires std::is_same_v<std::invoke_result_t<F,int>, void>
-            void parallel_for_sure_granularity(int start, int end,int n_it_per_job, F&& f){ //TODO cambiare n_it_per_job on granularity
+            void parallel_for(int start, int end, F&& f,,int n_it_per_job){ //TODO cambiare n_it_per_job on granularity
                 using return_type = std::invoke_result_t<F, int>;
                 //range va da start a end-1--> end-start= dimensione range
                 int range = (end-start); 
@@ -622,7 +543,7 @@ namespace fdapde{
             //utile se si conosce gia sbilanciamento in iterazioni di for
             template<typename F> 
             requires std::is_same_v<std::invoke_result_t<F,int>, void>
-            void parallel_for_sure(int start, int end,std::vector<int>& vect, F&& f){
+            void parallel_for(int start, int end, F&& f,std::vector<int>& vect){
                 using return_type = std::invoke_result_t<F, int>;
                 //range va da start a end-1--> end-start= dimensione range
                 if(std::reduce(vect.cbegin(),vect.cend(),0) != (end-start)){
@@ -659,14 +580,14 @@ namespace fdapde{
 
             //PARALLEL_FOR_ITERATOR:
             //body_function f = void(iterator)
-            //1)void parallel_for_sure_iterator(It start, It end, F&& f)                     per tutti i container, granularity=1 default
-            //2)void parallel_for_sure_iterator(It start, It end,int n_it_per_job, F&& f)    per random acces container, granularity come input
-            //3)void parallel_for_sure_iterator(It start, It end,int n_it_per_job, F&& f)    per NON random acces container, granularity come input
+            //1)void parallel_for_iterator(It start, It end, F&& f)                     per tutti i container, granularity=1 default
+            //2)void parallel_for_iterator(It start, It end, F&& f,int n_it_per_job)    per random acces container, granularity come input
+            //3)void parallel_for_iterator(It start, It end, F&& f,int n_it_per_job)    per NON random acces container, granularity come input
 
             //1
             template<typename F,typename It> 
             requires std::is_same_v<std::invoke_result_t<F,It>, void>
-            void parallel_for_sure_iterator(It start, It end, F&& f){
+            void parallel_for_iterator(It start, It end, F&& f){
                 using return_type = void; 
                 std::vector<std::future<return_type>> ret_fut;
                 ret_fut.reserve(end-start);
@@ -688,7 +609,7 @@ namespace fdapde{
             //2 (it+n ok)
             template<typename F,typename It> 
             requires std::is_same_v<std::invoke_result_t<F,It>, void> && std::random_access_iterator<It>
-            void parallel_for_sure_iterator(It start, It end,int n_it_per_job, F&& f){
+            void parallel_for_iterator(It start, It end, F&& f,int n_it_per_job){
                 using return_type = void;
                 //range va da start a end-1--> end-start= dimensione range
                 int range = (end-start); 
@@ -736,7 +657,7 @@ namespace fdapde{
             //3 (it+n NONok)
             template<typename F,typename It> 
             requires std::is_same_v<std::invoke_result_t<F,It>, void> && (!std::random_access_iterator<It>)
-            void parallel_for_sure_iterator(It start, It end,int n_it_per_job, F&& f){
+            void parallel_for_iterator(It start, It end, F&& f,int n_it_per_job){
                 using return_type = void;
                 //scorriamo prima tutto range cosi da copiare iteratori ogni start+k*n_it_per_job in vector its
                 int range = 0;
@@ -791,12 +712,17 @@ namespace fdapde{
             } 
 
 
+            //PARALLEL_FOR_REDUCE
+            //pair<minimo,argmin> parallel_for_reduce_min/max(int start, int end, F&& f,int n_it_per_job)   F = return_type(int), ogni body function ritorna un valore e in parallelo ogni worker calcola il minimo tra tutti i job che ha eseguito. poi sequenziale calcolo minimo tra minimi di worker 
+            //TODO: parallel_reduce_sum/product
+            //TODO: reduce_min/max/sum/product (input container output min di conteiner) con la logica implementata in parallel_for_reduce che parallelizza il piu possibile il calcolo
+            //TODO: versione con iterator 
 
             //reduce min con parallel for granularity, idea: ogni worker avrà suo min, ogni job ha suo min e worker che lo esegue lo confronta con proprio e se migliore lo sostituisce, cosi poi alla fine sequenziale solo il confronto tra n_worker value per trovare min
             //F bodyfunction deve restituire valore da confrontare
             template<typename F> 
             requires (!std::is_same_v<std::invoke_result_t<F,int>, void>)
-            auto parallel_for_sure_granularity_reduce_min(int start, int end,int n_it_per_job, F&& f)->std::pair<std::invoke_result_t<F, int>,int>{ //TODO cambiare n_it_per_job on granularity
+            auto parallel_for_reduce_min(int start, int end, F&& f,int n_it_per_job)->std::pair<std::invoke_result_t<F, int>,int>{ //TODO cambiare n_it_per_job on granularity
                 using return_type = std::invoke_result_t<F, int>;
                 //range va da start a end-1--> end-start= dimensione range
                 int range = (end-start); 
@@ -894,7 +820,7 @@ namespace fdapde{
             //F bodyfunction deve restituire valore da confrontare
             template<typename F> 
             requires (!std::is_same_v<std::invoke_result_t<F,int>, void>)
-            auto parallel_for_sure_granularity_reduce_max(int start, int end,int n_it_per_job, F&& f)->std::pair<std::invoke_result_t<F, int>,int>{ //TODO cambiare n_it_per_job on granularity
+            auto parallel_for_reduce_max(int start, int end, F&& f,int n_it_per_job)->std::pair<std::invoke_result_t<F, int>,int>{ //TODO cambiare n_it_per_job on granularity
                 using return_type = std::invoke_result_t<F, int>;
                 //range va da start a end-1--> end-start= dimensione range
                 int range = (end-start); 
@@ -987,7 +913,7 @@ namespace fdapde{
                 return max_workers[indx_best_in_max_workers];
             }
 
-
+            //TODO: reduce sum e product
 
 
 
