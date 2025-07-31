@@ -23,7 +23,7 @@ int main(int argc,char** argv)
     std::atomic<int> a=0; //usata per verifica tutti jo vengano eseguiti (a deve arrivare ad n)
     auto start = std::chrono::high_resolution_clock::now();
 
-    tp.parallel_for_sure(0,n,[&](int i){
+    tp.parallel_for(0,n,[&](int i){
         a++;
         std::this_thread::sleep_for(std::chrono::microseconds(10));
     });
@@ -46,40 +46,25 @@ int main(int argc,char** argv)
     std::cout<<"for - incrementata a da 0 ad: "<<a.load()<<"  impiegato:"<<duration2.count()<< " microsecondi\n";
     
 
-// parallel_for_sure_n
-    a.store(0);
-    int n_block = std::stoi(argv[1]); //numero di blocchi in cui dividere range di for
-    auto start3 = std::chrono::high_resolution_clock::now();
-
-    tp.parallel_for_sure(12,15,n_block,[&](int i){a++;
-        std::cout<<i<<std::endl;
-    std::this_thread::sleep_for(std::chrono::microseconds(10));
-    });
-    
-    auto end3 = std::chrono::high_resolution_clock::now();
-    auto duration3 = std::chrono::duration_cast<std::chrono::microseconds>(end3 - start3);  
-    std::cout<<"par_for_sure_n - incrementata a da 0 ad: "<<a.load()<<"  impiegato:"<<duration3.count()<< " microsecondi con n_blocchi: "<<n_block<<std::endl;
-
-
 // parallel_for_sure_vect
     a.store(0);
     std::vector<int> vect = {2,2,1,1};
-    start3 = std::chrono::high_resolution_clock::now();
+    start2 = std::chrono::high_resolution_clock::now();
 
-    tp.parallel_for_sure(2,8,vect,[&](int i){a++;
+    tp.parallel_for(2,8,[&](int i){a++;
         std::cout<<i<<std::endl;
     std::this_thread::sleep_for(std::chrono::microseconds(10));
-    });
+    },vect);
     
-    end3 = std::chrono::high_resolution_clock::now();
-    duration3 = std::chrono::duration_cast<std::chrono::microseconds>(end3 - start3);  
-    std::cout<<"par_for_sure_vect - incrementata a da 0 ad: "<<a.load()<<"  impiegato:"<<duration3.count()<< " microsecondi\n";
+    end2 = std::chrono::high_resolution_clock::now();
+    duration2 = std::chrono::duration_cast<std::chrono::microseconds>(end2 - start2);  
+    std::cout<<"par_for_sure_vect - incrementata a da 0 ad: "<<a.load()<<"  impiegato:"<<duration2.count()<< " microsecondi\n";
 
 // parallel_for con incremento personalizzato 
     a.store(0);
     start = std::chrono::high_resolution_clock::now();
 
-    tp.parallel_for_sure(0,n,[&](int i){
+    tp.parallel_for(0,n,[&](int i){
         a++;
         std::this_thread::sleep_for(std::chrono::microseconds(10));
     },[](int i){return i+4;});

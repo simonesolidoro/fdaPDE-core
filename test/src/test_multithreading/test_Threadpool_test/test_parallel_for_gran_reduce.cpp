@@ -16,55 +16,55 @@
 
 #include<fdaPDE/multithreading.h>
 
-int main(int argc,char** argv)
-{   
+int main(int argc,char** argv){   
     int n = 10000;
     fdapde::Threadpool<fdapde::steal::random> tp(64,6);
     std::atomic<int> a=0;
-{
-// reduce min
-    a.store(0);
-    int end = 10000;
-    std::vector<int> v;
-    for (int  i =0 ; i<end; i++){
-        v.push_back(i+30);
-    } 
-    v[497]=1 ; //minimo 1 in 49
-    std::vector<int> vv = {6,3,4,5,2,7,8,9,4,5};
-    int n_it = std::stoi(argv[1]); //numero di blocchi in cui dividere range di for
-    auto start3 = std::chrono::high_resolution_clock::now();
-    std::pair<int,int> min;
-    min =tp.parallel_for_sure_granularity_reduce_min(0,end,n_it,[&](int i){a++;
-        return v[i]*35;
-    });
-    
-    auto end3 = std::chrono::high_resolution_clock::now();
-    auto duration3 = std::chrono::duration_cast<std::chrono::microseconds>(end3 - start3);  
-    std::cout<<"par_for_sure_n - incrementata a da 0 ad: "<<a.load()<<"  impiegato:"<<duration3.count()<< " microsecondi con n_it: "<<n_it<<std::endl;
-    std::cout<<"minimo trovatp: "<<min.first<<"argmin trovatp: "<<min.second<<std::endl;
-}
-{
-// reduce min
-    a.store(0);
-    int end = 10000;
-    std::vector<int> v;
-    for (int  i =0 ; i<end; i++){
-        v.push_back(i+30);
-    } 
-    v[50]=end+290 ; //
-    std::vector<int> vv = {6,3,4,5,2,7,8,9,4,5};
-    int n_it = std::stoi(argv[1]); //numero di blocchi in cui dividere range di for
-    auto start3 = std::chrono::high_resolution_clock::now();
-    std::pair<int,int> min;
-    min =tp.parallel_for_sure_granularity_reduce_max(0,end,n_it,[&](int i){a++;
-        return v[i]*2;
-    });
-    
-    auto end3 = std::chrono::high_resolution_clock::now();
-    auto duration3 = std::chrono::duration_cast<std::chrono::microseconds>(end3 - start3);  
-    std::cout<<"par_for_sure_n - incrementata a da 0 ad: "<<a.load()<<"  impiegato:"<<duration3.count()<< " microsecondi con n_it: "<<n_it<<std::endl;
-    std::cout<<"minimo trovatp: "<<min.first<<"argmin trovatp: "<<min.second<<std::endl;
+    {
+    // reduce min
+        a.store(0);
+        int end = 10000;
+        std::vector<int> v;
+        for (int  i =0 ; i<end; i++){
+            v.push_back(i+30);
+        } 
+        v[497]=1 ; //minimo 1 in 49
+        std::vector<int> vv = {6,3,4,5,2,7,8,9,4,5};
+        int n_it = std::stoi(argv[1]); //numero di blocchi in cui dividere range di for
+        auto start3 = std::chrono::high_resolution_clock::now();
+        std::pair<int,int> min;
+        min =tp.parallel_for_reduce_min(0,end,[&](int i){a++;
+            return v[i]*35;
+        },n_it);
+        
+        auto end3 = std::chrono::high_resolution_clock::now();
+        auto duration3 = std::chrono::duration_cast<std::chrono::microseconds>(end3 - start3);  
+        std::cout<<"par_for_sure_n - incrementata a da 0 ad: "<<a.load()<<"  impiegato:"<<duration3.count()<< " microsecondi con n_it: "<<n_it<<std::endl;
+        std::cout<<"minimo trovatp: "<<min.first<<"argmin trovatp: "<<min.second<<std::endl;
+    };
+    {
+    // reduce min
+        a.store(0);
+        int end = 10000;
+        std::vector<int> v;
+        for (int  i =0 ; i<end; i++){
+            v.push_back(i+30);
+        } 
+        v[50]=end+290 ; //
+        std::vector<int> vv = {6,3,4,5,2,7,8,9,4,5};
+        int n_it = std::stoi(argv[1]); //numero di blocchi in cui dividere range di for
+        auto start3 = std::chrono::high_resolution_clock::now();
+        std::pair<int,int> max;
+        max =tp.parallel_for_reduce_max(0,end,[&](int i){a++;
+            return v[i]*2;
+        },n_it);
+        
+        auto end3 = std::chrono::high_resolution_clock::now();
+        auto duration3 = std::chrono::duration_cast<std::chrono::microseconds>(end3 - start3);  
+        std::cout<<"par_for_sure_n - incrementata a da 0 ad: "<<a.load()<<"  impiegato:"<<duration3.count()<< " microsecondi con n_it: "<<n_it<<std::endl;
+        std::cout<<"massimo trovatp: "<<max.first<<"argmax trovatp: "<<max.second<<std::endl;
 
-}
-return 0;
-}
+    };
+    return 0;
+};
+

@@ -25,22 +25,22 @@ int main(int argc,char** argv)
     std::vector<int> V = {1,2,3,4,5,6,7,8,9,0};
     std::list<int> W= {1,2,3,4,5,6,7,8,9,0};
 
-    tp.parallel_for_sure_iterator(V.begin(),V.end(),[=](std::vector<int>::iterator iter){
+    tp.parallel_for_iterator(V.begin(),V.end(),[=](std::vector<int>::iterator iter){
         std::cout<<*iter<<" da thread: "<<std::this_thread::get_id()<<std::endl;
     });
 
     std::cout<<"-------------------------------------- granularity random acces ----------------------------------------"<<std::endl;
 
-    tp.parallel_for_sure_iterator(V.begin(),V.end(),gran,[=](std::vector<int>::iterator iter){
+    tp.parallel_for_iterator(V.begin(),V.end(),[=](std::vector<int>::iterator iter){
         std::cout<<*iter<<" da thread: "<<std::this_thread::get_id()<<std::endl;
-    });
+    },gran);
 
     
     std::cout<<"-------------------------------------- granularity non random acces (list,map,set)----------------------------------------"<<std::endl;
 
-    tp.parallel_for_sure_iterator(W.begin(),W.end(),gran,[=](std::list<int>::iterator iter){
+    tp.parallel_for_iterator(W.begin(),W.end(),[=](std::list<int>::iterator iter){
         std::cout<<*iter<<" da thread: "<<std::this_thread::get_id()<<std::endl;
-    });
+    },gran);
     /*
 
 //for non parallel
