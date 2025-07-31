@@ -438,8 +438,8 @@ namespace fdapde{
            
             //OVERLOAD per distiguere tipi di parallel_for
             // parallel_for(int,int,F&&) --> ogni iterazione diventa un job (granularity=1). lasciato perche piu veloce di parallel_for_graularyti(gra=1)
-            // parallel_for(function<int(int)> incr, int, int, F&&) --> scorre range con incr personalizzato non piu solo i++, graularuty = 1. TODO: versioe con incremento personalizzato e granularity in input da fare 
-            // parallel_for(int,int,F&&, granularity) --> parallel_for granularity(iterazioni per job) in input
+            // parallel_for(int,int,F&&,function<int(int)> incr) --> scorre range con incr personalizzato non piu solo i++, graularuty = 1. TODO: versioe con incremento personalizzato e granularity in input da fare 
+            // parallel_for(int,int,F&&,granularity) --> parallel_for granularity(iterazioni per job) in input. se granularuty = -1 usa defaul (range/n_worker/10). oss:usato design -1 perche valore di defaul sarebbe ambiguo con overload senza granularity in input
             // parallel_for(int,int,F&&,vector<int>) --> divide range in vect.size() blocchi ognuno con numero iterazioni = vect[j], granularity non costante ma valori di vettore. se magari si conosce gia lo sbilanciamento (non penso sia utile, ma ormai lho fatta) 
 
             //F = body_function di loop, function con input indice i di loop. firma: void (int i)
@@ -492,10 +492,26 @@ namespace fdapde{
             // ma n = iterazioni in singolo blocco (job) GRANULARUTY
             template<typename F> 
             requires std::is_same_v<std::invoke_result_t<F,int>, void>
-            void parallel_for(int start, int end, F&& f,,int n_it_per_job){ //TODO cambiare n_it_per_job on granularity
+            void parallel_for(int start, int end, F&& f,int n_it_per_job){ //TODO cambiare n_it_per_job on granularity
                 using return_type = std::invoke_result_t<F, int>;
                 //range va da start a end-1--> end-start= dimensione range
                 int range = (end-start); 
+                //se granularuty=-1 imposta valore di defaul
+                // valore ottimo total_job e quindi total_send dato da trade-off: 
+                    //-vogliamo alto perche: 
+                    // garantito lavoro finale dove solo un worker lavora e altri dormono che chiamiamo "tempoultimolavoro" < 1/total_job 
+                    //-vogliamo basso perchè:
+                    // minore overhead dato da tempo di fare i send
+                //scelto hardcode 100, perchè l'ideale sarebbe sapere tempo di for sequenziale ma non si puo allora visto da test
+                //dove tempo di for sequenziale era 0.025s e visto che numero di send (cioe total job) impattava negativamente quando diventava >100 (decrescita di speedup), ( se tempo di for sequenziale minore allora parallelizzare "non ha senso" )
+                //oss: ovviamente se tempo maggiore (es for seq = 1s) vorremmo piu send perche tempoultimolavoro < 1/total_send ma comunque 100 mi sembra acettabile          
+                if(n_it_per_job == -1) { 
+                    if(range < 100){ 
+                        n_it_per_job = 1; 
+                    }else{
+                        n_it_per_job = range/100; 
+                    }
+                }
                 int n = range / n_it_per_job; //numero job con n_it_per_job iterazioni, se poi c'è resto le ultime iterazioni messe in ultimo job
                 std::vector<std::future<return_type>> ret_fut; //no optinal<future> perché se nullopt non pushato quindi solo future
                 ret_fut.reserve(n+1); //per evitare riallocameto memoria, +1 per eventuale ultimo job fatto da ultime (end-start)%n_it_per_job iterazioni  
@@ -918,7 +934,7 @@ namespace fdapde{
 
 
 
-
+            //provvisorie da implemetare con logica parallela come parallel_for_min/max
             //parallel reduce con funzioni dipendenti da j
             template<typename F>
             auto parallel_reduce_sum(int start, int end, F&& f)-> std::invoke_result_t<F, int>{
@@ -950,312 +966,13 @@ namespace fdapde{
             }
             
         };
-
-        
-
-
-
-
-
-        
-        //threadpool senza steal job
-        class Threadpool_nosteal{
-        using job = std::function<void()>;
-        //usato per send_task_round 
-        struct indx_worker{
-            int indx_ = 0;
-            //TODO:lasciato con parametro perche usato in send_round parziale, se poi non serve mettere N
-            void next(int n_worker){
-                (indx_ == n_worker-1)? (indx_ = 0):(indx_++);
-            };
-        };
-        public:
-            class Worker{
-                private:
-                    int indx_; 
-                    fdapde::Synchro_queue<job,fdapde::relax_nowait> sync_queue_;
-                    std::thread t_;
-                    bool stop_ = false;
-                    std::mutex m_;
-                    std::condition_variable cv_; 
-                public:
-                    friend class Threadpool_nosteal; //TODO: classi friend quindi inutili tuti i getter ecc.. ripulire codice. lasciare magari wrap di alcune funzioni per chiarezza in uso in threadpool(es workers_[i]->notifica() al posto di workers_[i]->cv_.notify_one())
-                    // costruttore con numero elementi di coda
-                    //inizializza thread con funzione membro worker_loop di Threadpoool cosi che accessibili altre code senza passaggio di puntatore/reference a threadpool in worker che causava segmentation fault  
-                    Worker(int n, void (Threadpool_nosteal::*worker_loop)(int),Threadpool_nosteal* Th, int idx):indx_(idx),sync_queue_(n),t_(worker_loop,Th,idx){}; //oss non serve <N> compila e funziona lo stesso ma non so perche
-
-                    //  TUTTI WRAP "INUTILI" BASTA FATTO CHE SIA FRIEND PER ACCESSO DIRETTO, FORSE PIU LEGGIBILE USARLI PERO.
-                    //per poter bloccare il mutex di Worker m_ in threadpool
-                    std::unique_lock<std::mutex> get_loc(){
-                        std::unique_lock<std::mutex> loc(m_);
-                        return loc;          
-                    }
-                    //per poter notificare da threadpool
-                    void notifica(){
-                        cv_.notify_one();
-                    }
-
-                    void set_stop(bool s){
-                        stop_ = s;
-                    }
-                    void join_thread(){
-                        t_.join();
-                    }
-                
-                    //wrap di funzioni per pop e push. 
-                    bool push_front(job fun){
-                        return sync_queue_.push_front(fun);
-                    };
-                    bool push_back(job fun){
-                        //std::cout<<"incremento count in push_back, count: "<<count_job_<<std::endl;
-                        return sync_queue_.push_back(fun);
-                    };
-                    std::optional<job> pop_front(){
-                        return sync_queue_.pop_front();
-                        
-                    };
-                    std::optional<job> pop_back(){
-                        return sync_queue_.pop_back();
-                    };
-
-            };
-        private:
-            std::vector<std::shared_ptr<Worker>> workers_; //vettore di putatori perche non movable e copiable synchro_queue per via di mutex
-            std::deque<std::atomic<int>> count_job_; //deque perché atomic<int> non movable e quindi non si puo fare vector
-            int n_worker_ ;
-            int queue_size_; // forse non costante poi
-            indx_worker indxw_; 
-            std::shared_mutex m_threadpool_; 
-            std::condition_variable_any cv_threadpool_;
-            bool active_ = false; //TODO oss: possibile evitare stop_ di singolo worker e usare active, ma stop_ in singolo worker rende worker indipendente da threadpool (puo terminare anche se threadpool non distrutta) e questo puo essere utile magari in seguito 
-        public:
-            friend class Worker; //poi togliere tuti get e sostituire con accesso diretto
-            //n = size code, k = numero worker
-            Threadpool_nosteal(int n,int k):n_worker_(k),queue_size_(n){
-                //non serve aspettare che tuuti siano inizializzati perche tanto non c'è possibilita segmentation fault dovuta ad accesso a worker non inizializzati perche non c'è steal
-                workers_.reserve(k);
-                for(int i=0; i<k; i++){
-                    workers_.emplace_back(std::make_shared<Worker> (n,&Threadpool_nosteal::worker_loop,this,i));
-                    count_job_.emplace_back(0);
-                }
-            };
-            //default constructor
-            Threadpool_nosteal(){
-                n_worker_ = std::thread::hardware_concurrency(); //OSS: forse n_worker_ = std::thread::hardware_concurrency()-1; perche un thread è quello del main
-                queue_size_ = 256*n_worker_;
-                workers_.reserve(n_worker_);
-                for(int i=0; i<n_worker_; i++){
-                    workers_.emplace_back(std::make_shared<Worker> (queue_size_,&Threadpool_nosteal::worker_loop,this,i));
-                    count_job_.emplace_back(0);
-                }
-            }
-            //constructor default numero di worker ma specifica size code
-            Threadpool_nosteal(int n):queue_size_(n){
-                std::unique_lock<std::shared_mutex> loc(m_threadpool_);
-                n_worker_ = std::thread::hardware_concurrency(); //OSS: forse n_worker_ = std::thread::hardware_concurrency()-1; perche un thread è quello del main
-                workers_.reserve(n_worker_);
-                for(int i=0; i<n_worker_; i++){
-                    workers_.emplace_back(std::make_shared<Worker> (queue_size_,&Threadpool_nosteal::worker_loop,this,i));
-                    count_job_.emplace_back(0);
-                }
-                active_ = true;
-                loc.unlock();
-                cv_threadpool_.notify_all();
-            }
-            ~Threadpool_nosteal(){
-                //std::unique_lock<std::mutex> loc_t(m_threadpool_);
-                //active_= false;
-                //loc_t.unlock();
-                while(get_count_all_job()>0){
-                    std::this_thread::yield(); //per dare piu tempo a worker di finire e ridurre esecuzione cicli while a vuoto.
-                }; //aspetta finche count_job[] di tutti non a zero
-                //aspetta che code siano vuote una per volta, messo dopo count_job perche questo chiama empty e quindi locca interventi su coda e rallenta tutto, dopo while con get_count_all_job elemeti in coda dovreero essere zero o quasi quindi empty rallenta ma molto meno
-                for (int i =0; i<n_worker_; i++){
-                    while(!workers_[i]->sync_queue_.empty()){}
-                }
-
-                //TODO: ora deve aspettare che worker abbiano effettivamente finito i job dopo averli pop da coda
-                //RISPOSTA: i realta ora sicuro che che code sono vuote quindi eseguito pop su tutte, dopo viene messo stop_ = true ma dato che siamo dopo il pop prima di check su stop_ cronologicamente in workerloop avviene esecuzioe job :)
-
-                //facciamo terminare tutti worker_loop cosi che nessun worker acceda a worker distrutti o a threadpool (perche quando il resto del distruttore di threadpool verra chiamato, cioe finito il corpo di questo distruttore, tutti i worker avranno terminato worker_loop grazie a join())
-                for(int j = 0; j<n_worker_; j++){
-                    std::unique_lock<std::mutex> loc(workers_[j]->get_loc());
-                    workers_[j]->set_stop(true); //in mutex perche se ce cv che dorme notifica e aggiornamnto stop devono essere sincronizzati
-                    workers_[j]->notifica();
-                }
-                for(int j = 0; j<n_worker_; j++){
-                    workers_[j]->join_thread();
-                }
-            }
-
-
-            void worker_loop(int i){
-                std::shared_lock<std::shared_mutex> lock_shared(m_threadpool_);
-                cv_threadpool_.wait(lock_shared,[this](){return active_;}); //cv.wait(loc) quando ritenta a verificare condition dopo notifica fa loc.lock() (chiama membro lock() di loc) e con loc=shared_lock<std::shared_mutex> il membro lock() è shared_lock(), prima con passaggio di loc= shared_mutex il membro lock() era lock() (cioe blocco in modalita scrittura) :()
-                lock_shared.unlock();
-                while(!workers_[i]->stop_){
-                    std::optional<job> try_j = workers_[i]->pop_front();
-                    if(try_j){//esegue se non è nullopt
-                        count_job_[i].fetch_sub(1,std::memory_order_release);
-                        (try_j.value())();
-                    }
-                    else{
-                        std::unique_lock<std::mutex> loc(workers_[i]->m_);
-                        workers_[i]->cv_.wait(loc,[&](){return count_job_[i]>0  || workers_[i]->stop_ ;}); 
-                        loc.unlock();
-                        if(workers_[i]->stop_){return;}  
-                        try_j = workers_[i]->pop_front();
-                        if(try_j){//esegue se non è nullopt
-                            count_job_[i].fetch_sub(1,std::memory_order_release);
-                            (try_j.value())();
-                        }
-                    }
-                }
-            };
-            
-            int get_count_all_job(){
-                int somma = 0;
-                for (int i = 0; i<n_worker_; i++)
-                    somma += count_job_[i].load(std::memory_order_acquire);
-                return somma;
-            }
-            
-            int indx_most_free(){
-                int worker_indx = 0;
-                int min_elem= count_job_[0].load(std::memory_order_acquire); //numero elementi in primo worker 
-                for (int j=1; j<n_worker_; j++){
-                    int current_el = count_job_[j].load(std::memory_order_acquire);
-                    if(current_el < min_elem ){ 
-                        worker_indx = j;
-                        min_elem = current_el;
-                    }
-                }
-                return worker_indx;
-            };
-
-            int indx_most_busy(){
-                int worker_indx = 0;
-                int max_elem= count_job_[0].load(std::memory_order_acquire); //numero elementi in primo worker 
-                for (int j=1; j<n_worker_; j++){
-                    int current_el = count_job_[j].load(std::memory_order_acquire);
-                    if(current_el > max_elem ){
-                        worker_indx = j;
-                        max_elem = current_el;
-                    }
-                }
-                if(max_elem == 0){return -1;} //evita steal di nullopt 
-                return worker_indx;
-            }
-
-        
-          
-            template<typename F, typename... Args>
-            auto send_task(F&& f,Args... args) -> std::optional<std::future<decltype(f(args...))>>{
-                //wrap 
-                using return_type = decltype(f(args...));
-                std::shared_ptr<std::packaged_task<return_type()>> ptr_task = std::make_shared<std::packaged_task<return_type()>> ([fun = std::forward<F>(f), ...args_catturati = std::forward<Args>(args) ]()mutable{return fun(args_catturati...);});
-                std::future<return_type> fut = ptr_task->get_future();
-                job j = [ptr_task](){(*ptr_task)();};
-
-                int indx_worker = indx_most_free();
-                std::unique_lock<std::mutex> lock(workers_[indx_worker]->get_loc());
-                bool flag = workers_[indx_worker]->push_back(j);
-                workers_[indx_worker]->notifica();
-                if(flag){
-                    count_job_[indx_worker].fetch_add(1,std::memory_order_release); // TODO: in realta dato che dentro mutex basta relax ancora piu efficente, però non tutte le letture avvengono dentro mutex quindi non saprei
-                    lock.unlock();
-                    return fut;
-                }
-                lock.unlock();
-                return std::nullopt;  //OSSERVAZIONE:return optional e non future cosi possibilita di fallire per push e non è necessario fare while(). spostato check se push e quindi send a buon fine fuori da threadpool perche usando hold queue per esempio non puo fallire il push e quindi ci sarebbe un while inutile              
-            };
-
-            //send a giro usando struct indxw 
-            
-            template<typename F, typename... Args>
-            auto send_task_round(F&& f,Args... args) -> std::optional<std::future<decltype(f(args...))>>{
-                //wrap 
-                using return_type = decltype(f(args...));
-                std::shared_ptr<std::packaged_task<return_type()>> ptr_task = std::make_shared<std::packaged_task<return_type()>> ([fun = std::forward<F>(f), ...args_catturati = std::forward<Args>(args) ]()mutable{return fun(args_catturati...);});
-                std::future<return_type> fut = ptr_task->get_future();
-                job j = [ptr_task](){(*ptr_task)();};
-            
-                std::unique_lock<std::mutex> lock(workers_[indxw_.indx_]->get_loc());
-                bool flag = workers_[indxw_.indx_]->push_back(j);
-                workers_[indxw_.indx_]->notifica();
-                if(flag){
-                    count_job_[indxw_.indx_].fetch_add(1,std::memory_order_release);
-                    indxw_.next(n_worker_); //dentro mutex per sincronizzazione visione (se solo un thread manda non necessario)
-                    lock.unlock();
-                    return fut;
-                }
-                lock.unlock();
-                return std::nullopt;
-            };
-
-            
-            //PARALLEL_FOR
-            //2 tipi a seconda di body function in for loop:
-            //      1)body fuction dipendente da i.     body function passate come wrap di funzioni in lambda e quindi unico parametro i: [args](int i){retur fun(args,i);}
-            //      2)body fuction INdipendente da i.   niente wrap in lamda, passata direttamente funzione e argomenti 
-            //TODO: ci sara modo per poter passare direttamente la funzione senza wrap e separare args ed i cosi da avere un unica funzione parallel_for per tutti i casi
-            //TODO: capire se necessario perfect forwarding
-
-
-            //1
-            //OSS: diversificato caso return e void perche void non serve faccia vector da ritornare quindi piu veloce. NO! vedi oss sotto 
-            //OSS: meglio return vettore di future void cosi in main si puo garantire con get entro quando si vuole che un job void venga eseguito
-             
-            template<typename F>
-            auto parallel_for(int start, int end, F&& f)-> std::vector<std::optional<std::future<std::invoke_result_t<F, int>>>>{
-                using return_type = std::invoke_result_t<F, int>;
-                std::vector<std::optional<std::future<return_type>>> ret;
-                for(int j=start; j<end; j++){
-                    ret.push_back(this->send_task_round(std::forward<F>(f),j));
-                }
-                return ret;
-            }   
-
-            //2
-            template<typename F, typename... Args>
-            auto parallel_for(int n, F&& f, Args... args)-> std::vector<std::optional<std::future<decltype(f(args...))>>>{
-                using return_type = decltype(f(args...));
-                std::vector<std::optional<std::future<return_type>>> ret;
-                for(int j=0; j<n; j++){
-                    ret.push_back(this->send_task_round(std::forward<F>(f),std::forward<Args>(args)...));
-                }
-                return ret;
-            }
-
-            //OSS: probabilmente inutile perche basterebbe catturare container in lamda nel main e poi nella lambda usare accesso tramite i
-            //     ES: [& V](int i){ ...V[i]...}
-            //     OSS: unico pro di scorrere con iteartor direttamente è che evita di dover catturare ref a V.
-            //PARALLEL_FOR_ITERATOR
-            //parallel_for_iterator: for_loop scorre cotainer con iterator it e applica funzione con tutti elementi di container f(*it)
-            template<typename Iterator, typename F> 
-            //TODO: da aggiugere vicolo che iteartor abbia membro value_type
-            auto parallel_for_iterator(Iterator begin, Iterator end,F&& f)->std::vector<std::optional<std::future<std::invoke_result_t<F,typename Iterator::value_type>>>>{
-                using return_type = std::invoke_result_t<F,typename Iterator::value_type>;
-                std::vector<std::optional<std::future<return_type>>> ret;
-                for (auto it = begin; it!=end; it++){
-                    ret.push_back(this->send_task_round(std::forward<F>(f),*it));
-                }
-                return ret;
-            }
-
-            //parallel_for_iterator_ref: for_loop scorre cotainer con iterator it e applica funzione con tutti elementi di container tramite reference f(std::ref(*it))
-            template<typename Iterator, typename F> 
-            //TODO: da aggiugere vicolo che iteartor abbia membro value_type
-            auto parallel_for_iterator_ref(Iterator begin, Iterator end,F&& f)->std::vector<std::optional<std::future<std::invoke_result_t<F,typename Iterator::value_type&>>>>{
-                using return_type = std::invoke_result_t<F,typename Iterator::value_type&>;
-                std::vector<std::optional<std::future<return_type>>> ret;
-                for (auto it = begin; it!=end; it++){
-                    ret.push_back(this->send_task_round(std::forward<F>(f),std::ref(*it)));
-                }
-                return ret;
-            }
-        };
     }
 #endif
 
+        
 
+
+
+
+
+        

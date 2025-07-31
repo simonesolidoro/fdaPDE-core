@@ -24,21 +24,21 @@ int main(int argc,char** argv)
 
 // parallel_for_sure_granularity
     a.store(0);
-    int n_it = std::stoi(argv[1]); //numero di blocchi in cui dividere range di for
+    int n_it = std::stoi(argv[1]); //granularity
     auto start3 = std::chrono::high_resolution_clock::now();
 
-    tp.parallel_for_sure_granularity(0,1200,n_it,[&](int i){a++;
+    tp.parallel_for(0,1200,[&](int i){a++;
         //std::cout<<i<<" da thread: "<<std::this_thread::get_id()<<std::endl;
         //std::this_thread::sleep_for(std::chrono::milliseconds(100));
         for (int j =0; j<10000; j++){
             int b = 6;
             b++;
         }
-    });
+    },n_it);
     
     auto end3 = std::chrono::high_resolution_clock::now();
     auto duration3 = std::chrono::duration_cast<std::chrono::microseconds>(end3 - start3);  
-    std::cout<<"par_for_sure_n - incrementata a da 0 ad: "<<a.load()<<"  impiegato:"<<duration3.count()<< " microsecondi con n_it: "<<n_it<<std::endl;
+    std::cout<<"par_for- incrementata a da 0 ad: "<<a.load()<<"  impiegato:"<<duration3.count()<< " microsecondi con granularity: "<<n_it<<std::endl;
 
 
 }
