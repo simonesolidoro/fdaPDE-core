@@ -213,7 +213,7 @@ class fe_bilinear_form_assembly_loop :
 
     Eigen::SparseMatrix<double> assemble_parallel() const {
         //creazione threadpool
-        fdapde::Threadpool<fdapde::steal::random> Tp(1000,2); //TODO: size di synchroqueue in threadpool constructor passare tot celle
+        fdapde::Threadpool<fdapde::steal::random> Tp(1000,4); //TODO: size di synchroqueue in threadpool constructor passare tot celle
 
         Eigen::SparseMatrix<double> assembled_mat(test_dof_handler()->n_dofs(), trial_dof_handler()->n_dofs());
         
@@ -308,11 +308,11 @@ class fe_bilinear_form_assembly_loop :
             vect_begin_end_local.emplace_back(begin_local,end_local);
         }
         std::mutex m_ptrs;
-        Tp.parallel_for(0,n_job,[=,this,&ptr_triplet_lists,&m_ptrs](int i)mutable{
+        Tp.parallel_for(0,n_job,[=,this,&ptr_triplet_lists,&m_ptrs](int ii)mutable{
             std::vector<Eigen::Triplet<double>> triplet_list_local;
             int local_cell_id = 0;
            
-            for (iterator it = vect_begin_end_local[i].first; it != vect_begin_end_local[i].second; ++it) {
+            for (iterator it = vect_begin_end_local[ii].first; it != vect_begin_end_local[ii].second; ++it) {
                 // update fe_packet content based on form requests
                 fe_packet.measure = it->measure();
                 if constexpr (Form::XprBits & int(geo_assembler_flags::compute_geo_id)) { fe_packet.geo_id = it->id(); }
