@@ -23,8 +23,8 @@ namespace fdapde {
 
 template <int N> class GridSearch {
    private:
-    //using vector_t = std::conditional_t<N == Dynamic, Eigen::Matrix<double, Dynamic, 1>, Eigen::Matrix<double, N, 1>>;
-    using vector_t = Eigen::Matrix<double, 1, 2>;
+    using vector_t = std::conditional_t<N == Dynamic, Eigen::Matrix<double, Dynamic, 1>, Eigen::Matrix<double, N, 1>>;
+    //using vector_t = Eigen::Matrix<double, 1, 2>;
     using grid_t = MdMap<const double, MdExtents<Dynamic, Dynamic>>;
 
     vector_t optimum_;
@@ -62,12 +62,6 @@ template <int N> class GridSearch {
             grid_ = grid_t(grid.data(), grid.rows(), size_);
         }
         bool stop = false;   // asserted true in case of forced stop
-        /*
-        std::cout<<grid_.size()<<"size grid_"<<std::endl;
-        std::cout<<grid_.rows()<<"rows grid_"<<std::endl;
-        std::cout<<grid_.cols()<<"cols grid_"<<std::endl;
-        // debug, grid_.row(0).assign_to(x_curr); dava errore Assertion `row >= 0 && row < rows() && col >= 0 && col < cols()' failed.
-Aborted (core dumped), cambiando x_curr in vettore riga funziona  */
         grid_.row(0).assign_to(x_curr);
         obj_curr = objective(x_curr);
         stop |= internals::exec_eval_hooks(*this, objective, callbacks_);
@@ -138,7 +132,7 @@ Aborted (core dumped), cambiando x_curr in vettore riga funziona  */
         //TODO: logica di stop anticipato da capire, se possibile aggiungere in metodo tp.paralle_for_reduce il passaggio di una ref a bool stop cosi da stoppare il job e non fare iterazioni. 
         //      per ora no stop anticipato, si finisce quando scorre tutta griglia
         // problema: non si puo usare i metodi in callbacks.h perchè *this (e quidi x_curr_, ...) non sono modificati nel mentre, lo fossero bisognerebbe renderli threadsafe ma poi modifica sequenziale
-        std::pair<double,int> min_argmin = Tp.parallel_for_sure_granularity_reduce_min(1,grid_.rows(),granularity, [&, this](int i) -> double {
+        std::pair<double,int> min_argmin = Tp.parallel_for_reduce_min(1,grid_.rows(), [&, this](int i) -> double {
             grid_.row(0).assign_to(x_curr_local_thread);
             double obj_of_iteration = objective(x_curr_local_thread);
             //stop |= internals::exec_eval_hooks(*this, objective, callbacks_); 
@@ -147,7 +141,7 @@ Aborted (core dumped), cambiando x_curr in vettore riga funziona  */
             
             //stop |= internals::exec_stop_if(*this, objective); 
 
-        });
+        },granularity);
         optimum_ = grid.row(min_argmin.second);
         value_ = min_argmin.first;
         return optimum_;
