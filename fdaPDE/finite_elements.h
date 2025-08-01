@@ -24,6 +24,7 @@
 #include "utility.h"
 #include "fields.h"
 #include "geometry.h"
+#include "multithreading.h"
 
 namespace fdapde{
 

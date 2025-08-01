@@ -147,6 +147,7 @@ namespace fdapde{
 
             //getter
             int get_n_worker()const{return n_worker_;};
+            int get_index_worker_from_thread()const{return map_thread_worker_.at(std::this_thread::get_id());}
 
             //prova a eseguire job
             //OSS: non fatto bool try_do(i) con workers_[i]->pop dentro funzione perchè pop da front ma in steal pop da back 
@@ -606,13 +607,13 @@ namespace fdapde{
             void parallel_for_iterator(It start, It end, F&& f){
                 using return_type = void; 
                 std::vector<std::future<return_type>> ret_fut;
-                ret_fut.reserve(end-start);
+                //ret_fut.reserve(end-start); //commentata perchè iterator non hanno operator -
                 It j = start;
-                while(j<end){
+                while(j != end){
                     std::optional<std::future<return_type>> opt_fut= this->send_task_round(f,j); //j è iterator 
                     if(opt_fut){
                         ret_fut.push_back(std::move(opt_fut.value()));
-                        j++;
+                        ++j;
                     }
                 }
                 
