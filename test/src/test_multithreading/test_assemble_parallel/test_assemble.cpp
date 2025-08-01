@@ -2,8 +2,11 @@
 #include<fdaPDE/multithreading.h>
 using namespace fdapde;
 
-int main() {
-    Triangulation<2, 2> unit_square = Triangulation<2, 2>::UnitSquare(300);
+int main(int argc, char** argv){
+    int nodi = std::stoi(argv[1]);
+    int workers = std::stoi(argv[2]);
+    fdapde::Threadpool<fdapde::steal::random> Tp(1000,workers);
+    Triangulation<2, 2> unit_square = Triangulation<2, 2>::UnitSquare(nodi);
 
     FeSpace Vh(unit_square, P1<1>);
     TrialFunction u(Vh);
@@ -13,11 +16,11 @@ int main() {
 //cronometro assemblaggio parallelo
     auto start2 = std::chrono::high_resolution_clock::now();
 
-    Eigen::SparseMatrix<double> A2 = a.assemble_parallel();//(execution::par); // use parallel version
+    Eigen::SparseMatrix<double> A2 = a.assemble_parallel(Tp);//(execution::par); // use parallel version
 
     auto end2 = std::chrono::high_resolution_clock::now();
     auto duration2 = std::chrono::duration_cast<std::chrono::microseconds>(end2 - start2);  
-    std::cout<<"tempo (microsec) assemblaggio parallelo: "<<duration2.count()<<std::endl; 
+    std::cout<<"tempo (microsec) assemblaggio parallelo, thread: "<<workers<<" ,"<<duration2.count()<<std::endl; 
 
 
 //cronometro assemblaggio non parallello
