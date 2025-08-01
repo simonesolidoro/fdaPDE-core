@@ -3,7 +3,7 @@
 using namespace fdapde;
 
 int main() {
-    Triangulation<2, 2> unit_square = Triangulation<2, 2>::UnitSquare(100);
+    Triangulation<2, 2> unit_square = Triangulation<2, 2>::UnitSquare(3);
 
     FeSpace Vh(unit_square, P1<1>);
     TrialFunction u(Vh);
@@ -13,7 +13,7 @@ int main() {
 //cronometro assemblaggio parallelo
     auto start2 = std::chrono::high_resolution_clock::now();
 
-    Eigen::SparseMatrix<double> A2 = a.assemble();//(execution::par); // use parallel version
+    Eigen::SparseMatrix<double> A2 = a.assemble_parallel();//(execution::par); // use parallel version
 
     auto end2 = std::chrono::high_resolution_clock::now();
     auto duration2 = std::chrono::duration_cast<std::chrono::microseconds>(end2 - start2);  
@@ -32,6 +32,8 @@ int main() {
     
     std::cout<<A.size()<<std::endl;
     std::cout<<A2.size()<<std::endl;
+    std::cout<<A<<std::endl;
+    std::cout<<A2<<std::endl;
     return 0;
 }
 
