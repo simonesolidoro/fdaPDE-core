@@ -3,7 +3,7 @@
 using namespace fdapde;
 
 int main() {
-    Triangulation<2, 2> unit_square = Triangulation<2, 2>::UnitSquare(3);
+    Triangulation<2, 2> unit_square = Triangulation<2, 2>::UnitSquare(30);
 
     FeSpace Vh(unit_square, P1<1>);
     TrialFunction u(Vh);
@@ -32,8 +32,13 @@ int main() {
     
     std::cout<<A.size()<<std::endl;
     std::cout<<A2.size()<<std::endl;
-    std::cout<<A<<std::endl;
-    std::cout<<A2<<std::endl;
+    //std::cout<<A<<std::endl;
+    //std::cout<<A2<<std::endl;
+    if (A.isApprox(A2, 0.0)) {
+        std::cout << "Le matrici sono identiche." << std::endl;
+    }else{
+        std::cout << "Le matrici sono diverse." << std::endl;
+    }
     return 0;
 }
 

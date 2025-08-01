@@ -282,30 +282,37 @@ class fe_bilinear_form_assembly_loop :
         int it_per_job = count/num_worker;
         int it_per_job_resto = count % num_worker;
 
-        
+        std::vector<std::pair<iterator,iterator>> vect_begin_end_local;
+        iterator begin_local = begin;
+        iterator end_local = begin;
+        if(it_per_job_resto ==0){
+            for(int k = 0; k<n_job; k++){
+                begin_local = end_local;
+                for(int j = 0; j<it_per_job; j++){
+                    ++end_local;
+                }
+                vect_begin_end_local.emplace_back(begin_local,end_local);
+            }
+        }else{
+            for(int k = 0; k<n_job-1; k++){
+                begin_local = end_local;
+                for(int j = 0; j<it_per_job; j++){
+                    ++end_local;
+                }
+                vect_begin_end_local.emplace_back(begin_local,end_local);
+            }
+            begin_local = end_local;
+            for(int j = 0; j<it_per_job_resto; j++){
+                    ++end_local;
+                }
+            vect_begin_end_local.emplace_back(begin_local,end_local);
+        }
         std::mutex m_ptrs;
-        Tp.parallel_for(0,n_job,[&](int i)mutable{
+        Tp.parallel_for(0,n_job,[=,this,&ptr_triplet_lists,&m_ptrs](int i)mutable{
             std::vector<Eigen::Triplet<double>> triplet_list_local;
             int local_cell_id = 0;
-            iterator begin_local = begin;
-            iterator end_local = begin;
-            for(int j = 0; j<i*it_per_job; j++){
-                ++begin_local;
-                ++end_local;
-                ++local_cell_id;
-            }
-
-            int it_local;
-            if(count % num_worker != 0){
-                it_local = (i < n_job-1)? it_per_job : it_per_job_resto;
-            }else{
-                it_local =it_per_job;
-            }
-            for(int j = 0; j<it_local; j++){
-                ++end_local;
-            }
-            
-            for (iterator it = begin_local; it != end_local; ++it) {
+           
+            for (iterator it = vect_begin_end_local[i].first; it != vect_begin_end_local[i].second; ++it) {
                 // update fe_packet content based on form requests
                 fe_packet.measure = it->measure();
                 if constexpr (Form::XprBits & int(geo_assembler_flags::compute_geo_id)) { fe_packet.geo_id = it->id(); }
