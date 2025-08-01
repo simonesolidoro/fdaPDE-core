@@ -211,10 +211,8 @@ class fe_bilinear_form_assembly_loop :
         return;
     }
 
-    Eigen::SparseMatrix<double> assemble_parallel() const {
-        //creazione threadpool
-        fdapde::Threadpool<fdapde::steal::random> Tp(1000,4); //TODO: size di synchroqueue in threadpool constructor passare tot celle
-
+    Eigen::SparseMatrix<double> assemble_parallel(fdapde::Threadpool<fdapde::steal::random>& Tp) const {
+        
         Eigen::SparseMatrix<double> assembled_mat(test_dof_handler()->n_dofs(), trial_dof_handler()->n_dofs());
         
         std::vector<std::shared_ptr<std::vector<Eigen::Triplet<double>>>> ptrs_triplet_lists;
@@ -273,10 +271,8 @@ class fe_bilinear_form_assembly_loop :
         //paralleliziamo con parallel_for con defaul granularity = 1 e creiamo da qui i mini_for (cosi ogni iterazione è minifor e quindi anche se un job= 1 iterazione ogni ojob sara un minifor)
         int num_worker = Tp.get_n_worker();
         // calcolo celle totali per poter dividere il range (ovviamente non è il modo giusto di farlo ma è per usare subito parallel e poi guardare meglio libreria)
-        int count = 0;
-        for (iterator it = begin; it != end; ++it) {
-            count++;
-        }
+        int nodi = std::sqrt(test_dof_handler()->n_dofs()); //sicuro c'è num celle da qualche parte
+        int count = (nodi-1)*(nodi-1)*2;
         //dividiamo il range in num_worker (num_worker+1 se c'è resto) e poi vettore per ietrazioni in ogni job
         int n_job = (count % num_worker == 0)? (num_worker):(num_worker +1);
         int it_per_job = count/num_worker;
@@ -308,6 +304,8 @@ class fe_bilinear_form_assembly_loop :
             vect_begin_end_local.emplace_back(begin_local,end_local);
         }
         std::mutex m_ptrs;
+
+        std::cout<<"dati: "<<test_dof_handler()->n_dofs()<<" "<<count<<std::endl;
         Tp.parallel_for(0,n_job,[=,this,&ptr_triplet_lists,&m_ptrs](int ii)mutable{
             std::vector<Eigen::Triplet<double>> triplet_list_local;
             int local_cell_id = 0;
