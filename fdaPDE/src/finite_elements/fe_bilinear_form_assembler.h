@@ -216,7 +216,7 @@ class fe_bilinear_form_assembly_loop :
         Eigen::SparseMatrix<double> assembled_mat(test_dof_handler()->n_dofs(), trial_dof_handler()->n_dofs());
         
         std::vector<std::shared_ptr<std::vector<Eigen::Triplet<double>>>> ptrs_triplet_lists;
-	assemble_parallel2(ptrs_triplet_lists,Tp);
+	assemble_parallel3(ptrs_triplet_lists,Tp);
         //unico vettore con tutte le triple
         std::vector<Eigen::Triplet<double>> triplet_lists;
         for (auto& ptr : ptrs_triplet_lists) {
@@ -308,6 +308,7 @@ class fe_bilinear_form_assembly_loop :
 
         Tp.parallel_for(0,n_job,[=,this,&ptr_triplet_lists,&m_ptrs](int ii)mutable{
             std::vector<Eigen::Triplet<double>> triplet_list_local;
+            int local_cell_id = ii*it_per_job;
            
             for (iterator it = vect_begin_end_local[ii].first; it != vect_begin_end_local[ii].second; ++it) {
                 // update fe_packet content based on form requests
@@ -366,7 +367,7 @@ class fe_bilinear_form_assembly_loop :
                                     fe_packet.test_hess.assign_inplace_from(test_hess.template slice<0, 1>(j, q_k));
                             }
                             if constexpr (Form::XprBits & int(fe_assembler_flags::compute_physical_quad_nodes)) {
-                                fe_packet.quad_node_id = ii * n_quadrature_nodes + q_k; // ii = local_cell_id
+                                fe_packet.quad_node_id = local_cell_id * n_quadrature_nodes + q_k; 
                             }
                             value += Quadrature::weights[q_k] * form_(fe_packet);
                         }
@@ -375,6 +376,7 @@ class fe_bilinear_form_assembly_loop :
                         value * fe_packet.measure);
                     }
                 }
+                local_cell_id ++;
             }
             //ogni thread modifica vettore di puntatori uso mutex per thread safe
             std::unique_lock<std::mutex> loc(m_ptrs);
@@ -387,8 +389,8 @@ class fe_bilinear_form_assembly_loop :
     }
 
 
-    // usato parallel_for_iterator con default granularity = 1 (perchè iterator non hanno metodo - e quindi non si possoo usare altri parallel_for_iterator)
-    void assemble_parallel(std::vector<std::vector<Eigen::Triplet<double>>>& triplet_list,fdapde::Threadpool<fdapde::steal::random> &Tp) const { //vettore di vettori di triplet list
+
+    void assemble_parallel3(std::vector<std::shared_ptr<std::vector<Eigen::Triplet<double>>>>& ptr_triplet_lists,fdapde::Threadpool<fdapde::steal::random> &Tp) const {
         using iterator = typename Base::fe_traits::dof_iterator;
         iterator begin(Base::begin_.index(), test_dof_handler(), Base::begin_.marker());
         iterator end  (Base::end_.index(),   test_dof_handler(), Base::end_.marker()  );
@@ -420,90 +422,119 @@ class fe_bilinear_form_assembly_loop :
             std::fill_n(fe_packet.trial_hess.data(), fe_packet.trial_hess.size(), 0.0);
         }
 
-        /*
-        // calcolo celle totali per poter dividere il range (ovviamente non è il modo giusto di farlo ma è per usare subito parallel e poi guardare meglio libreria)
-        int count = 0;
-        for (iterator it = begin; it != end; ++it) {
-            count++;
+        //paralleliziamo con parallel_for con defaul granularity = 1 e creiamo da qui i mini_for (cosi ogni iterazione è minifor e quindi anche se un job= 1 iterazione ogni ojob sara un minifor)
+        int num_worker = Tp.get_n_worker();
+        
+        int nodi = std::sqrt(test_dof_handler()->n_dofs()); //sicuro c'è num celle da qualche parte
+        //umero celle
+        int count = (nodi-1)*(nodi-1)*2;
+        int kk = 3;
+        //dividiamo il range in k*num_worker (k*num_worker+1 se c'è resto) e poi vettore per ietrazioni in ogni job
+        int n_job = (count % (kk*num_worker) == 0)? (kk*num_worker):(kk*num_worker +1);
+        int it_per_job = count/(kk*num_worker);
+        int it_per_job_resto = count % (kk*num_worker);
+
+        std::vector<iterator> vect_begin_iterator;
+        vect_begin_iterator.reserve(n_job);
+        iterator begin_local = begin;
+        vect_begin_iterator.emplace_back(begin_local);
+        for(int k = 1; k<n_job; k++){
+            for(int j = 0; j<it_per_job; j++){
+                ++begin_local;
+            }
+            vect_begin_iterator.emplace_back(begin_local);
         }
-        std::cout<<"celle tot: "<<count<<std::endl;
-        */
-        Tp.parallel_for_iterator(begin,end,[&](iterator it){
-            //calcolo di id local in base a it
-            //ovviamente fa schifo super inefficente ma è solo momentaneo
-            int local_cell_id = 0;
-            for (iterator iter = begin; iter != it; ++iter){
-                local_cell_id ++;
-            }
-            // update fe_packet content based on form requests
-            fe_packet.measure = it->measure();
-            if constexpr (Form::XprBits & int(geo_assembler_flags::compute_geo_id)) { fe_packet.geo_id = it->id(); }
-            if constexpr (Form::XprBits & int(geo_assembler_flags::compute_face_normal)) {
-                fdapde_static_assert(Options_ == FaceMajor, BILINEAR_FORM_REQUIRES_A_FACE_MAJOR_ASSEMBLY_LOOP);
-                fe_packet.normal.assign_inplace_from(it->normal());
-            }
-            if constexpr (Form::XprBits & int(fe_assembler_flags::compute_shape_grad)) {
-                Base::eval_shape_grads_on_cell(it, test_shape_grads_, test_grads);
-                if constexpr (is_petrov_galerkin) Base::eval_shape_grads_on_cell(it, trial_shape_grads_, trial_grads);
-            }
-            if constexpr (Form::XprBits & int(fe_assembler_flags::compute_shape_div)) {
-                fdapde_static_assert(
-                  n_test_components != 1 || n_trial_components != 1,
-                  DIVERGENCE_OPERATOR_IS_DEFINED_ONLY_FOR_VECTOR_ELEMENTS);
-                if constexpr (n_test_components != 1) Base::eval_shape_div_on_cell(it, test_shape_grads_, test_divs);
-                if constexpr (is_petrov_galerkin && n_trial_components != 1)
-                    Base::eval_shape_div_on_cell(it, trial_shape_grads_, trial_divs);
-            }
-            if constexpr (Form::XprBits & int(fe_assembler_flags::compute_shape_hess)) {
-                if constexpr (!test_hess_is_zero) Base::eval_shape_hess_on_cell(it, test_shape_hess_, test_hess);
-                if constexpr (is_petrov_galerkin && !trial_hess_is_zero)
-                    Base::eval_shape_hess_on_cell(it, trial_shape_hess_, trial_hess);
-            }
+        
+        //std::cout<<"it_per_job: "<<it_per_job<<" tot_cell: "<<count<<" it_resto: "<<it_per_job_resto<<std::endl;
+        
+        std::mutex m_ptrs;
 
-            // perform integration of weak form for (i, j)-th basis pair
-            test_active_dofs = it->dofs();
-            if constexpr (is_petrov_galerkin) { trial_active_dofs = trial_dof_handler()->active_dofs(it->id()); }
-            for (int i = 0; i < n_trial_basis; ++i) {      // trial function loop
-                for (int j = 0; j < n_test_basis; ++j) {   // test function loop
-                    double value = 0;
-                    for (int q_k = 0; q_k < n_quadrature_nodes; ++q_k) {
-                        if constexpr (Form::XprBits & int(fe_assembler_flags::compute_shape_values)) {
-                            fe_packet.trial_value.assign_inplace_from(trial_shape_values_.template slice<0, 1>(i, q_k));
-                            fe_packet.test_value .assign_inplace_from(test_shape_values_ .template slice<0, 1>(j, q_k));
-                        }
-                        if constexpr (Form::XprBits & int(fe_assembler_flags::compute_shape_grad)) {
-                            fe_packet.trial_grad.assign_inplace_from(is_galerkin ?
-                                test_grads.template slice<0, 1>(i, q_k) : trial_grads.template slice<0, 1>(i, q_k));
-                            fe_packet.test_grad .assign_inplace_from(test_grads.template slice<0, 1>(j, q_k));
-                        }
-                        if constexpr (Form::XprBits & int(fe_assembler_flags::compute_shape_div)) {
-                            if constexpr (n_trial_components != 1) {
-                                fe_packet.trial_div =
-                                  (is_galerkin && n_test_components != 1) ? test_divs(i, q_k) : trial_divs(i, q_k);
-                            }
-                            if constexpr (n_test_components != 1) fe_packet.test_div = test_divs(j, q_k);
-                        }
-                        if constexpr (Form::XprBits & int(fe_assembler_flags::compute_shape_hess)) {
-                            if constexpr (!trial_hess_is_zero)
-                                fe_packet.trial_hess.assign_inplace_from(is_galerkin ?
-				    test_hess.template slice<0, 1>(i, q_k) : trial_hess.template slice<0, 1>(i, q_k));
-                            if constexpr (!test_hess_is_zero)
-                                fe_packet.test_hess.assign_inplace_from(test_hess.template slice<0, 1>(j, q_k));
-                        }
-                        if constexpr (Form::XprBits & int(fe_assembler_flags::compute_physical_quad_nodes)) {
-                            fe_packet.quad_node_id = local_cell_id * n_quadrature_nodes + q_k;
-                        }
-                        value += Quadrature::weights[q_k] * form_(fe_packet);
-                    }
-                    triplet_list[Tp.get_index_worker_from_thread()].emplace_back(  //ogni worker scrive solo su suo vettore di triple
-                      test_active_dofs[j], is_galerkin ? test_active_dofs[i] : trial_active_dofs[i],
-                      value * fe_packet.measure);
+        Tp.parallel_for(0,n_job,[=,this,&ptr_triplet_lists,&m_ptrs](int ii)mutable{
+            std::vector<Eigen::Triplet<double>> triplet_list_local;
+            int local_cell_id = ii*it_per_job;
+            //se ultimo job iterazioni sono resto 
+            int iterazioni_per_job = (it_per_job_resto != 0 && ii == n_job-1)? it_per_job_resto : it_per_job; 
+            // iterator e cellid di job
+            iterator it = vect_begin_iterator[ii];
+            for (int l = 0; l<iterazioni_per_job; l++) {
+                // update fe_packet content based on form requests
+                fe_packet.measure = it->measure();
+                if constexpr (Form::XprBits & int(geo_assembler_flags::compute_geo_id)) { fe_packet.geo_id = it->id(); }
+                if constexpr (Form::XprBits & int(geo_assembler_flags::compute_face_normal)) {
+                    fdapde_static_assert(Options_ == FaceMajor, BILINEAR_FORM_REQUIRES_A_FACE_MAJOR_ASSEMBLY_LOOP);
+                    fe_packet.normal.assign_inplace_from(it->normal());
                 }
-            }
+                if constexpr (Form::XprBits & int(fe_assembler_flags::compute_shape_grad)) {
+                    Base::eval_shape_grads_on_cell(it, test_shape_grads_, test_grads);
+                    if constexpr (is_petrov_galerkin) Base::eval_shape_grads_on_cell(it, trial_shape_grads_, trial_grads);
+                }
+                if constexpr (Form::XprBits & int(fe_assembler_flags::compute_shape_div)) {
+                    fdapde_static_assert(
+                    n_test_components != 1 || n_trial_components != 1,
+                    DIVERGENCE_OPERATOR_IS_DEFINED_ONLY_FOR_VECTOR_ELEMENTS);
+                    if constexpr (n_test_components != 1) Base::eval_shape_div_on_cell(it, test_shape_grads_, test_divs);
+                    if constexpr (is_petrov_galerkin && n_trial_components != 1)
+                        Base::eval_shape_div_on_cell(it, trial_shape_grads_, trial_divs);
+                }
+                if constexpr (Form::XprBits & int(fe_assembler_flags::compute_shape_hess)) {
+                    if constexpr (!test_hess_is_zero) Base::eval_shape_hess_on_cell(it, test_shape_hess_, test_hess);
+                    if constexpr (is_petrov_galerkin && !trial_hess_is_zero)
+                        Base::eval_shape_hess_on_cell(it, trial_shape_hess_, trial_hess);
+                }
 
+                // perform integration of weak form for (i, j)-th basis pair
+                test_active_dofs = it->dofs();
+                if constexpr (is_petrov_galerkin) { trial_active_dofs = trial_dof_handler()->active_dofs(it->id()); }
+                for (int i = 0; i < n_trial_basis; ++i) {      // trial function loop
+                    for (int j = 0; j < n_test_basis; ++j) {   // test function loop
+                        double value = 0;
+                        for (int q_k = 0; q_k < n_quadrature_nodes; ++q_k) {
+                            if constexpr (Form::XprBits & int(fe_assembler_flags::compute_shape_values)) {
+                                fe_packet.trial_value.assign_inplace_from(trial_shape_values_.template slice<0, 1>(i, q_k));
+                                fe_packet.test_value .assign_inplace_from(test_shape_values_ .template slice<0, 1>(j, q_k));
+                            }
+                            if constexpr (Form::XprBits & int(fe_assembler_flags::compute_shape_grad)) {
+                                fe_packet.trial_grad.assign_inplace_from(is_galerkin ?
+                                    test_grads.template slice<0, 1>(i, q_k) : trial_grads.template slice<0, 1>(i, q_k));
+                                fe_packet.test_grad .assign_inplace_from(test_grads.template slice<0, 1>(j, q_k));
+                            }
+                            if constexpr (Form::XprBits & int(fe_assembler_flags::compute_shape_div)) {
+                                if constexpr (n_trial_components != 1) {
+                                    fe_packet.trial_div =
+                                    (is_galerkin && n_test_components != 1) ? test_divs(i, q_k) : trial_divs(i, q_k);
+                                }
+                                if constexpr (n_test_components != 1) fe_packet.test_div = test_divs(j, q_k);
+                            }
+                            if constexpr (Form::XprBits & int(fe_assembler_flags::compute_shape_hess)) {
+                                if constexpr (!trial_hess_is_zero)
+                                    fe_packet.trial_hess.assign_inplace_from(is_galerkin ?
+                        test_hess.template slice<0, 1>(i, q_k) : trial_hess.template slice<0, 1>(i, q_k));
+                                if constexpr (!test_hess_is_zero)
+                                    fe_packet.test_hess.assign_inplace_from(test_hess.template slice<0, 1>(j, q_k));
+                            }
+                            if constexpr (Form::XprBits & int(fe_assembler_flags::compute_physical_quad_nodes)) {
+                                fe_packet.quad_node_id = local_cell_id * n_quadrature_nodes + q_k; 
+                            }
+                            value += Quadrature::weights[q_k] * form_(fe_packet);
+                        }
+                        triplet_list_local.emplace_back(
+                        test_active_dofs[j], is_galerkin ? test_active_dofs[i] : trial_active_dofs[i],
+                        value * fe_packet.measure);
+                    }
+                }
+                local_cell_id ++;
+                ++it;
+            }
+            //ogni thread modifica vettore di puntatori uso mutex per thread safe
+            std::unique_lock<std::mutex> loc(m_ptrs);
+            ptr_triplet_lists.emplace_back(std::make_shared<std::vector<Eigen::Triplet<double>>> (triplet_list_local));
+            loc.unlock();
+            
         });
+        
         return;
     }
+    
     constexpr int n_dofs() const { return trial_dof_handler()->n_dofs(); }
     constexpr int rows() const { return test_dof_handler()->n_dofs(); }
     constexpr int cols() const { return trial_dof_handler()->n_dofs(); }
