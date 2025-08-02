@@ -23,8 +23,8 @@ namespace fdapde {
 
 template <int N> class GridSearch {
    private:
-    using vector_t = std::conditional_t<N == Dynamic, Eigen::Matrix<double, Dynamic, 1>, Eigen::Matrix<double, N, 1>>;
-    //using vector_t = Eigen::Matrix<double, 1, 2>;
+    //using vector_t = std::conditional_t<N == Dynamic, Eigen::Matrix<double, Dynamic, 1>, Eigen::Matrix<double, N, 1>>;
+    using vector_t = Eigen::Matrix<double, 1, 2>;
     using grid_t = MdMap<const double, MdExtents<Dynamic, Dynamic>>;
 
     vector_t optimum_;
@@ -110,31 +110,24 @@ template <int N> class GridSearch {
             grid_ = grid_t(grid.data(), grid.rows(), size_);
         }
         bool stop = false;   // asserted true in case of forced stop
-        std::cout<<"usata overload exe"<<std::endl; //per debug
-        grid_.row(0).assign_to(x_curr);
-        obj_curr = objective(x_curr);
-        stop |= internals::exec_eval_hooks(*this, objective, callbacks_);
+        
         values_.clear();       
-        if (obj_curr < value_) {
-            value_ = obj_curr;
-            optimum_ = x_curr;
-        }
         // optimize field over supplied grid
-        int granularity = 10; //per ora hardcode, poi versioe con gran "optimal" di defaul ( tipo grid_.rows()/Tp.get_n_worker()/10)
+        int granularity = 1; //per ora hardcode, poi versioe con gran "optimal" di defaul ( tipo grid_.rows()/Tp.get_n_worker()/10)
         
         // variabile locale per ogni thread (evita dover creare una x_curr_local per ogni iterazione)
-        thread_local vector_t x_curr_local_thread = x_curr; // eigen matrix ha operator = 
+        thread_local vector_t x_curr_local_thread;
         
         //fix size di vector values_ cosi da modifica threadsafe con accesso tramite indice [i]
         values_.resize(grid_.rows());
-        values_[0] = obj_curr;
 
         //TODO: logica di stop anticipato da capire, se possibile aggiungere in metodo tp.paralle_for_reduce il passaggio di una ref a bool stop cosi da stoppare il job e non fare iterazioni. 
         //      per ora no stop anticipato, si finisce quando scorre tutta griglia
         // problema: non si puo usare i metodi in callbacks.h perchè *this (e quidi x_curr_, ...) non sono modificati nel mentre, lo fossero bisognerebbe renderli threadsafe ma poi modifica sequenziale
-        std::pair<double,int> min_argmin = Tp.parallel_for_reduce_min(1,grid_.rows(), [&, this](int i) -> double {
-            grid_.row(0).assign_to(x_curr_local_thread);
+        std::pair<double,int> min_argmin = Tp.parallel_for_reduce_min(0,grid_.rows(), [&, this](int i) -> double {
+            grid_.row(i).assign_to(x_curr_local_thread);
             double obj_of_iteration = objective(x_curr_local_thread);
+            std::cout<<std::this_thread::get_id()<<" da x_curr: "<<x_curr_local_thread<<" da value: "<<obj_of_iteration<<std::endl;
             //stop |= internals::exec_eval_hooks(*this, objective, callbacks_); 
             values_[i]= obj_of_iteration;
             return obj_of_iteration;
@@ -142,7 +135,7 @@ template <int N> class GridSearch {
             //stop |= internals::exec_stop_if(*this, objective); 
 
         },granularity);
-        optimum_ = grid.row(min_argmin.second);
+        grid_.row(min_argmin.second).assign_to(optimum_);
         value_ = min_argmin.first;
         return optimum_;
     }

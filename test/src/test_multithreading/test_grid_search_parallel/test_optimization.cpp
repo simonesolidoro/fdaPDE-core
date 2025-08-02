@@ -27,15 +27,17 @@ int n_points = 10;
 grid.resize(n_points, 2);
 // grid da popolare con la griglia dei valori da esplorare
 for (int i = 0; i< n_points; i++){
-    grid(i,0) = 2;
-    grid(i,1) = 3;
+    grid(i,0) = i;
+    grid(i,1) = i+1;
 }
 
 // definizione dell'ottimizzatore 
 fdapde::GridSearch<2> opt;
-opt.optimize(objective, grid); //,execution::par); // <- da modificare questo step
-std::cout<<opt.value()<<std::endl;
+opt.optimize(objective, grid,execution::par); // <- da modificare questo step
+
+std::cout<<"ottimo trovato: "<<opt.value()<<std::endl;
 std::vector<double> values = opt.values();
+std::cout<<"valori esplorati: "<<std::endl;
 for (int i=0; i<values.size(); i++){
     std::cout<<values[i]<<" , ";
 }
