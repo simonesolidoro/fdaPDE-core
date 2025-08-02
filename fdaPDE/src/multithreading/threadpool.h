@@ -1010,7 +1010,71 @@ namespace fdapde{
                     sum += sum_workers[k];
                 }
                 return sum;
-            }            
+            }  
+            
+            template<typename F> 
+            requires (!std::is_same_v<std::invoke_result_t<F,int>, void>)
+            auto parallel_for_reduce_dot(int start, int end, F&& f,int n_it_per_job)->std::invoke_result_t<F, int>{ //TODO cambiare n_it_per_job on granularity
+                using return_type = std::invoke_result_t<F, int>;
+                //range va da start a end-1--> end-start= dimensione range
+                int range = (end-start); 
+                //scelta valore ottimo di granularity se passato -1 (vedi parallel_for per sppiegazioe scelta 100)
+                if(n_it_per_job == -1) { 
+                    if(range < 100){ 
+                        n_it_per_job = 1; 
+                    }else{
+                        n_it_per_job = range/100; 
+                    }
+                }
+                int n = range / n_it_per_job; //numero job con n_it_per_job iterazioni, se poi c'è resto le ultime iterazioni messe in ultimo job
+                std::vector<std::future<void>> ret_fut; //no optinal<future> perché se nullopt non pushato quindi solo future
+                ret_fut.reserve(n+1); //per evitare riallocameto memoria, +1 per eventuale ultimo job fatto da ultime (end-start)%n_it_per_job iterazioni  
+
+                //min_curr,index_in_loop_associato di ogni worker (bodyFunction F(k)=value, ci salviamo min(value) e k=argmin F(j) )
+                std::vector<return_type> dot_workers(n_worker_,1.0); //inizializzato ad elemento nullo per moltiplicazione
+
+                int j = 0;
+                while(j< n){
+                    std::optional<std::future<void>> opt_fut = this->send_task_round([n_it_per_job,j,start,map_thread_worker_ =this->map_thread_worker_,fun = f, &dot_workers]()mutable{ 
+                        int stop = (j+1)*n_it_per_job+start;
+                        int indx_worker_from_thread = map_thread_worker_[std::this_thread::get_id()]; // per chiarezza non serve fare variabile
+                        for(int k=j*n_it_per_job+start; k<stop; k++ ){
+                            dot_workers[indx_worker_from_thread] *= fun(k);
+                        }
+                    });
+                    if(opt_fut){
+                        //se send andato a buon push di fut in ret_fut e incrementa j
+                        ret_fut.push_back(std::move(opt_fut.value())); //move perche future non copiabili
+                        j++;
+                    }
+                }
+                if(range % n_it_per_job > 0){ //inviamo ultimo job con iterazioni rimanenti 
+                    j=0;
+                    while(j<1){
+                        std::optional<std::future<void>> opt_fut = this->send_task_round([n_it_per_job,n,start,end,j,map_thread_worker_ =this->map_thread_worker_,fun = f,&dot_workers]()mutable{ //j gia catturata in & credo non serve
+                        int indx_worker_from_thread = map_thread_worker_[std::this_thread::get_id()]; // per chiarezza non serve fare variabile
+                        for(int k=n*n_it_per_job+start; k<end; k++ ){
+                            dot_workers[indx_worker_from_thread] *= fun(k);
+                        }
+                    });
+                    if(opt_fut){
+                        //se send andato a buon push di fut in ret_fut e incrementa j
+                        ret_fut.push_back(std::move(opt_fut.value())); //move perche future non copiabili
+                        j++;
+                    }
+                    }
+                }
+                //get dei future void per assicurarsi che tutti i job siano stati eseguiti dopo uso parallel_for in main
+                for(std::future<void>& fut : ret_fut){
+                    fut.get();
+                }
+                //reduce sum finale tra sum dei workers
+                return_type dot = dot_workers[0];
+                for (size_t k = 1; k<n_worker_; k++){
+                    dot *= dot_workers[k];
+                }
+                return dot;
+            }  
         };
     }
 #endif
