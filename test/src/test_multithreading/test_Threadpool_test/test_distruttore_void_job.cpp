@@ -31,7 +31,7 @@ int main(){
     int n_jobs = 64;
     
     for (int i = 0; i<n_jobs; i++){
-        futs.push_back(std::move(tp.send(printnum)));
+        futs.push_back(std::move(tp.send_task_round(printnum)));
     }
 
 
