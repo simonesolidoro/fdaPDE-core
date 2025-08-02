@@ -117,7 +117,7 @@ int main(){
         jobs.push_back(printnum);
     }
     for (int i = 0; i<n_jobs; i++){
-        futs.push_back(std::move(tp.send(jobs[i])));
+        futs.push_back(std::move(tp.send_task_round(jobs[i])));
     }
     for (int i = 0; i<n_jobs; i++){
         futs[i].value().get();

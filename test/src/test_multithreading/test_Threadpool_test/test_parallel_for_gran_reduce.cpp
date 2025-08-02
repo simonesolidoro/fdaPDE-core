@@ -65,6 +65,28 @@ int main(int argc,char** argv){
         std::cout<<"massimo trovatp: "<<max.first<<"argmax trovatp: "<<max.second<<std::endl;
 
     };
+        {
+    // reduce sum
+        a.store(0);
+        int end = 10000;
+        std::vector<int> v;
+        for (int  i =0 ; i<end; i++){
+            v.push_back(1);
+        } 
+        
+        int n_it = std::stoi(argv[1]); //numero di blocchi in cui dividere range di for
+        auto start3 = std::chrono::high_resolution_clock::now();
+        int sum=0;
+        sum =tp.parallel_for_reduce_sum(0,end,[&](int i){a++;
+            return v[i]*2;
+        },n_it);
+        
+        auto end3 = std::chrono::high_resolution_clock::now();
+        auto duration3 = std::chrono::duration_cast<std::chrono::microseconds>(end3 - start3);  
+        std::cout<<"par_for_sure_n - incrementata a da 0 ad: "<<a.load()<<"  impiegato:"<<duration3.count()<< " microsecondi con n_it: "<<n_it<<std::endl;
+        std::cout<<"somma trovata (20000): "<<sum<<std::endl;
+
+    };
     return 0;
 };
 

@@ -680,7 +680,7 @@ namespace fdapde{
                 int range = 0;
                 std::vector<It> its; 
                 its.push_back(start);
-                for (It it= start; it!= end; it++){
+                for (It it= start; it!= end; ++it){
                     range ++;
                     if(range % n_it_per_job == 0){
                         its.push_back(it);
@@ -691,10 +691,10 @@ namespace fdapde{
                 ret_fut.reserve(n+1); //per evitare riallocameto memoria, +1 per eventuale ultimo job fatto da ultime (end-start)%n_it_per_job iterazioni  
                 int j = 0;
                 while(j< n){
-                    std::optional<std::future<return_type>> opt_fut = this->send_task_round([n_it_per_job,fun = f](auto it)mutable{ //j catturato come copia perchè modificato detro job (j+1) quidi se catturi come reference si sballa tutto !!!
+                    std::optional<std::future<return_type>> opt_fut = this->send_task_round([n_it_per_job,fun = f](auto it)mutable{ 
                         for(int k=0; k<n_it_per_job; k++ ){
                             fun(it);
-                            it++;
+                            ++it;
                         }
                     },its[j]);
                     if(opt_fut){
@@ -710,7 +710,7 @@ namespace fdapde{
                         std::optional<std::future<return_type>> opt_fut = this->send_task_round([resto,fun = f](auto it)mutable{ //j gia catturata in & credo non serve
                         for(int k=0; k<resto; k++ ){
                             fun(it);
-                            it++;
+                            ++it;
                         }
                     }, its[n] );
                     if(opt_fut){
@@ -947,41 +947,70 @@ namespace fdapde{
             }
 
             //TODO: reduce sum e product
-
-
-
-
-            //provvisorie da implemetare con logica parallela come parallel_for_min/max
-            //parallel reduce con funzioni dipendenti da j
-            template<typename F>
-            auto parallel_reduce_sum(int start, int end, F&& f)-> std::invoke_result_t<F, int>{
+            // ogni body function f(int i) ridà un return_type, metodo restituisce somma di tutti con logica di reduce come in parallel_for_reduce_min
+            template<typename F> 
+            requires (!std::is_same_v<std::invoke_result_t<F,int>, void>)
+            auto parallel_for_reduce_sum(int start, int end, F&& f,int n_it_per_job)->std::invoke_result_t<F, int>{ //TODO cambiare n_it_per_job on granularity
                 using return_type = std::invoke_result_t<F, int>;
-
-                std::vector<return_type> results = parallel_for_sure(start,end,std::forward<F>(f));
-
-                return_type ret = results[0];
-                                
-                for(auto it = results.begin()+1; it < results.end(); it++){
-                    ret += *it;
+                //range va da start a end-1--> end-start= dimensione range
+                int range = (end-start); 
+                //scelta valore ottimo di granularity se passato -1 (vedi parallel_for per sppiegazioe scelta 100)
+                if(n_it_per_job == -1) { 
+                    if(range < 100){ 
+                        n_it_per_job = 1; 
+                    }else{
+                        n_it_per_job = range/100; 
+                    }
                 }
-                return ret;
-            }
-            //parallel reduce con funzioni dipendenti da j
-            template<typename F>
-            auto parallel_reduce_dot(int start, int end, F&& f)-> std::invoke_result_t<F, int>{
-                using return_type = std::invoke_result_t<F, int>;
+                int n = range / n_it_per_job; //numero job con n_it_per_job iterazioni, se poi c'è resto le ultime iterazioni messe in ultimo job
+                std::vector<std::future<void>> ret_fut; //no optinal<future> perché se nullopt non pushato quindi solo future
+                ret_fut.reserve(n+1); //per evitare riallocameto memoria, +1 per eventuale ultimo job fatto da ultime (end-start)%n_it_per_job iterazioni  
 
-                std::vector<return_type> results = parallel_for_sure(start,end,std::forward<F>(f));
+                //min_curr,index_in_loop_associato di ogni worker (bodyFunction F(k)=value, ci salviamo min(value) e k=argmin F(j) )
+                std::vector<return_type> sum_workers(n_worker_);
 
-                return_type ret = results[0];
-
-                for(auto it = results.begin()+1; it < results.end(); it++){
-                        ret *= *it;
+                int j = 0;
+                while(j< n){
+                    std::optional<std::future<void>> opt_fut = this->send_task_round([n_it_per_job,j,start,map_thread_worker_ =this->map_thread_worker_,fun = f, &sum_workers]()mutable{ 
+                        int stop = (j+1)*n_it_per_job+start;
+                        int indx_worker_from_thread = map_thread_worker_[std::this_thread::get_id()]; // per chiarezza non serve fare variabile
+                        for(int k=j*n_it_per_job+start; k<stop; k++ ){
+                            sum_workers[indx_worker_from_thread] += fun(k);
+                        }
+                    });
+                    if(opt_fut){
+                        //se send andato a buon push di fut in ret_fut e incrementa j
+                        ret_fut.push_back(std::move(opt_fut.value())); //move perche future non copiabili
+                        j++;
+                    }
                 }
-                      
-                return ret;
-            }
-            
+                if(range % n_it_per_job > 0){ //inviamo ultimo job con iterazioni rimanenti 
+                    j=0;
+                    while(j<1){
+                        std::optional<std::future<void>> opt_fut = this->send_task_round([n_it_per_job,n,start,end,j,map_thread_worker_ =this->map_thread_worker_,fun = f,&sum_workers]()mutable{ //j gia catturata in & credo non serve
+                        int indx_worker_from_thread = map_thread_worker_[std::this_thread::get_id()]; // per chiarezza non serve fare variabile
+                        for(int k=n*n_it_per_job+start; k<end; k++ ){
+                            sum_workers[indx_worker_from_thread] += fun(k);
+                        }
+                    });
+                    if(opt_fut){
+                        //se send andato a buon push di fut in ret_fut e incrementa j
+                        ret_fut.push_back(std::move(opt_fut.value())); //move perche future non copiabili
+                        j++;
+                    }
+                    }
+                }
+                //get dei future void per assicurarsi che tutti i job siano stati eseguiti dopo uso parallel_for in main
+                for(std::future<void>& fut : ret_fut){
+                    fut.get();
+                }
+                //reduce sum finale tra sum dei workers
+                return_type sum = sum_workers[0];
+                for (size_t k = 1; k<n_worker_; k++){
+                    sum += sum_workers[k];
+                }
+                return sum;
+            }            
         };
     }
 #endif
