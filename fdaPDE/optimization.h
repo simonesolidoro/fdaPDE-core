@@ -23,6 +23,7 @@
 #include "linear_algebra.h"    // pull Eigen first
 #include "utility.h"
 #include "fields.h"
+#include "multithreading.h"
 
 namespace fdapde {
 

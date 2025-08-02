@@ -113,7 +113,7 @@ template <int N> class GridSearch {
         
         values_.clear();       
         // optimize field over supplied grid
-        int granularity = 1; //per ora hardcode, poi versioe con gran "optimal" di defaul ( tipo grid_.rows()/Tp.get_n_worker()/10)
+        int granularity = -1; //per ora hardcode, poi versioe con gran "optimal" di defaul ( tipo grid_.rows()/Tp.get_n_worker()/10)
         
         // variabile locale per ogni thread (evita dover creare una x_curr_local per ogni iterazione)
         thread_local vector_t x_curr_local_thread;
