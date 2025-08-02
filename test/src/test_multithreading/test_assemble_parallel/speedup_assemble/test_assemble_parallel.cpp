@@ -16,7 +16,7 @@ int main(int argc, char** argv){
 //cronometro assemblaggio non parallello
     auto start = std::chrono::high_resolution_clock::now();
 
-    Eigen::SparseMatrix<double> A = a.assemble_parallel(Tp);//(execution::par); // use parallel version
+    Eigen::SparseMatrix<double> A = a.assemble_parallel23(Tp);//(execution::par); // use parallel version
 
     auto end = std::chrono::high_resolution_clock::now();
     auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start);  
