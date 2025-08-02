@@ -218,9 +218,9 @@ class fe_bilinear_form_assembly_loop :
         std::vector<std::shared_ptr<std::vector<Eigen::Triplet<double>>>> ptrs_triplet_lists;
 	assemble_parallel2(ptrs_triplet_lists,Tp);
         //unico vettore con tutte le triple
-        std::vector<Eigen::Triplet<double>> triplet_list;
+        std::vector<Eigen::Triplet<double>> triplet_lists;
         for (auto& ptr : ptrs_triplet_lists) {
-            triplet_list.insert(triplet_list.end(), ptr->begin(), ptr->end());
+            triplet_lists.insert(triplet_lists.end(), ptr->begin(), ptr->end());
         }
 /*//per debug
         for (auto& ptr : ptrs_triplet_lists) {
@@ -231,7 +231,7 @@ class fe_bilinear_form_assembly_loop :
             */
 
 	// linearity of the integral is implicitly used here, as duplicated triplets are summed up (see Eigen docs)
-        assembled_mat.setFromTriplets(triplet_list.begin(), triplet_list.end());
+        assembled_mat.setFromTriplets(triplet_lists.begin(), triplet_lists.end());
         assembled_mat.makeCompressed();
         return assembled_mat;
     }
@@ -270,8 +270,9 @@ class fe_bilinear_form_assembly_loop :
 
         //paralleliziamo con parallel_for con defaul granularity = 1 e creiamo da qui i mini_for (cosi ogni iterazione è minifor e quindi anche se un job= 1 iterazione ogni ojob sara un minifor)
         int num_worker = Tp.get_n_worker();
-        // calcolo celle totali per poter dividere il range (ovviamente non è il modo giusto di farlo ma è per usare subito parallel e poi guardare meglio libreria)
+        
         int nodi = std::sqrt(test_dof_handler()->n_dofs()); //sicuro c'è num celle da qualche parte
+        //umero celle
         int count = (nodi-1)*(nodi-1)*2;
         //dividiamo il range in num_worker (num_worker+1 se c'è resto) e poi vettore per ietrazioni in ogni job
         int n_job = (count % num_worker == 0)? (num_worker):(num_worker +1);
@@ -305,10 +306,8 @@ class fe_bilinear_form_assembly_loop :
         }
         std::mutex m_ptrs;
 
-        std::cout<<"dati: "<<test_dof_handler()->n_dofs()<<" "<<count<<std::endl;
         Tp.parallel_for(0,n_job,[=,this,&ptr_triplet_lists,&m_ptrs](int ii)mutable{
             std::vector<Eigen::Triplet<double>> triplet_list_local;
-            int local_cell_id = 0;
            
             for (iterator it = vect_begin_end_local[ii].first; it != vect_begin_end_local[ii].second; ++it) {
                 // update fe_packet content based on form requests
@@ -367,7 +366,7 @@ class fe_bilinear_form_assembly_loop :
                                     fe_packet.test_hess.assign_inplace_from(test_hess.template slice<0, 1>(j, q_k));
                             }
                             if constexpr (Form::XprBits & int(fe_assembler_flags::compute_physical_quad_nodes)) {
-                                fe_packet.quad_node_id = local_cell_id * n_quadrature_nodes + q_k;
+                                fe_packet.quad_node_id = ii * n_quadrature_nodes + q_k; // ii = local_cell_id
                             }
                             value += Quadrature::weights[q_k] * form_(fe_packet);
                         }
@@ -376,9 +375,8 @@ class fe_bilinear_form_assembly_loop :
                         value * fe_packet.measure);
                     }
                 }
-                local_cell_id ++;
             }
-            //ogni thread modifica vettore di puntatori, gia allocato, in posizione diversa data da worker index. dovrebbe essere ok 
+            //ogni thread modifica vettore di puntatori uso mutex per thread safe
             std::unique_lock<std::mutex> loc(m_ptrs);
             ptr_triplet_lists.emplace_back(std::make_shared<std::vector<Eigen::Triplet<double>>> (triplet_list_local));
             loc.unlock();
