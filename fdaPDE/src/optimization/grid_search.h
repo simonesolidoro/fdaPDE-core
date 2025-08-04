@@ -24,7 +24,6 @@ namespace fdapde {
 template <int N> class GridSearch {
    private:
     using vector_t = std::conditional_t<N == Dynamic, Eigen::Matrix<double, Dynamic, 1>, Eigen::Matrix<double, N, 1>>;
-    using grid_t = MdMap<const double, MdExtents<Dynamic, Dynamic>>;
 
     vector_t optimum_;
     double value_;                 // objective value at optimum
@@ -49,7 +48,16 @@ template <int N> class GridSearch {
         fdapde_static_assert(
           std::is_same<decltype(std::declval<ObjectiveT>().operator()(vector_t())) FDAPDE_COMMA double>::value,
           INVALID_CALL_TO_OPTIMIZE__OBJECTIVE_FUNCTOR_NOT_CALLABLE_AT_VECTOR_TYPE);
+        using layout_policy = decltype([]() {
+            if constexpr (internals::is_eigen_dense_xpr_v<GridT>) {
+                return std::conditional_t<GridT::IsRowMajor, internals::layout_right, internals::layout_left> {};
+            } else {
+                return internals::layout_right {};
+            }
+        }());
+        using grid_t = MdMap<const double, MdExtents<Dynamic, Dynamic>, layout_policy>;
         constexpr double NaN = std::numeric_limits<double>::quiet_NaN();
+	
         std::tuple<Callbacks...> callbacks_ {callbacks...};
         grid_t grid_;
         value_ = std::numeric_limits<double>::max();
@@ -61,7 +69,7 @@ template <int N> class GridSearch {
             grid_ = grid_t(grid.data(), grid.rows(), size_);
         }
         bool stop = false;   // asserted true in case of forced stop
-        grid_.row(0).assign_to(x_curr);
+        grid_.row(0).assign_to(x_curr.transpose());
         obj_curr = objective(x_curr);
         stop |= internals::exec_eval_hooks(*this, objective, callbacks_);
         values_.clear();
@@ -72,7 +80,7 @@ template <int N> class GridSearch {
         }
         // optimize field over supplied grid
         for (std::size_t i = 1; i < grid_.rows() && !stop; ++i) {
-            grid_.row(i).assign_to(x_curr);
+            grid_.row(i).assign_to(x_curr.transpose());
             obj_curr = objective(x_curr);
             stop |= internals::exec_eval_hooks(*this, objective, callbacks_);
             values_.push_back(obj_curr);
