@@ -23,8 +23,8 @@ namespace fdapde {
 
 template <int N> class GridSearch {
    private:
-    //using vector_t = std::conditional_t<N == Dynamic, Eigen::Matrix<double, Dynamic, 1>, Eigen::Matrix<double, N, 1>>;
-    using vector_t = Eigen::Matrix<double, 1, 2>;
+    using vector_t = std::conditional_t<N == Dynamic, Eigen::Matrix<double, Dynamic, 1>, Eigen::Matrix<double, N, 1>>;
+    //using vector_t = Eigen::Matrix<double, 1, 2>;
     using grid_t = MdMap<const double, MdExtents<Dynamic, Dynamic>>;
 
     vector_t optimum_;

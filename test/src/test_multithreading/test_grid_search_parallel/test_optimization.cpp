@@ -21,35 +21,18 @@ int main(){
 // funzione x^2 + y^2
 fdapde::ScalarField<2, decltype([](const Eigen::Matrix<double, 2, 1>& p) { return std::pow(p[0], 2) + std::pow(p[1], 2); })> objective;
 
-// definizione di griglia di possibili valor
+// definizione di griglia di possibili valori
 Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic> grid;
-int n_points = 6;
-grid.resize(6,2);
+grid.resize(100,2);
 
 // grid da popolare con la griglia dei valori da esplorare
-for (int i = 0; i< n_points; i++){
-    grid(i,0) = i+100;
-    grid(i,1) = i+800;
-}
-std::cout<<grid<<std::endl;
-/*
-grid(1,0)= 999;
-grid(1,1)= 888;
-std::cout<<grid(1,0)<<" , "<<grid(1,1)<<std::endl;
-*/
+grid.setOnes();
+
 // definizione dell'ottimizzatore 
 fdapde::GridSearch<2> opt;
-opt.optimize(objective, grid,execution::par); // <- da modificare questo step
+opt.optimize(objective, grid); //,execution::par); // <- da modificare questo step
 
-std::cout<<"ottimo trovato da parallel: "<<opt.value()<<std::endl;
-//std::cout<<"ottimo trovato da sequenziale: "<<opt2.value()<<std::endl;
-/*//valori esplorati 
-std::vector<double> values = opt.values();
-std::cout<<"valori esplorati: "<<std::endl;
-for (int i=0; i<values.size(); i++){
-    std::cout<<values[i]<<" , ";
-}
-std::cout<<std::endl;
-*/
+std::cout<<"ottimo trovato: "<<opt.value()<<std::endl;
+
 return 0;
 }
