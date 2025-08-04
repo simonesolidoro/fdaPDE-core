@@ -612,11 +612,10 @@ class fe_bilinear_form_assembly_loop :
         std::mutex m_ptrs;
 
         Tp.parallel_for(0,n_job,[=,this,&Tp,&ptr_triplet_lists,&m_ptrs](int ii)mutable{
-            std::vector<Eigen::Triplet<double>> triplet_list_local;
             int local_cell_id = ii*it_per_job; //credo possibile usare it.index() per avere local_cell_id
             //se ultimo job iterazioni sono resto 
             int iterazioni_per_job = (it_per_job_resto != 0 && ii == n_job-1)? it_per_job_resto : it_per_job; 
-            // iterator e cellid di job
+            // iterator di job
             iterator it = vect_begin_iterator[ii];
             for (int l = 0; l<iterazioni_per_job; l++) {
                 // update fe_packet content based on form requests
