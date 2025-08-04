@@ -533,7 +533,7 @@ class fe_bilinear_form_assembly_loop :
     //----------------------------3.2 come 3 usa parallel_for gran=1, ma scrittura di triple ogni worker in vettore<ptr>[index_worker]-------------------------------
     // cambia gestione di triplet quindi serev asssemble_parallel() personalizzata
     // store dei triplet cosi non usa mutex e permette di aumentare kk (numero di job = kk*n_worker) però da test visto che non migliora il tempo di esecuzione rispetto a versione 3
-    Eigen::SparseMatrix<double> assemble_parallel32(fdapde::Threadpool<fdapde::steal::random>& Tp) const {
+    Eigen::SparseMatrix<double> assemble_parallel32(fdapde::Threadpool<fdapde::steal::random>& Tp, int kk) const { //int kk per il momento in input per fare test piu comodamente. OSS: per ora visto che kk=1 fino a kk=10 non c'è differenza. se troppo alto invece peggioramento evidente (es kk=100)
         
         Eigen::SparseMatrix<double> assembled_mat(test_dof_handler()->n_dofs(), trial_dof_handler()->n_dofs());
         
@@ -541,7 +541,7 @@ class fe_bilinear_form_assembly_loop :
         for(int i = 0; i< Tp.get_n_worker(); i++){
             ptrs_triplet_lists[i] = std::make_shared<std::vector<Eigen::Triplet<double>>> (); //per non avere segmentation fault prima volta che worker prova a fare emplace back
         }
-	assemble_parallel32(ptrs_triplet_lists,Tp);
+	assemble_parallel32(ptrs_triplet_lists,Tp,kk); // poi n_job = kk*n_worker (+1 se numero_celle % (n_worker*kk) != 0)
         //unico vettore con tutte le triple
         std::vector<Eigen::Triplet<double>> triplet_lists;
         for (auto& ptr : ptrs_triplet_lists) {
@@ -553,7 +553,7 @@ class fe_bilinear_form_assembly_loop :
         assembled_mat.makeCompressed();
         return assembled_mat;
     }
-    void assemble_parallel32(std::vector<std::shared_ptr<std::vector<Eigen::Triplet<double>>>>& ptr_triplet_lists,fdapde::Threadpool<fdapde::steal::random> &Tp) const {
+    void assemble_parallel32(std::vector<std::shared_ptr<std::vector<Eigen::Triplet<double>>>>& ptr_triplet_lists,fdapde::Threadpool<fdapde::steal::random> &Tp, int kk) const {
         using iterator = typename Base::fe_traits::dof_iterator;
         iterator begin(Base::begin_.index(), test_dof_handler(), Base::begin_.marker());
         iterator end  (Base::end_.index(),   test_dof_handler(), Base::end_.marker()  );
@@ -591,7 +591,7 @@ class fe_bilinear_form_assembly_loop :
         int nodi = std::sqrt(test_dof_handler()->n_dofs()); //sicuro c'è num celle da qualche parte
         //umero celle
         int count = (nodi-1)*(nodi-1)*2;
-        int kk = 10;
+        //int kk = 10; // per il momento in input cosi piu comodo per test
         //dividiamo il range in k*num_worker (k*num_worker+1 se c'è resto) e poi vettore per ietrazioni in ogni job
         int n_job = (count % (kk*num_worker) == 0)? (kk*num_worker):(kk*num_worker +1);
         int it_per_job = count/(kk*num_worker);
@@ -607,11 +607,8 @@ class fe_bilinear_form_assembly_loop :
             }
             vect_begin_iterator.emplace_back(begin_local);
         }
-        
-        //std::cout<<"it_per_job: "<<it_per_job<<" tot_cell: "<<count<<" it_resto: "<<it_per_job_resto<<std::endl;
-        std::mutex m_ptrs;
 
-        Tp.parallel_for(0,n_job,[=,this,&Tp,&ptr_triplet_lists,&m_ptrs](int ii)mutable{
+        Tp.parallel_for(0,n_job,[=,this,&Tp,&ptr_triplet_lists](int ii)mutable{
             int local_cell_id = ii*it_per_job; //credo possibile usare it.index() per avere local_cell_id
             //se ultimo job iterazioni sono resto 
             int iterazioni_per_job = (it_per_job_resto != 0 && ii == n_job-1)? it_per_job_resto : it_per_job; 
@@ -693,7 +690,7 @@ class fe_bilinear_form_assembly_loop :
         return;
     }
     //--------------------------------- 4 versione con parallel_for_iterator per nonrandomacceso----------------------------------------------------------
-    //NON FUNZIONA DA SISTEMARE. comunque quando funziona è piu lenta di altri quindi si puo evitare 
+    //NON FUNZIONA DA SISTEMARE: credo problema in local_cell_id. comunque quando funziona è piu lenta di altri quindi si puo evitare 
     Eigen::SparseMatrix<double> assemble_parallel4(fdapde::Threadpool<fdapde::steal::random>& Tp) const {
         
         Eigen::SparseMatrix<double> assembled_mat(test_dof_handler()->n_dofs(), trial_dof_handler()->n_dofs());
