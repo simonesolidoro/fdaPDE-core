@@ -151,6 +151,32 @@ operator/(const ScalarFieldBase<Size, Lhs>& lhs, const ScalarFieldBase<Size, Rhs
     return ScalarFieldBinOp<Lhs, Rhs, std::divides<>> {lhs.derived(), rhs.derived(), std::divides<>()};
 }
 
+namespace internals {
+class max_t {
+   public:
+    constexpr explicit max_t() { }
+    template <typename Scalar> constexpr Scalar operator()(Scalar&& lhs, Scalar&& rhs) const { return fdapde::max(lhs, rhs); }
+};
+
+class min_t {
+   public:
+    constexpr explicit min_t() { }
+    template <typename Scalar> constexpr Scalar operator()(Scalar&& lhs, Scalar&& rhs) const { return fdapde::min(lhs, rhs); }
+};
+}   // namespace internals
+
+template <int Size, typename Lhs, typename Rhs>
+constexpr ScalarFieldBinOp<Lhs, Rhs, internals::max_t>
+max(const ScalarFieldBase<Size, Lhs>& lhs, const ScalarFieldBase<Size, Rhs>& rhs) {
+    return ScalarFieldBinOp<Lhs, Rhs, internals::max_t> {lhs.derived(), rhs.derived(), internals::max_t()};
+}
+
+template <int Size, typename Lhs, typename Rhs>
+constexpr ScalarFieldBinOp<Lhs, Rhs, internals::min_t>
+min(const ScalarFieldBase<Size, Lhs>& lhs, const ScalarFieldBase<Size, Rhs>& rhs) {
+    return ScalarFieldBinOp<Lhs, Rhs, internals::max_t> {lhs.derived(), rhs.derived(), internals::min_t()};
+}
+
 template <typename Lhs_, typename Rhs_, typename BinaryOperation>
 struct ScalarFieldCoeffOp :
     public ScalarFieldBase<
