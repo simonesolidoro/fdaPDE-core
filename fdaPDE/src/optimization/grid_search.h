@@ -98,10 +98,14 @@ template <int N> class GridSearch {
     template <typename ObjectiveT, typename GridT, typename... Callbacks>
         requires((internals::is_vector_like_v<GridT> || internals::is_matrix_like_v<GridT>))
     vector_t optimize(ObjectiveT&& objective, const GridT& grid, execution::execution_parallel, Callbacks&&... callbacks) { //execution prima di callack perche senno overload amiguo (perchè callback variadic)
-        fdapde_static_assert(
-          std::is_same<decltype(std::declval<ObjectiveT>().operator()(vector_t())) FDAPDE_COMMA double>::value,
-          INVALID_CALL_TO_OPTIMIZE__OBJECTIVE_FUNCTOR_NOT_CALLABLE_AT_VECTOR_TYPE);
-
+        using layout_policy = decltype([]() {
+            if constexpr (internals::is_eigen_dense_xpr_v<GridT>) {
+                return std::conditional_t<GridT::IsRowMajor, internals::layout_right, internals::layout_left> {};
+            } else {
+                return internals::layout_right {};
+            }
+        }());
+        using grid_t = MdMap<const double, MdExtents<Dynamic, Dynamic>, layout_policy>;
         //creazione threadpool
         fdapde::Threadpool<fdapde::steal::random> Tp(grid.size() / size_); //n_worker = hardwer_thread di defaul, size queue di worker = numero poit da valutare (male che va 1 worker e u jo per ogni iterazioe stao i queue)
 
