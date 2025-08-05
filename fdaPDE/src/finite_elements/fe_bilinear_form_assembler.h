@@ -537,23 +537,20 @@ class fe_bilinear_form_assembly_loop :
         
         Eigen::SparseMatrix<double> assembled_mat(test_dof_handler()->n_dofs(), trial_dof_handler()->n_dofs());
         
-        std::vector<std::shared_ptr<std::vector<Eigen::Triplet<double>>>> ptrs_triplet_lists(Tp.get_n_worker(),nullptr);
-        for(int i = 0; i< Tp.get_n_worker(); i++){
-            ptrs_triplet_lists[i] = std::make_shared<std::vector<Eigen::Triplet<double>>> (); //per non avere segmentation fault prima volta che worker prova a fare emplace back
-        }
-	assemble_parallel32(ptrs_triplet_lists,Tp,kk); // poi n_job = kk*n_worker (+1 se numero_celle % (n_worker*kk) != 0)
+        std::vector<std::vector<Eigen::Triplet<double>>> triplet_lists(Tp.get_n_worker());
+	assemble_parallel32(triplet_lists,Tp,kk); // poi n_job = kk*n_worker (+1 se numero_celle % (n_worker*kk) != 0)
         //unico vettore con tutte le triple
-        std::vector<Eigen::Triplet<double>> triplet_lists;
-        for (auto& ptr : ptrs_triplet_lists) {
-            triplet_lists.insert(triplet_lists.end(), ptr->begin(), ptr->end());
+        std::vector<Eigen::Triplet<double>> triplet_list;
+        for (auto& triple : triplet_lists) {
+            triplet_list.insert(triplet_list.end(), triple.begin(), triple.end());
         }
 
 	// linearity of the integral is implicitly used here, as duplicated triplets are summed up (see Eigen docs)
-        assembled_mat.setFromTriplets(triplet_lists.begin(), triplet_lists.end());
+        assembled_mat.setFromTriplets(triplet_list.begin(), triplet_list.end());
         assembled_mat.makeCompressed();
         return assembled_mat;
     }
-    void assemble_parallel32(std::vector<std::shared_ptr<std::vector<Eigen::Triplet<double>>>>& ptr_triplet_lists,fdapde::Threadpool<fdapde::steal::random> &Tp, int kk) const {
+    void assemble_parallel32(std::vector<std::vector<Eigen::Triplet<double>>>& triplet_lists,fdapde::Threadpool<fdapde::steal::random> &Tp, int kk) const {
         using iterator = typename Base::fe_traits::dof_iterator;
         iterator begin(Base::begin_.index(), test_dof_handler(), Base::begin_.marker());
         iterator end  (Base::end_.index(),   test_dof_handler(), Base::end_.marker()  );
@@ -608,7 +605,7 @@ class fe_bilinear_form_assembly_loop :
             vect_begin_iterator.emplace_back(begin_local);
         }
 
-        Tp.parallel_for(0,n_job,[=,this,&Tp,&ptr_triplet_lists](int ii)mutable{
+        Tp.parallel_for(0,n_job,[=,this,&Tp,&triplet_lists](int ii)mutable{
             int local_cell_id = ii*it_per_job; //credo possibile usare it.index() per avere local_cell_id
             //se ultimo job iterazioni sono resto 
             int iterazioni_per_job = (it_per_job_resto != 0 && ii == n_job-1)? it_per_job_resto : it_per_job; 
@@ -676,7 +673,7 @@ class fe_bilinear_form_assembly_loop :
                             value += Quadrature::weights[q_k] * form_(fe_packet);
                         }
                         //threadsafe perché ogni worker scrive su suo [index_worker] e vettore conntiene solo puntatori quindi non si rialloca
-                        ptr_triplet_lists[Tp.get_index_worker_from_thread()]->emplace_back(
+                        triplet_lists[Tp.get_index_worker_from_thread()].emplace_back(
                         test_active_dofs[j], is_galerkin ? test_active_dofs[i] : trial_active_dofs[i],
                         value * fe_packet.measure);
                     }
@@ -750,7 +747,7 @@ class fe_bilinear_form_assembly_loop :
         int granularity = count/num_worker;
         std::mutex m_ptrs;
         thread_local std::vector<Eigen::Triplet<double>> triplet_list_local;
-        Tp.parallel_for_iterator(begin,end,[&](iterator it)mutable{
+        Tp.parallel_for_iterator(begin,end,[&](iterator it){
             // il problema di usare parallel_for_iterator è che voglio sapere ad ogni iterazione il valore di cell_id e non c'è modo se non ricalcolarlo ogni volta (costosissimo)
             int local_cell_id = it.index();
         
