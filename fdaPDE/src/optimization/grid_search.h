@@ -90,14 +90,20 @@ template <int N> class GridSearch {
                 optimum_ = x_curr;
             }
             stop |= internals::exec_stop_if(*this, objective);
+
         }
+
+        std::cout << optimum_[0] << " " << optimum_[1] << std::endl;
+
         return optimum_;
     }
 
-
     template <typename ObjectiveT, typename GridT, typename... Callbacks>
         requires((internals::is_vector_like_v<GridT> || internals::is_matrix_like_v<GridT>))
-    vector_t optimize(ObjectiveT&& objective, const GridT& grid, execution::execution_parallel, Callbacks&&... callbacks) { //execution prima di callack perche senno overload amiguo (perchè callback variadic)
+    vector_t optimize(ObjectiveT&& objective, const GridT& grid,execution::execution_parallel, Callbacks&&... callbacks) {
+        fdapde_static_assert(
+          std::is_same<decltype(std::declval<ObjectiveT>().operator()(vector_t())) FDAPDE_COMMA double>::value,
+          INVALID_CALL_TO_OPTIMIZE__OBJECTIVE_FUNCTOR_NOT_CALLABLE_AT_VECTOR_TYPE);
         using layout_policy = decltype([]() {
             if constexpr (internals::is_eigen_dense_xpr_v<GridT>) {
                 return std::conditional_t<GridT::IsRowMajor, internals::layout_right, internals::layout_left> {};
@@ -106,10 +112,8 @@ template <int N> class GridSearch {
             }
         }());
         using grid_t = MdMap<const double, MdExtents<Dynamic, Dynamic>, layout_policy>;
-        //creazione threadpool
-        fdapde::Threadpool<fdapde::steal::random> Tp(grid.size() / size_); //n_worker = hardwer_thread di defaul, size queue di worker = numero poit da valutare (male che va 1 worker e u jo per ogni iterazioe stao i queue)
-
         constexpr double NaN = std::numeric_limits<double>::quiet_NaN();
+	
         std::tuple<Callbacks...> callbacks_ {callbacks...};
         grid_t grid_;
         value_ = std::numeric_limits<double>::max();
@@ -121,7 +125,6 @@ template <int N> class GridSearch {
             grid_ = grid_t(grid.data(), grid.rows(), size_);
         }
         bool stop = false;   // asserted true in case of forced stop
-        
         values_.clear();       
         // optimize field over supplied grid
         int granularity = 10; //per ora hardcode, poi versioe con gran "optimal" di defaul ( tipo grid_.rows()/Tp.get_n_worker()/10)
@@ -132,13 +135,16 @@ template <int N> class GridSearch {
         //fix size di vector values_ cosi da modifica threadsafe con accesso tramite indice [i]
         values_.resize(grid_.rows());
 
+        //creazione threadpool
+        fdapde::Threadpool<fdapde::steal::random> Tp(grid.size() / size_); //n_worker = hardwer_thread di defaul, size queue di worker = numero poit da valutare (male che va 1 worker e u jo per ogni iterazioe stao i queue)
+
         //TODO: logica di stop anticipato da capire, se possibile aggiungere in metodo tp.paralle_for_reduce il passaggio di una ref a bool stop cosi da stoppare il job e non fare iterazioni. 
         //      per ora no stop anticipato, si finisce quando scorre tutta griglia
         // problema: non si puo usare i metodi in callbacks.h perchè *this (e quidi x_curr_, ...) non sono modificati nel mentre, lo fossero bisognerebbe renderli threadsafe ma poi modifica sequenziale
         std::pair<double,int> min_argmin = Tp.parallel_for_reduce_min(0,grid_.rows(), [&, this](int i) -> double {
-            grid_.row(i).assign_to(x_curr_local_thread);
+            grid_.row(i).assign_to(x_curr_local_thread.transpose());
             double obj_of_iteration = objective(x_curr_local_thread);
-            std::cout<<std::this_thread::get_id()<<" da x_curr: "<<x_curr_local_thread<<" da value: "<<obj_of_iteration<<std::endl;
+            //std::cout<<std::this_thread::get_id()<<" da x_curr: "<<x_curr_local_thread<<" da value: "<<obj_of_iteration<<std::endl;
             //stop |= internals::exec_eval_hooks(*this, objective, callbacks_); 
             values_[i]= obj_of_iteration;
             return obj_of_iteration;
@@ -146,12 +152,15 @@ template <int N> class GridSearch {
             //stop |= internals::exec_stop_if(*this, objective); 
 
         },granularity);
-        grid_.row(min_argmin.second).assign_to(optimum_);
+
+        optimum_[0] = grid_.row(min_argmin.second).data()[0];
+        optimum_[1] = grid_.row(min_argmin.second).data()[1];
         value_ = min_argmin.first;
+
+        std::cout << optimum_[0] << " " << optimum_[1] << std::endl;
+
         return optimum_;
     }
-
-
 
     // observers
     const vector_t& optimum() const { return optimum_; }

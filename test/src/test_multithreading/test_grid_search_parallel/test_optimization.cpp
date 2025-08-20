@@ -15,24 +15,37 @@
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 #include<fdaPDE/optimization.h>
+#include<random>
 
 int main(){
+    double lower = -5;
+    double upper = 5;
+    std::uniform_real_distribution<double> unif(lower,upper);
+    std::default_random_engine re;
 
-// funzione x^2 + y^2
-fdapde::ScalarField<2, decltype([](const Eigen::Matrix<double, 2, 1>& p) { return std::pow(p[0], 2) + std::pow(p[1], 2); })> objective;
+    // funzione x^2 + y^2
+    fdapde::ScalarField<2, decltype([](const Eigen::Matrix<double, 2, 1>& p) { return std::pow(p[0], 2) + std::pow(p[1], 2); })> objective;
 
-// definizione di griglia di possibili valori
-Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic> grid;
-grid.resize(100,2);
+    //rastrigin function
+    fdapde::ScalarField<2, decltype([](const Eigen::Matrix<double, 2, 1>& p) { return 20 + p[0]*p[0] + p[1]*p[1] - 10*std::cos(2*M_PI*p[0]) - 10*std::cos(2*M_PI*p[1]); })> rastrigin;
 
-// grid da popolare con la griglia dei valori da esplorare
-grid.setOnes();
+    // definizione di griglia di possibili valori
+    Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic> grid;
+    grid.resize(1e6,2);
 
-// definizione dell'ottimizzatore 
-fdapde::GridSearch<2> opt;
-opt.optimize(objective, grid); //,execution::par); // <- da modificare questo step
+    // grid da popolare con la griglia dei valori da esplorare
 
-std::cout<<"ottimo trovato: "<<opt.value()<<std::endl;
+    for(int i =0; i<grid.rows();++i){
+        grid(i,0) = unif(re);
+        grid(i,1) = unif(re);
+        //std::cout << grid(i,0) << " " << grid(i,1) << std::endl;
+    }
 
-return 0;
+    // definizione dell'ottimizzatore 
+    fdapde::GridSearch<2> opt;
+    opt.optimize(rastrigin, grid); // <- da modificare questo step
+
+    std::cout<<"ottimo trovato: "<<opt.value()<<std::endl;
+
+    return 0;
 }
