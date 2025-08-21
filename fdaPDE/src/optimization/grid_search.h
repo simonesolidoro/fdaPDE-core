@@ -93,8 +93,6 @@ template <int N> class GridSearch {
 
         }
 
-        std::cout << optimum_[0] << " " << optimum_[1] << std::endl;
-
         return optimum_;
     }
 
@@ -127,7 +125,6 @@ template <int N> class GridSearch {
         bool stop = false;   // asserted true in case of forced stop
         values_.clear();       
         // optimize field over supplied grid
-        int granularity = 10; //per ora hardcode, poi versioe con gran "optimal" di defaul ( tipo grid_.rows()/Tp.get_n_worker()/10)
         
         // variabile locale per ogni thread (evita dover creare una x_curr_local per ogni iterazione)
         thread_local vector_t x_curr_local_thread;
@@ -137,6 +134,8 @@ template <int N> class GridSearch {
 
         //creazione threadpool
         fdapde::Threadpool<fdapde::steal::random> Tp(grid.size() / size_); //n_worker = hardwer_thread di defaul, size queue di worker = numero poit da valutare (male che va 1 worker e u jo per ogni iterazioe stao i queue)
+
+        int granularity = std::max(int(grid_.rows()/Tp.get_n_worker()/10),1); //per ora hardcode, poi versioe con gran "optimal" di defaul ( tipo grid_.rows()/Tp.get_n_worker()/10)
 
         //TODO: logica di stop anticipato da capire, se possibile aggiungere in metodo tp.paralle_for_reduce il passaggio di una ref a bool stop cosi da stoppare il job e non fare iterazioni. 
         //      per ora no stop anticipato, si finisce quando scorre tutta griglia
