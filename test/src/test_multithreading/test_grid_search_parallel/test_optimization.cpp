@@ -17,11 +17,14 @@
 #include<fdaPDE/optimization.h>
 #include<random>
 
-int main(){
+int main(int argc, char** argv){
     double lower = -5;
     double upper = 5;
     std::uniform_real_distribution<double> unif(lower,upper);
     std::default_random_engine re;
+
+    int grid_size = std::stoi(argv[1]);
+    int n_threads = std::stoi(argv[2]);
 
     // funzione x^2 + y^2
     fdapde::ScalarField<2, decltype([](const Eigen::Matrix<double, 2, 1>& p) { return std::pow(p[0], 2) + std::pow(p[1], 2); })> objective;
@@ -31,7 +34,7 @@ int main(){
 
     // definizione di griglia di possibili valori
     Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic> grid;
-    grid.resize(1e7,2);
+    grid.resize(grid_size,2);
 
     // grid da popolare con la griglia dei valori da esplorare
 
@@ -43,9 +46,14 @@ int main(){
 
     // definizione dell'ottimizzatore 
     fdapde::GridSearch<2> opt;
-    opt.optimize(rastrigin, grid, execution::par); // <- da modificare questo step
 
-    std::cout<<"ottimo trovato: "<<opt.value()<<std::endl;
+    auto start2 = std::chrono::high_resolution_clock::now();
+
+    opt.optimize(rastrigin, grid, execution::par, n_threads); // <- da modificare questo step
+
+    auto end2 = std::chrono::high_resolution_clock::now();
+    auto duration2 = std::chrono::duration_cast<std::chrono::microseconds>(end2 - start2);  
+    std::cout<<duration2.count()<<",";
 
     return 0;
 }
