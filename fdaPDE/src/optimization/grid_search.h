@@ -153,11 +153,8 @@ template <int N> class GridSearch {
 
         },granularity);
 
-        optimum_[0] = grid_.row(min_argmin.second).data()[0];
-        optimum_[1] = grid_.row(min_argmin.second).data()[1];
+        grid_.row(min_argmin.second).assign_to(optimum_.transpose());
         value_ = min_argmin.first;
-
-        std::cout << optimum_[0] << " " << optimum_[1] << std::endl;
 
         return optimum_;
     }
