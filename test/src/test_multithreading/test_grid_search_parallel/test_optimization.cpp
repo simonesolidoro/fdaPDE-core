@@ -31,7 +31,7 @@ int main(){
 
     // definizione di griglia di possibili valori
     Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic> grid;
-    grid.resize(1e6,2);
+    grid.resize(1e7,2);
 
     // grid da popolare con la griglia dei valori da esplorare
 
@@ -43,7 +43,7 @@ int main(){
 
     // definizione dell'ottimizzatore 
     fdapde::GridSearch<2> opt;
-    opt.optimize(rastrigin, grid); // <- da modificare questo step
+    opt.optimize(rastrigin, grid, execution::par); // <- da modificare questo step
 
     std::cout<<"ottimo trovato: "<<opt.value()<<std::endl;
 
