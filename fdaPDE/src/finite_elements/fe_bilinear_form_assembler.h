@@ -100,7 +100,14 @@ class fe_bilinear_form_assembly_loop :
     Eigen::SparseMatrix<double> assemble() const {
         Eigen::SparseMatrix<double> assembled_mat(test_dof_handler()->n_dofs(), trial_dof_handler()->n_dofs());
         std::vector<Eigen::Triplet<double>> triplet_list;
+        //cronometro tempo parallelo di algoritmo per analisi di speedup, da scommentare per fare test per stima S P
+        //auto start = std::chrono::high_resolution_clock::now();
 	assemble(triplet_list);
+        /*
+        auto end = std::chrono::high_resolution_clock::now();
+        auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start);  
+        std::cout<<"tempo P : "<<duration.count()<<std::endl; 
+        */
 	// linearity of the integral is implicitly used here, as duplicated triplets are summed up (see Eigen docs)
         assembled_mat.setFromTriplets(triplet_list.begin(), triplet_list.end());
         assembled_mat.makeCompressed();
@@ -214,9 +221,14 @@ class fe_bilinear_form_assembly_loop :
     //----------------------------usa parallel_for gran=1, scrittura di triple ogni worker in vettore<vector<triplet>>[index_worker]-------------------------------
     Eigen::SparseMatrix<double> assemble(fdapde::Threadpool<fdapde::steal::random>& Tp, int kk,execution::execution_parallel) const { //int kk per il momento in input per fare test piu comodamente. OSS: per ora visto che kk=1 fino a kk=10 non c'è differenza. se troppo alto invece peggioramento evidente (es kk=100)
         Eigen::SparseMatrix<double> assembled_mat(test_dof_handler()->n_dofs(), trial_dof_handler()->n_dofs());
-        
+
         std::vector<std::vector<Eigen::Triplet<double>>> triplet_lists(Tp.get_n_worker());
+        //cronometro tempo parallelo di algoritmo per analisi di speedup, da scommentare per fare test per stima S P
+        auto start = std::chrono::high_resolution_clock::now();
 	assemble(triplet_lists,Tp,kk); // poi n_job = kk*n_worker (+1 se numero_celle % (n_worker*kk) != 0)
+        auto end = std::chrono::high_resolution_clock::now();
+        auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start);  
+        std::cout<<"tempo P (in assemble parallel): "<<duration.count()<<std::endl;
         //unico vettore con tutte le triple
         std::vector<Eigen::Triplet<double>> triplet_list;
         for (auto& triple : triplet_lists) {
@@ -268,9 +280,9 @@ class fe_bilinear_form_assembly_loop :
         int count = (nodi-1)*(nodi-1)*2;
         //int kk = 10; // per il momento in input cosi piu comodo per test
         //dividiamo il range in k*num_worker (k*num_worker+1 se c'è resto) e poi vettore per ietrazioni in ogni job
-        int n_job = (count % (kk*num_worker) == 0)? (kk*num_worker):(kk*num_worker +1);
-        int it_per_job = count/(kk*num_worker);
-        int it_per_job_resto = count % (kk*num_worker);
+        const int n_job = (count % (kk*num_worker) == 0)? (kk*num_worker):(kk*num_worker +1);
+        const int it_per_job = count/(kk*num_worker);
+        const int it_per_job_resto = count % (kk*num_worker);
 
         std::vector<iterator> vect_begin_iterator;
         vect_begin_iterator.reserve(n_job);
@@ -282,9 +294,8 @@ class fe_bilinear_form_assembly_loop :
             }
             vect_begin_iterator.emplace_back(begin_local);
         }
-
-        Tp.parallel_for(0,n_job,[=,this,&Tp,&triplet_lists](int ii)mutable{
-            int local_cell_id = ii*it_per_job; //credo possibile usare it.index() per avere local_cell_id
+        Tp.parallel_for(0,n_job,[=,this,&Tp,&triplet_lists](int ii)mutable{ //passare tutto come copia o reference ? ogni iterazione deve avere suo fe_packet ecc quindi copia. TODO: passare copia di solo quello che serve es fe_packet ecc e non tutto =
+            int local_cell_id = ii*it_per_job; 
             //se ultimo job iterazioni sono resto 
             int iterazioni_per_job = (it_per_job_resto != 0 && ii == n_job-1)? it_per_job_resto : it_per_job; 
             // iterator di job
@@ -350,7 +361,7 @@ class fe_bilinear_form_assembly_loop :
                             }
                             value += Quadrature::weights[q_k] * form_(fe_packet);
                         }
-                        //threadsafe perché ogni worker scrive su suo [index_worker] e vettore conntiene solo puntatori quindi non si rialloca
+                        //threadsafe perché ogni worker scrive su suo [index_worker] e vettore esterno non si rialloca
                         triplet_lists[Tp.get_index_worker_from_thread()].emplace_back(
                         test_active_dofs[j], is_galerkin ? test_active_dofs[i] : trial_active_dofs[i],
                         value * fe_packet.measure);
