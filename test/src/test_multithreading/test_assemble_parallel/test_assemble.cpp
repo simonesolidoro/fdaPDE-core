@@ -14,7 +14,7 @@ int main(int argc, char** argv){
     TestFunction  v(Vh);
     auto a = integral(unit_square)(dot(grad(u), grad(v))); // laplacian weak form
     auto b = integral(unit_square)(dot(grad(u), grad(v))); // laplacian weak form
- /*   
+    
 //cronometro assemblaggio non parallello
     auto start = std::chrono::high_resolution_clock::now();
 
@@ -23,7 +23,6 @@ int main(int argc, char** argv){
     auto end = std::chrono::high_resolution_clock::now();
     auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start);  
     std::cout<<"tempo (microsec) assemblaggio non parallelo: "<<duration.count()<<std::endl; 
-    */
 //cronometro assemblaggio parallelo
     auto start2 = std::chrono::high_resolution_clock::now();
 
@@ -33,7 +32,7 @@ int main(int argc, char** argv){
     auto duration2 = std::chrono::duration_cast<std::chrono::microseconds>(end2 - start2);  
     std::cout<<"tempo (microsec) assemblaggio parallelo, thread: "<<workers<<" ,"<<duration2.count()<<std::endl; 
     
-    /*
+
     std::cout<<A.size()<<std::endl;
     std::cout<<A2.size()<<std::endl;
     //std::cout<<A<<std::endl;
@@ -43,7 +42,7 @@ int main(int argc, char** argv){
     }else{
         std::cout << "Le matrici sono diverse." << std::endl;
     }
-        */
+
     return 0;
 }
 

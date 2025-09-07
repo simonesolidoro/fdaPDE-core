@@ -1,0 +1,44 @@
+stima di S P in algoritmo assemble parallelo.
+nodi = , hard coded in file .sh per run multipli.
+in assemble parallelo usato un solo worker ovviamente 
+
+
+--------- nodi = 100 ------------------------------------------------------------------------------------------------------
+tempo P (in assemble parallel): 430797
+tempo (microsec) assemblaggio (S+P) (in assmeble parallel): 485267
+
+tempo P (in assemble parallel): 448015
+tempo (microsec) assemblaggio (S+P) (in assmeble parallel): 505560
+
+tempo P (in assemble parallel): 436834
+tempo (microsec) assemblaggio (S+P) (in assmeble parallel): 534123
+
+tempo P (in assemble parallel): 414950
+tempo (microsec) assemblaggio (S+P) (in assmeble parallel): 470754
+
+tempo P (in assemble parallel): 424791
+tempo (microsec) assemblaggio (S+P) (in assmeble parallel): 482425
+
+tempo P (in assemble parallel): 421561
+tempo (microsec) assemblaggio (S+P) (in assmeble parallel): 476890
+
+tempo P (in assemble parallel): 436630
+tempo (microsec) assemblaggio (S+P) (in assmeble parallel): 492806
+
+tempo P (in assemble parallel): 444902
+tempo (microsec) assemblaggio (S+P) (in assmeble parallel): 505477
+
+tempo P (in assemble parallel): 436420
+tempo (microsec) assemblaggio (S+P) (in assmeble parallel): 494965
+
+---------- nodi = 500 ----------------------------------------------------------------------------------------------------------------
+
+tempo P (in assemble parallel): 15740132
+tempo (microsec) assemblaggio (S+P) (in assmeble parallel): 17634156
+
+tempo P (in assemble parallel): 15925519
+tempo (microsec) assemblaggio (S+P) (in assmeble parallel): 17986724
+
+tempo P (in assemble parallel): 15731314
+tempo (microsec) assemblaggio (S+P) (in assmeble parallel): 18084801
+

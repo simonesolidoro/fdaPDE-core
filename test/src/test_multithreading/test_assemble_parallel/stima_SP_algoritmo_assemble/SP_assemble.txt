@@ -1,0 +1,56 @@
+stima di S P in algoritmo assemble non parallelo.
+nodi = , hard coded in file .sh per run multipli
+P è assemble(tripletlist) dentro assemble(), quindi S è solo creazione di matrice da triple
+oss: in S+P c'è anche il cout di tempo P e il cronometro ma è O piccolo di totale
+oss: da questi risultati con adaman law si ottiene il massimo speedup ideale ottenibile parallelizzando l'algoritmo perfettamente.
+     per sapere se threadpool funziona bisogna calcolare S e P di algortimo parallelo e confrontare max speedup dato da quelli S P con reale. 
+     da prime osservazioni in algortimo parallelo c'è parte extra dove si crea un unico vettore fi triple dai vettori dei worker e altri overhead che fanno si che S sia piu alto e quindi speedup max ottenibile con quell algortimo è piu basso di max speedup ideale su algoritmo seriale
+
+------ nodi = 100 ----------------------------------------------------------------------------------------------------------------------------------------------------
+tempo P : 403030
+tempo (microsec) assemblaggio (S+P): 451739
+
+tempo P : 423498
+tempo (microsec) assemblaggio (S+P): 472533
+
+tempo P : 832240
+tempo (microsec) assemblaggio (S+P): 941772
+
+tempo P : 404371
+tempo (microsec) assemblaggio (S+P): 453701
+
+tempo P : 421140
+tempo (microsec) assemblaggio (S+P): 470187
+
+tempo P : 697680
+tempo (microsec) assemblaggio (S+P): 809656
+
+tempo P : 407260
+tempo (microsec) assemblaggio (S+P): 456326
+
+tempo P : 413944
+tempo (microsec) assemblaggio (S+P): 467660
+
+tempo P : 488845
+tempo (microsec) assemblaggio (S+P): 599642
+
+tempo P : 415111
+tempo (microsec) assemblaggio (S+P): 465355
+
+tempo P : 430712
+tempo (microsec) assemblaggio (S+P): 482847
+
+tempo P : 596229
+tempo (microsec) assemblaggio (S+P): 711471
+
+
+------------------ nodi = 500 -----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+tempo P : 27484516
+tempo (microsec) assemblaggio (S+P): 29083725
+
+tempo P : 15743029
+tempo (microsec) assemblaggio (S+P): 17194202
+
+tempo P : 15235435
+tempo (microsec) assemblaggio (S+P): 17066966
+
