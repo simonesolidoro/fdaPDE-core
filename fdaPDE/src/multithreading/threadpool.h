@@ -742,15 +742,16 @@ namespace fdapde{
                 using return_type = std::invoke_result_t<F, int>;
                 //range va da start a end-1--> end-start= dimensione range
                 int range = (end-start); 
-                //scelta valore ottimo di granularity se passato -1 (vedi parallel_for per sppiegazioe scelta 100)
+                int n = range / n_it_per_job; //numero job con n_it_per_job iterazioni, se poi c'è resto le ultime iterazioni messe in ultimo job
+                //scelta valore ottimo di granularity se passato -1 (vedi parallel_for per sppiegazioe scelta 10)
                 if(n_it_per_job == -1) { 
-                    if(range < 100){ 
+                    n = 10*n_worker_; // numero total job con n_it_per_job iterazioni (poi nel caso ultimo job con resto di iterazioni)
+                    if(range < n){ 
                         n_it_per_job = 1; 
                     }else{
-                        n_it_per_job = range/100; 
+                        n_it_per_job = range/n; 
                     }
                 }
-                int n = range / n_it_per_job; //numero job con n_it_per_job iterazioni, se poi c'è resto le ultime iterazioni messe in ultimo job
                 std::vector<std::future<void>> ret_fut; //no optinal<future> perché se nullopt non pushato quindi solo future
                 ret_fut.reserve(n+1); //per evitare riallocameto memoria, +1 per eventuale ultimo job fatto da ultime (end-start)%n_it_per_job iterazioni  
 
@@ -848,15 +849,16 @@ namespace fdapde{
                 using return_type = std::invoke_result_t<F, int>;
                 //range va da start a end-1--> end-start= dimensione range
                 int range = (end-start); 
+                int n = range / n_it_per_job; //numero job con n_it_per_job iterazioni, se poi c'è resto le ultime iterazioni messe in ultimo job
                 //scelta valore ottimo di granularity se passato -1 (vedi parallel_for per sppiegazioe scelta 100)
                 if(n_it_per_job == -1) { 
-                    if(range < 100){ 
+                    n = 10*n_worker_; // numero total job con n_it_per_job iterazioni (poi nel caso ultimo job con resto di iterazioni)
+                    if(range < n){ 
                         n_it_per_job = 1; 
                     }else{
-                        n_it_per_job = range/100; 
+                        n_it_per_job = range/n; 
                     }
                 }
-                int n = range / n_it_per_job; //numero job con n_it_per_job iterazioni, se poi c'è resto le ultime iterazioni messe in ultimo job
                 std::vector<std::future<void>> ret_fut; //no optinal<future> perché se nullopt non pushato quindi solo future
                 ret_fut.reserve(n+1); //per evitare riallocameto memoria, +1 per eventuale ultimo job fatto da ultime (end-start)%n_it_per_job iterazioni  
 
@@ -953,15 +955,16 @@ namespace fdapde{
                 using return_type = std::invoke_result_t<F, int>;
                 //range va da start a end-1--> end-start= dimensione range
                 int range = (end-start); 
+                int n = range / n_it_per_job; //numero job con n_it_per_job iterazioni, se poi c'è resto le ultime iterazioni messe in ultimo job
                 //scelta valore ottimo di granularity se passato -1 (vedi parallel_for per sppiegazioe scelta 100)
                 if(n_it_per_job == -1) { 
-                    if(range < 100){ 
+                    n = 10*n_worker_; // numero total job con n_it_per_job iterazioni (poi nel caso ultimo job con resto di iterazioni)
+                    if(range < n){ 
                         n_it_per_job = 1; 
                     }else{
-                        n_it_per_job = range/100; 
+                        n_it_per_job = range/n; 
                     }
                 }
-                int n = range / n_it_per_job; //numero job con n_it_per_job iterazioni, se poi c'è resto le ultime iterazioni messe in ultimo job
                 std::vector<std::future<void>> ret_fut; //no optinal<future> perché se nullopt non pushato quindi solo future
                 ret_fut.reserve(n+1); //per evitare riallocameto memoria, +1 per eventuale ultimo job fatto da ultime (end-start)%n_it_per_job iterazioni  
 
@@ -1017,15 +1020,16 @@ namespace fdapde{
                 using return_type = std::invoke_result_t<F, int>;
                 //range va da start a end-1--> end-start= dimensione range
                 int range = (end-start); 
+                int n = range / n_it_per_job; //numero job con n_it_per_job iterazioni, se poi c'è resto le ultime iterazioni messe in ultimo job
                 //scelta valore ottimo di granularity se passato -1 (vedi parallel_for per sppiegazioe scelta 100)
                 if(n_it_per_job == -1) { 
-                    if(range < 100){ 
+                    n = 10*n_worker_; // numero total job con n_it_per_job iterazioni (poi nel caso ultimo job con resto di iterazioni)
+                    if(range < n){ 
                         n_it_per_job = 1; 
                     }else{
-                        n_it_per_job = range/100; 
+                        n_it_per_job = range/n; 
                     }
                 }
-                int n = range / n_it_per_job; //numero job con n_it_per_job iterazioni, se poi c'è resto le ultime iterazioni messe in ultimo job
                 std::vector<std::future<void>> ret_fut; //no optinal<future> perché se nullopt non pushato quindi solo future
                 ret_fut.reserve(n+1); //per evitare riallocameto memoria, +1 per eventuale ultimo job fatto da ultime (end-start)%n_it_per_job iterazioni  
 
