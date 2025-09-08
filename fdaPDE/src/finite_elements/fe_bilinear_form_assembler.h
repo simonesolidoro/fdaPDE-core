@@ -222,13 +222,16 @@ class fe_bilinear_form_assembly_loop :
     Eigen::SparseMatrix<double> assemble(fdapde::Threadpool<fdapde::steal::random>& Tp, int kk,execution::execution_parallel) const { //int kk per il momento in input per fare test piu comodamente. OSS: per ora visto che kk=1 fino a kk=10 non c'è differenza. se troppo alto invece peggioramento evidente (es kk=100)
         Eigen::SparseMatrix<double> assembled_mat(test_dof_handler()->n_dofs(), trial_dof_handler()->n_dofs());
 
+        //TODO: creare alignedVector per evitare false sharing durante scrittura di triple da parte dei worker nel proprio vettore
         std::vector<std::vector<Eigen::Triplet<double>>> triplet_lists(Tp.get_n_worker());
         //cronometro tempo parallelo di algoritmo per analisi di speedup, da scommentare per fare test per stima S P
-        auto start = std::chrono::high_resolution_clock::now();
+        //auto start = std::chrono::high_resolution_clock::now();
 	assemble(triplet_lists,Tp,kk); // poi n_job = kk*n_worker (+1 se numero_celle % (n_worker*kk) != 0)
+    /*
         auto end = std::chrono::high_resolution_clock::now();
         auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start);  
         std::cout<<"tempo P (in assemble parallel): "<<duration.count()<<std::endl;
+    */
         //unico vettore con tutte le triple
         std::vector<Eigen::Triplet<double>> triplet_list;
         for (auto& triple : triplet_lists) {
