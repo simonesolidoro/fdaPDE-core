@@ -44,16 +44,23 @@ int main(int argc, char** argv){
         //std::cout << grid(i,0) << " " << grid(i,1) << std::endl;
     }
 
+    //argmin di funzione rastrigin 
+    grid(2,0)= 0;
+    grid(2,1)= 0;
+
     // definizione dell'ottimizzatore 
     fdapde::GridSearch<2> opt;
 
     auto start2 = std::chrono::high_resolution_clock::now();
 
-    opt.optimize(rastrigin, grid, execution::par, n_threads); // <- da modificare questo step
+    opt.optimize2(rastrigin, grid, execution::par, n_threads); // <- da modificare questo step
 
     auto end2 = std::chrono::high_resolution_clock::now();
     auto duration2 = std::chrono::duration_cast<std::chrono::microseconds>(end2 - start2);  
-    std::cout<<duration2.count()<<",";
+    //std::cout<<duration2.count()<<",";
+    std::cout<<duration2.count()<<","<<std::endl;
+    std::cout<<opt.value()<<std::endl; // 0
+    std::cout<<opt.optimum()<<std::endl; // 0,0
 
     return 0;
 }
