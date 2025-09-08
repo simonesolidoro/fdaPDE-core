@@ -440,7 +440,7 @@ namespace fdapde{
             //OVERLOAD per distiguere tipi di parallel_for
             // parallel_for(int,int,F&&) --> ogni iterazione diventa un job (granularity=1). lasciato perche piu veloce di parallel_for_graularyti(gra=1)
             // parallel_for(int,int,F&&,function<int(int)> incr) --> scorre range con incr personalizzato non piu solo i++, graularuty = 1. TODO: versioe con incremento personalizzato e granularity in input da fare 
-            // parallel_for(int,int,F&&,granularity) --> parallel_for granularity(iterazioni per job) in input. se granularuty = -1 usa defaul (range/n_worker/10). oss:usato design -1 perche valore di defaul sarebbe ambiguo con overload senza granularity in input
+            // parallel_for(int,int,F&&,granularity) --> parallel_for granularity(iterazioni per job) in input. se granularuty = -1 usa defaul (range/n_worker/10).(cioè 10 job per worker) oss:usato design -1 perche valore di defaul sarebbe ambiguo con overload senza granularity in input
             // parallel_for(int,int,F&&,vector<int>) --> divide range in vect.size() blocchi ognuno con numero iterazioni = vect[j], granularity non costante ma valori di vettore. se magari si conosce gia lo sbilanciamento (non penso sia utile, ma ormai lho fatta) 
 
             //F = body_function di loop, function con input indice i di loop. firma: void (int i)
@@ -497,28 +497,27 @@ namespace fdapde{
                 using return_type = std::invoke_result_t<F, int>;
                 //range va da start a end-1--> end-start= dimensione range
                 int range = (end-start); 
+                int n = range / n_it_per_job; //numero job con n_it_per_job iterazioni, se poi c'è resto le ultime iterazioni messe in ultimo job
                 //se granularuty=-1 imposta valore di defaul
                 // valore ottimo total_job e quindi total_send dato da trade-off: 
                     //-vogliamo alto perche: 
-                    // garantito lavoro finale dove solo un worker lavora e altri dormono che chiamiamo "tempoultimolavoro" < 1/total_job 
+                    // garantito lavoro finale dove solo un worker lavora e altri dormono che chiamiamo "tempoultimolavoro" < 1/numero_total_job * tempo_totale 
                     //-vogliamo basso perchè:
                     // minore overhead dato da tempo di fare i send
-                //scelto hardcode 100, perchè l'ideale sarebbe sapere tempo di for sequenziale ma non si puo allora visto da test
-                //dove tempo di for sequenziale era 0.025s e visto che numero di send (cioe total job) impattava negativamente quando diventava >100 (decrescita di speedup), ( se tempo di for sequenziale minore allora parallelizzare "non ha senso" )
-                //oss: ovviamente se tempo maggiore (es for seq = 1s) vorremmo piu send perche tempoultimolavoro < 1/total_send ma comunque 100 mi sembra acettabile          
+                //scelto hardcode 10(job per worker)         
                 if(n_it_per_job == -1) { 
-                    if(range < 100){ 
+                    n = 10*n_worker_; // numero total job con n_it_per_job iterazioni (poi nel caso ultimo job con resto di iterazioni)
+                    if(range < n){ 
                         n_it_per_job = 1; 
                     }else{
-                        n_it_per_job = range/100; 
+                        n_it_per_job = range/n; 
                     }
                 }
-                int n = range / n_it_per_job; //numero job con n_it_per_job iterazioni, se poi c'è resto le ultime iterazioni messe in ultimo job
                 std::vector<std::future<return_type>> ret_fut; //no optinal<future> perché se nullopt non pushato quindi solo future
                 ret_fut.reserve(n+1); //per evitare riallocameto memoria, +1 per eventuale ultimo job fatto da ultime (end-start)%n_it_per_job iterazioni  
                 int j = 0;
                 while(j< n){
-                    std::optional<std::future<return_type>> opt_fut = this->send_task_round([n_it_per_job,j,start,fun = f]()mutable{ //j catturato come copia perchè modificato detro job (j+1) quidi se catturi come reference si sballa tutto !!!
+                    std::optional<std::future<return_type>> opt_fut = this->send_task_round([n_it_per_job,j,start,fun = f]()mutable{ 
                         int stop = (j+1)*n_it_per_job+start;
                         for(int k=j*n_it_per_job+start; k<stop; k++ ){
                             fun(k);
