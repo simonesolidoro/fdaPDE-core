@@ -99,7 +99,7 @@ template <int N> class GridSearch {
     // versione che usa parallel_for_reduce_min()
     template <typename ObjectiveT, typename GridT, typename... Callbacks>
         requires((internals::is_vector_like_v<GridT> || internals::is_matrix_like_v<GridT>))
-    vector_t optimize(ObjectiveT&& objective, const GridT& grid, execution::execution_parallel, int n_threads = std::thread::hardware_concurrency(), Callbacks&&... callbacks) {
+    vector_t optimize(ObjectiveT&& objective, const GridT& grid, execution::execution_parallel,int job_per_worker, int n_threads = std::thread::hardware_concurrency(), Callbacks&&... callbacks) {
         fdapde_static_assert(
           std::is_same<decltype(std::declval<ObjectiveT>().operator()(vector_t())) FDAPDE_COMMA double>::value,
           INVALID_CALL_TO_OPTIMIZE__OBJECTIVE_FUNCTOR_NOT_CALLABLE_AT_VECTOR_TYPE);
@@ -136,7 +136,7 @@ template <int N> class GridSearch {
         //creazione threadpool
         fdapde::Threadpool<fdapde::steal::random> Tp(grid.size() / size_, n_threads); //n_worker = hardwer_thread di defaul, size queue di worker = numero poit da valutare (male che va 1 worker e u jo per ogni iterazioe stao i queue)
 
-        int granularity = std::max(int(grid_.rows()/n_threads/10),1); //per ora hardcode, poi versioe con gran "optimal" di defaul ( tipo grid_.rows()/Tp.get_n_worker()/10)
+        int granularity = std::max(int(grid_.rows()/(n_threads*job_per_worker)),1); //per ora job_per_worker input per test piu semplici, poi valore scelto
 
         //TODO: logica di stop anticipato da capire, se possibile aggiungere in metodo tp.paralle_for_reduce il passaggio di una ref a bool stop cosi da stoppare il job e non fare iterazioni. 
         //      per ora no stop anticipato, si finisce quando scorre tutta griglia
@@ -161,15 +161,15 @@ template <int N> class GridSearch {
     //versione con parallel_for e reduce "fatto da qui"
 
     // per evitare false sharing e rendere piu veloce (il mio computer ha 64 byte in cacheline credo tutti ormai, nel caso da verificare su linux con $ cat /sys/devices/system/cpu/cpu0/cache/index0/coherency_line_size  )
-    // TODO: dove mettere definizione di struct magari in multithreading/ 
+    // TODO: dove mettere definizione di struct magari in multithreading/.  TODO: first e second template
     struct alignas(64) AlignedPair {
-        double first;
+        double first = std::numeric_limits<double>::max();// inizializzato a massimo erch ein problema cerchiamo minimo
         vector_t second;
     };
 
     template <typename ObjectiveT, typename GridT, typename... Callbacks>
         requires((internals::is_vector_like_v<GridT> || internals::is_matrix_like_v<GridT>))
-    vector_t optimize2(ObjectiveT&& objective, const GridT& grid, execution::execution_parallel, int n_threads = std::thread::hardware_concurrency(), Callbacks&&... callbacks) {
+    vector_t optimize2(ObjectiveT&& objective, const GridT& grid, execution::execution_parallel,int job_per_worker,int n_threads = std::thread::hardware_concurrency(), Callbacks&&... callbacks) { // per ora int job_per_worker in input perche piu comodo fare i test poi sostituire valore scelto
         fdapde_static_assert(
           std::is_same<decltype(std::declval<ObjectiveT>().operator()(vector_t())) FDAPDE_COMMA double>::value,
           INVALID_CALL_TO_OPTIMIZE__OBJECTIVE_FUNCTOR_NOT_CALLABLE_AT_VECTOR_TYPE);
@@ -208,7 +208,7 @@ template <int N> class GridSearch {
         //creazione threadpool
         fdapde::Threadpool<fdapde::steal::random> Tp(grid.size() / size_, n_threads); //n_worker = hardwer_thread di defaul, size queue di worker = numero poit da valutare (male che va 1 worker e u jo per ogni iterazioe stao i queue)
 
-        int granularity = std::max(int(grid_.rows()/n_threads),1); //per ora hardcode, poi versioe con gran "optimal" di defaul ( tipo grid_.rows()/Tp.get_n_worker()/10)
+        int granularity = std::max(int(grid_.rows()/(n_threads*job_per_worker)),1); //per ora hardcode, poi versioe con gran "optimal" di defaul ( tipo grid_.rows()/Tp.get_n_worker()/10)
         
         Tp.parallel_for(0,grid_.rows(), [&, this](int i){
             int index_worker = Tp.get_index_worker_from_thread();
