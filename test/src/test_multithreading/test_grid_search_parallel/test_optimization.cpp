@@ -18,7 +18,7 @@
 #include<random>
 
 int main(int argc, char** argv){
-    double lower = -5;
+    double lower =-5;
     double upper = 5;
     std::uniform_real_distribution<double> unif(lower,upper);
     std::default_random_engine re;
@@ -44,16 +44,13 @@ int main(int argc, char** argv){
         //std::cout << grid(i,0) << " " << grid(i,1) << std::endl;
     }
 
-    //argmin di funzione rastrigin 
-    grid(2,0)= 0;
-    grid(2,1)= 0;
 
     // definizione dell'ottimizzatore 
     fdapde::GridSearch<2> opt;
 
     auto start2 = std::chrono::high_resolution_clock::now();
 
-    opt.optimize2(rastrigin, grid, execution::par, n_threads); // <- da modificare questo step
+    opt.optimize2(rastrigin, grid, execution::par,2, n_threads); // <- da modificare questo step
 
     auto end2 = std::chrono::high_resolution_clock::now();
     auto duration2 = std::chrono::duration_cast<std::chrono::microseconds>(end2 - start2);  
@@ -61,6 +58,34 @@ int main(int argc, char** argv){
     std::cout<<duration2.count()<<","<<std::endl;
     std::cout<<opt.value()<<std::endl; // 0
     std::cout<<opt.optimum()<<std::endl; // 0,0
+
+    //---------------------- no parallel
+    fdapde::GridSearch<2> opt2;
+
+    auto start3 = std::chrono::high_resolution_clock::now();
+
+    opt2.optimize(rastrigin, grid); // <- da modificare questo step
+
+    auto end3 = std::chrono::high_resolution_clock::now();
+    auto duration3 = std::chrono::duration_cast<std::chrono::microseconds>(end3 - start3);  
+    //std::cout<<duration2.count()<<",";
+    std::cout<<duration3.count()<<","<<std::endl;
+    std::cout<<opt2.value()<<std::endl; // 0
+    std::cout<<opt2.optimum()<<std::endl; // 0,0
+//-----------------------------------------------------------------------
+    // definizione dell'ottimizzatore 
+    fdapde::GridSearch<2> opt3;
+
+    auto start4 = std::chrono::high_resolution_clock::now();
+
+    opt3.optimize3(rastrigin, grid, execution::par, n_threads); // <- da modificare questo step
+
+    auto end4 = std::chrono::high_resolution_clock::now();
+    auto duration4 = std::chrono::duration_cast<std::chrono::microseconds>(end4 - start4);  
+    //std::cout<<duration2.count()<<",";
+    std::cout<<duration4.count()<<","<<std::endl;
+    std::cout<<opt3.value()<<std::endl; // 0
+    std::cout<<opt3.optimum()<<std::endl; // 0,0
 
     return 0;
 }
