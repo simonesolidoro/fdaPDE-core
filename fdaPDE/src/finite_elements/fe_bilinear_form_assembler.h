@@ -219,7 +219,7 @@ class fe_bilinear_form_assembly_loop :
     }
 
     //----------------------------usa parallel_for gran=1, scrittura di triple ogni worker in vettore<vector<triplet>>[index_worker]-------------------------------
-    Eigen::SparseMatrix<double> assemble(fdapde::Threadpool<fdapde::steal::random>& Tp, int kk,execution::execution_parallel) const { //int kk per il momento in input per fare test piu comodamente. OSS: per ora visto che kk=1 fino a kk=10 non c'è differenza. se troppo alto invece peggioramento evidente (es kk=100)
+    Eigen::SparseMatrix<double> assemble(execution::execution_parallel, fdapde::Threadpool<fdapde::steal::random>& Tp, int kk = 1) const { //int kk per il momento in input per fare test piu comodamente. OSS: per ora visto che kk=1 fino a kk=10 non c'è differenza. se troppo alto invece peggioramento evidente (es kk=100)
         Eigen::SparseMatrix<double> assembled_mat(test_dof_handler()->n_dofs(), trial_dof_handler()->n_dofs());
 
         //TODO: creare alignedVector per evitare false sharing durante scrittura di triple da parte dei worker nel proprio vettore
@@ -232,6 +232,28 @@ class fe_bilinear_form_assembly_loop :
         auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start);  
         std::cout<<"tempo P (in assemble parallel): "<<duration.count()<<std::endl;
     */
+        //unico vettore con tutte le triple
+        std::vector<Eigen::Triplet<double>> triplet_list;
+        for (auto& triple : triplet_lists) {
+            triplet_list.insert(triplet_list.end(), triple.begin(), triple.end());
+        }
+
+	// linearity of the integral is implicitly used here, as duplicated triplets are summed up (see Eigen docs)
+        assembled_mat.setFromTriplets(triplet_list.begin(), triplet_list.end());
+        assembled_mat.makeCompressed();
+        return assembled_mat;
+    }
+
+    //overload che crea threadpool al posto di averla in input
+    Eigen::SparseMatrix<double> assemble(execution::execution_parallel,int n_thread = std::thread::hardware_concurrency(),int size_queue = 1024, int kk = 1) const { //int kk per il momento in input per fare test piu comodamente. OSS: per ora visto che kk=1 fino a kk=10 non c'è differenza. se troppo alto invece peggioramento evidente (es kk=100)
+        fdapde::Threadpool<fdapde::steal::random> Tp(size_queue,n_thread);
+        Eigen::SparseMatrix<double> assembled_mat(test_dof_handler()->n_dofs(), trial_dof_handler()->n_dofs());
+
+        //TODO: creare alignedVector per evitare false sharing durante scrittura di triple da parte dei worker nel proprio vettore
+        std::vector<std::vector<Eigen::Triplet<double>>> triplet_lists(Tp.get_n_worker());
+        
+	    assemble(triplet_lists,Tp,kk); // poi n_job = kk*n_worker (+1 se numero_celle % (n_worker*kk) != 0)
+
         //unico vettore con tutte le triple
         std::vector<Eigen::Triplet<double>> triplet_list;
         for (auto& triple : triplet_lists) {
