@@ -25,11 +25,22 @@ int main(int argc, char** argv){
 
     int grid_size = std::stoi(argv[1]);
 
+
     // funzione x^2 + y^2
     fdapde::ScalarField<2, decltype([](const Eigen::Matrix<double, 2, 1>& p) { return std::pow(p[0], 2) + std::pow(p[1], 2); })> objective;
 
     //rastrigin function
     fdapde::ScalarField<2, decltype([](const Eigen::Matrix<double, 2, 1>& p) { return 20 + p[0]*p[0] + p[1]*p[1] - 10*std::cos(2*M_PI*p[0]) - 10*std::cos(2*M_PI*p[1]); })> rastrigin;
+
+    // matrix
+    fdapde::ScalarField<2, decltype([](const Eigen::Matrix<double, 2, 1>& p) {
+        int n = 100;
+        Eigen::MatrixXd A = Eigen::MatrixXd::Random(n, n);
+        Eigen::MatrixXd B = Eigen::MatrixXd::Random(n, n);
+        Eigen::MatrixXd C = A * B; // moltiplicazione costosa
+
+        return C.sum() + p[0]*p[0] + p[1]*p[1];
+    })> matrix_function;
 
     // definizione di griglia di possibili valori
     Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic> grid;
@@ -47,7 +58,7 @@ int main(int argc, char** argv){
 
     auto start2 = std::chrono::high_resolution_clock::now();
 
-    opt.optimize(rastrigin, grid); // <- da modificare questo step
+    opt.optimize(matrix_function, grid); // <- da modificare questo step
 
     auto end2 = std::chrono::high_resolution_clock::now();
     auto duration2 = std::chrono::duration_cast<std::chrono::microseconds>(end2 - start2);  

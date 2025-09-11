@@ -25,12 +25,24 @@ int main(int argc, char** argv){
 
     int grid_size = std::stoi(argv[1]);
     int n_threads = std::stoi(argv[2]);
+    int job_per_worker = std::stoi(argv[3]);
 
     // funzione x^2 + y^2
     fdapde::ScalarField<2, decltype([](const Eigen::Matrix<double, 2, 1>& p) { return std::pow(p[0], 2) + std::pow(p[1], 2); })> objective;
 
     //rastrigin function
     fdapde::ScalarField<2, decltype([](const Eigen::Matrix<double, 2, 1>& p) { return 20 + p[0]*p[0] + p[1]*p[1] - 10*std::cos(2*M_PI*p[0]) - 10*std::cos(2*M_PI*p[1]); })> rastrigin;
+    // matrix
+    fdapde::ScalarField<2, decltype([](const Eigen::Matrix<double, 2, 1>& p) {
+        int n = 50;
+        Eigen::MatrixXd A = Eigen::MatrixXd::Random(n, n);
+        Eigen::MatrixXd B = Eigen::MatrixXd::Random(n, n);
+        Eigen::MatrixXd C = A * B; // moltiplicazione costosa
+
+        return C.sum() + p[0]*p[0] + p[1]*p[1];
+    })> matrix_function;
+
+
 
     // definizione di griglia di possibili valori
     Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic> grid;
@@ -44,48 +56,51 @@ int main(int argc, char** argv){
         //std::cout << grid(i,0) << " " << grid(i,1) << std::endl;
     }
 
+    //---------------------- no parallel---------------------- ---------------------- ---------------------- ---------------------- 
+    std::cout<<"sequenziale"<<std::endl;
+    fdapde::GridSearch<2> opt2;
 
+    auto start3 = std::chrono::high_resolution_clock::now();
+
+    opt2.optimize(matrix_function, grid); // <- da modificare questo step
+
+    auto end3 = std::chrono::high_resolution_clock::now();
+    auto duration3 = std::chrono::duration_cast<std::chrono::microseconds>(end3 - start3);  
+    //std::cout<<duration2.count()<<",";
+    std::cout<<"tempo impiegato"<<duration3.count()<<","<<std::endl;
+    std::cout<<"value: "<<opt2.value()<<std::endl; 
+    std::cout<<"optimum: "<<opt2.optimum()<<std::endl; 
+    std::cout<<std::endl;
+//---------------------- parallel: optimize (parallel_for_reduce_min)---------------------- ---------------------- ---------------------- ---------------------- 
+    std::cout<<"parallel_for_reduce_min optimize, job per worker:"<<job_per_worker<<std::endl;
     // definizione dell'ottimizzatore 
     fdapde::GridSearch<2> opt;
 
     auto start2 = std::chrono::high_resolution_clock::now();
 
-    opt.optimize2(rastrigin, grid, execution::par,2, n_threads); // <- da modificare questo step
+    opt.optimize(matrix_function, grid, execution::par,job_per_worker, n_threads); // <- da modificare questo step
 
     auto end2 = std::chrono::high_resolution_clock::now();
     auto duration2 = std::chrono::duration_cast<std::chrono::microseconds>(end2 - start2);  
-    //std::cout<<duration2.count()<<",";
-    std::cout<<duration2.count()<<","<<std::endl;
-    std::cout<<opt.value()<<std::endl; // 0
-    std::cout<<opt.optimum()<<std::endl; // 0,0
-
-    //---------------------- no parallel
-    fdapde::GridSearch<2> opt2;
-
-    auto start3 = std::chrono::high_resolution_clock::now();
-
-    opt2.optimize(rastrigin, grid); // <- da modificare questo step
-
-    auto end3 = std::chrono::high_resolution_clock::now();
-    auto duration3 = std::chrono::duration_cast<std::chrono::microseconds>(end3 - start3);  
-    //std::cout<<duration2.count()<<",";
-    std::cout<<duration3.count()<<","<<std::endl;
-    std::cout<<opt2.value()<<std::endl; // 0
-    std::cout<<opt2.optimum()<<std::endl; // 0,0
-//-----------------------------------------------------------------------
+    std::cout<<"tempo impiegato"<<duration2.count()<<","<<std::endl;
+    std::cout<<"value: "<<opt.value()<<std::endl; 
+    std::cout<<"optimum: "<<opt.optimum()<<std::endl;
+    std::cout<<std::endl;
+//---------------------- parallel: optimize2 (parallel_for)---------------------- ---------------------- ---------------------- ---------------------- 
+    std::cout<<"parallel_for optimize2, job per worker:"<<job_per_worker<<std::endl;
     // definizione dell'ottimizzatore 
     fdapde::GridSearch<2> opt3;
 
     auto start4 = std::chrono::high_resolution_clock::now();
 
-    opt3.optimize3(rastrigin, grid, execution::par, n_threads); // <- da modificare questo step
+    opt3.optimize2(matrix_function, grid, execution::par,job_per_worker, n_threads); // <- da modificare questo step
 
     auto end4 = std::chrono::high_resolution_clock::now();
     auto duration4 = std::chrono::duration_cast<std::chrono::microseconds>(end4 - start4);  
-    //std::cout<<duration2.count()<<",";
-    std::cout<<duration4.count()<<","<<std::endl;
-    std::cout<<opt3.value()<<std::endl; // 0
-    std::cout<<opt3.optimum()<<std::endl; // 0,0
+    std::cout<<"tempo impiegato"<<duration4.count()<<","<<std::endl;
+    std::cout<<"value: "<<opt3.value()<<std::endl; 
+    std::cout<<"optimum: "<<opt3.optimum()<<std::endl;
+    std::cout<<std::endl;
 
     return 0;
 }
