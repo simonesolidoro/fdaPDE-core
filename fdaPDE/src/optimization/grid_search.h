@@ -96,10 +96,10 @@ template <int N> class GridSearch {
         return optimum_;
     }
 
-    // versione che usa parallel_for_reduce_min()
-    template <typename ObjectiveT, typename GridT, typename... Callbacks>
+    // versione che usa parallel_for_reduce_min(). threadpool in input
+    template <typename ObjectiveT, typename GridT>
         requires((internals::is_vector_like_v<GridT> || internals::is_matrix_like_v<GridT>))
-    vector_t optimize(ObjectiveT&& objective, const GridT& grid, execution::execution_parallel,int job_per_worker, int n_threads = std::thread::hardware_concurrency(), Callbacks&&... callbacks) {
+    vector_t optimize(ObjectiveT&& objective, const GridT& grid, execution::execution_parallel,fdapde::Threadpool<fdapde::steal::random>& Tp, int job_per_worker=1) { //int job_per_worker per ora in input per semplicita in test
         fdapde_static_assert(
           std::is_same<decltype(std::declval<ObjectiveT>().operator()(vector_t())) FDAPDE_COMMA double>::value,
           INVALID_CALL_TO_OPTIMIZE__OBJECTIVE_FUNCTOR_NOT_CALLABLE_AT_VECTOR_TYPE);
@@ -113,7 +113,6 @@ template <int N> class GridSearch {
         using grid_t = MdMap<const double, MdExtents<Dynamic, Dynamic>, layout_policy>;
         constexpr double NaN = std::numeric_limits<double>::quiet_NaN();
 	
-        std::tuple<Callbacks...> callbacks_ {callbacks...};
         grid_t grid_;
         value_ = std::numeric_limits<double>::max();
         if constexpr (internals::is_vector_like_v<GridT>) {
@@ -124,9 +123,7 @@ template <int N> class GridSearch {
             grid_ = grid_t(grid.data(), grid.rows(), size_);
         }      
         
-        //creazione threadpool
-        fdapde::Threadpool<fdapde::steal::random> Tp(grid.size() / size_, n_threads); //n_worker = hardwer_thread di defaul, size queue di worker = numero poit da valutare (male che va 1 worker e u jo per ogni iterazioe stao i queue)
-
+        int n_threads = Tp.get_n_worker();
         // variabile locale per ogni thread (evita dover creare una x_curr_local, obj_curr_local per ogni iterazione)
         thread_local vector_t x_curr_local_thread;
         
@@ -147,7 +144,15 @@ template <int N> class GridSearch {
         return optimum_;
     }
 
-    //versione con parallel_for e reduce "fatto da qui"
+
+    // overload con Threadpool costruità non passata in input.
+    template <typename ObjectiveT, typename GridT>
+        requires((internals::is_vector_like_v<GridT> || internals::is_matrix_like_v<GridT>))
+    vector_t optimize(ObjectiveT&& objective, const GridT& grid, execution::execution_parallel, int n_threads = std::thread::hardware_concurrency(),int job_per_worker = 1) {        
+        //creazione threadpool
+        fdapde::Threadpool<fdapde::steal::random> Tp(grid.size() / size_, n_threads); 
+        return optimize(std::forward<ObjectiveT>(objective),grid,execution::par,Tp,job_per_worker);
+    }
 
     // per evitare false sharing e rendere piu veloce (il mio computer ha 64 byte in cacheline credo tutti ormai, nel caso da verificare su linux con $ cat /sys/devices/system/cpu/cpu0/cache/index0/coherency_line_size  )
     // TODO: dove mettere definizione di struct magari in multithreading/.  TODO: first e second template
@@ -156,9 +161,11 @@ template <int N> class GridSearch {
         vector_t second;
     };
 
-    template <typename ObjectiveT, typename GridT, typename... Callbacks>
+    //versione con parallel_for e reduce "fatto da qui", Threadpool in input
+    
+    template <typename ObjectiveT, typename GridT>
         requires((internals::is_vector_like_v<GridT> || internals::is_matrix_like_v<GridT>))
-    vector_t optimize2(ObjectiveT&& objective, const GridT& grid, execution::execution_parallel,int job_per_worker,int n_threads = std::thread::hardware_concurrency(), Callbacks&&... callbacks) { // per ora int job_per_worker in input perche piu comodo fare i test poi sostituire valore scelto
+    vector_t optimize2(ObjectiveT&& objective, const GridT& grid, execution::execution_parallel,fdapde::Threadpool<fdapde::steal::random>& Tp, int job_per_worker = 1) { // per ora int job_per_worker in input perche piu comodo fare i test poi sostituire valore scelto
         fdapde_static_assert(
           std::is_same<decltype(std::declval<ObjectiveT>().operator()(vector_t())) FDAPDE_COMMA double>::value,
           INVALID_CALL_TO_OPTIMIZE__OBJECTIVE_FUNCTOR_NOT_CALLABLE_AT_VECTOR_TYPE);
@@ -182,12 +189,10 @@ template <int N> class GridSearch {
             grid_ = grid_t(grid.data(), grid.rows(), size_);
         }
         
-
+        int n_threads = Tp.get_n_worker();
         // vettore di (value,optimum) per ogni worker, alla fine ci saranno min,argmin trovati da ogni worker e poi reduce di questo vettore darà min argmin finali
         std::vector<AlignedPair> value_optimum_workers(n_threads); //inizializzato con n_thread elementi vuoti cosi da non riallocare ed essere threadsafe
         
-        //creazione threadpool
-        fdapde::Threadpool<fdapde::steal::random> Tp(grid.size() / size_, n_threads); //n_worker = hardwer_thread di defaul, size queue di worker = numero poit da valutare (male che va 1 worker e u jo per ogni iterazioe stao i queue)
 
         // variabile locale per ogni thread (evita dover creare una x_curr_local per ogni iterazione)
         thread_local vector_t x_curr_local_thread;
@@ -218,6 +223,17 @@ template <int N> class GridSearch {
         }
 
         return optimum_;
+    }
+
+
+    template <typename ObjectiveT, typename GridT>
+        requires((internals::is_vector_like_v<GridT> || internals::is_matrix_like_v<GridT>))
+    vector_t optimize2(ObjectiveT&& objective, const GridT& grid, execution::execution_parallel,int n_threads = std::thread::hardware_concurrency(), int job_per_worker = 1) { // per ora int job_per_worker in input perche piu comodo fare i test poi sostituire valore scelto
+
+        //creazione threadpool
+        fdapde::Threadpool<fdapde::steal::random> Tp(grid.size() / size_, n_threads); //n_worker = hardwer_thread di defaul, size queue di worker = numero poit da valutare (male che va 1 worker e u jo per ogni iterazioe stao i queue)
+
+        return optimize2(std::forward<ObjectiveT>(objective),grid,execution::par,Tp,job_per_worker);
     }
 
     // observers

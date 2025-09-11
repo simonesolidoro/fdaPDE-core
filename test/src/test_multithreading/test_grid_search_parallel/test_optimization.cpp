@@ -43,7 +43,6 @@ int main(int argc, char** argv){
     })> matrix_function;
 
 
-
     // definizione di griglia di possibili valori
     Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic> grid;
     grid.resize(grid_size,2);
@@ -56,13 +55,17 @@ int main(int argc, char** argv){
         //std::cout << grid(i,0) << " " << grid(i,1) << std::endl;
     }
 
+    //creazione threadpool per versioni con Tp in input
+    fdapde::Threadpool<fdapde::steal::random> Tp(grid.size() / 2, n_threads);
+
+
     //---------------------- no parallel---------------------- ---------------------- ---------------------- ---------------------- 
     std::cout<<"sequenziale"<<std::endl;
     fdapde::GridSearch<2> opt2;
 
     auto start3 = std::chrono::high_resolution_clock::now();
 
-    opt2.optimize(matrix_function, grid); // <- da modificare questo step
+    opt2.optimize(rastrigin, grid); // <- da modificare questo step
 
     auto end3 = std::chrono::high_resolution_clock::now();
     auto duration3 = std::chrono::duration_cast<std::chrono::microseconds>(end3 - start3);  
@@ -78,7 +81,8 @@ int main(int argc, char** argv){
 
     auto start2 = std::chrono::high_resolution_clock::now();
 
-    opt.optimize(matrix_function, grid, execution::par,job_per_worker, n_threads); // <- da modificare questo step
+    //opt.optimize(rastrigin, grid, execution::par,job_per_worker); // <- da modificare questo step
+    opt.optimize(rastrigin, grid, execution::par,Tp,job_per_worker); //Tp in input
 
     auto end2 = std::chrono::high_resolution_clock::now();
     auto duration2 = std::chrono::duration_cast<std::chrono::microseconds>(end2 - start2);  
@@ -93,7 +97,8 @@ int main(int argc, char** argv){
 
     auto start4 = std::chrono::high_resolution_clock::now();
 
-    opt3.optimize2(matrix_function, grid, execution::par,job_per_worker, n_threads); // <- da modificare questo step
+    //opt3.optimize2(rastrigin, grid, execution::par,job_per_worker, n_threads); // <- da modificare questo step
+    opt3.optimize2(rastrigin, grid, execution::par,Tp,job_per_worker); //Tp in input
 
     auto end4 = std::chrono::high_resolution_clock::now();
     auto duration4 = std::chrono::duration_cast<std::chrono::microseconds>(end4 - start4);  
