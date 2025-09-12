@@ -45,12 +45,12 @@ int main(int argc, char** argv){
 //parallel_for_sure_n
     auto start2 = std::chrono::high_resolution_clock::now();
 
-    tp.parallel_for_sure_granularity(0,size,n_gran,[&](int i){
+    tp.parallel_for(0,size,[&](int i){
         for(int j=0; j<size; j++){
             C[i][j] = A[i][j] + B[i][j];
         }
         std::this_thread::sleep_for(std::chrono::milliseconds(1));
-    });
+    },n_gran);
 
     
     auto end2 = std::chrono::high_resolution_clock::now();

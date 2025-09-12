@@ -36,7 +36,7 @@ int main(int argc, char** argv){
 
     // matrix
     fdapde::ScalarField<2, decltype([](const Eigen::Matrix<double, 2, 1>& p) {
-        int n = 100;
+        int n = 2000;
         Eigen::MatrixXd A = Eigen::MatrixXd::Random(n, n);
         Eigen::MatrixXd B = Eigen::MatrixXd::Random(n, n);
         Eigen::MatrixXd C = A * B; // moltiplicazione costosa
@@ -59,10 +59,12 @@ int main(int argc, char** argv){
     // definizione dell'ottimizzatore 
     fdapde::GridSearch<2> opt;
 
+    //fdapde::Threadpool<fdapde::steal::random> Tp(grid.size() / 2, n_threads);//per optiimize con Tp in input, da commentare se usi optimize che crea
+
     auto start2 = std::chrono::high_resolution_clock::now();
 
-    opt.optimize(matrix_function, grid, execution::par,job_per_worker, n_threads); // <- da modificare questo step
-
+    opt.optimize2(matrix_function, grid, execution::par, n_threads, job_per_worker); // <- da modificare questo step
+    //opt.optimize2(matrix_function, grid, execution::par, Tp, job_per_worker);
     auto end2 = std::chrono::high_resolution_clock::now();
     auto duration2 = std::chrono::duration_cast<std::chrono::microseconds>(end2 - start2);  
     std::cout<<duration2.count()<<",";
