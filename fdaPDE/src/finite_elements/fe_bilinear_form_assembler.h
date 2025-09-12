@@ -226,7 +226,7 @@ class fe_bilinear_form_assembly_loop :
         std::vector<std::vector<Eigen::Triplet<double>>> triplet_lists(Tp.get_n_worker());
         //cronometro tempo parallelo di algoritmo per analisi di speedup, da scommentare per fare test per stima S P
         //auto start = std::chrono::high_resolution_clock::now();
-	assemble(triplet_lists,Tp,kk); // poi n_job = kk*n_worker (+1 se numero_celle % (n_worker*kk) != 0)
+	assemble2(triplet_lists,Tp,kk); // poi n_job = kk*n_worker (+1 se numero_celle % (n_worker*kk) != 0)
     /*
         auto end = std::chrono::high_resolution_clock::now();
         auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start);  
@@ -444,29 +444,30 @@ class fe_bilinear_form_assembly_loop :
         int nodi = std::sqrt(test_dof_handler()->n_dofs()); 
         //umero celle
         int count = (nodi-1)*(nodi-1)*2;
-        //int kk = 10; // per il momento in input cosi piu comodo per test
-        //dividiamo il range in k*num_worker (k*num_worker+1 se c'è resto) e poi vettore per ietrazioni in ogni job
-        const int n_job = (count % (kk*num_worker) == 0)? (kk*num_worker):(kk*num_worker +1);
-        const int it_per_job = count/(kk*num_worker);
-        const int it_per_job_resto = count % (kk*num_worker);
 
+        const int it_per_worker = ((count / num_worker) > 0)? (count / num_worker) : (0);
+        const int it_per_worker_resto = count % num_worker;
+        std::vector<int> it_per_workers(num_worker,it_per_worker);
+        for(int i = 0; i<it_per_worker_resto; i++){
+            it_per_workers[i]++; //add uno ai worker che fanno resto es:  3 worker A B C, 10 iterator--> resto = 1 cioe B C fanno 3 e A fa 3+1
+        }
+
+        //vettori dei primi num_worker iterator. TODO: controllo num_worker minore di celle (scontato per qualsiasi esempio sensato) 
         std::vector<iterator> vect_begin_iterator;
-        vect_begin_iterator.reserve(n_job);
+        vect_begin_iterator.reserve(num_worker);
         iterator begin_local = begin;
-        vect_begin_iterator.emplace_back(begin_local);
-        for(int k = 1; k<n_job; k++){
-            for(int j = 0; j<it_per_job; j++){
-                ++begin_local;
-            }
+        vect_begin_iterator.push_back(begin_local);
+        for(int k = 1; k<num_worker; k++){
+            ++begin_local;
             vect_begin_iterator.emplace_back(begin_local);
         }
-        Tp.parallel_for(0,n_job,[=,this,&Tp,&triplet_lists](int ii)mutable{ //passare tutto come copia o reference ? ogni iterazione deve avere suo fe_packet ecc quindi copia. TODO: passare copia di solo quello che serve es fe_packet ecc e non tutto =
-            int local_cell_id = ii*it_per_job; 
-            //se ultimo job iterazioni sono resto 
-            int iterazioni_per_job = (it_per_job_resto != 0 && ii == n_job-1)? it_per_job_resto : it_per_job; 
+
+        Tp.parallel_for(0,num_worker,[=,this,&Tp,&triplet_lists](int ii)mutable{ //passare tutto come copia o reference ? ogni iterazione deve avere suo fe_packet ecc quindi copia. TODO: passare copia di solo quello che serve es fe_packet ecc e non tutto =
+            int local_cell_id = ii; // primo inizia da 0, secondo 1 ecc... 
+             
             // iterator di job
             iterator it = vect_begin_iterator[ii];
-            for (int l = 0; l<iterazioni_per_job; l++) {
+            for (int l = 0; l<it_per_workers[ii]; l++) {
                 // update fe_packet content based on form requests
                 fe_packet.measure = it->measure();
                 if constexpr (Form::XprBits & int(geo_assembler_flags::compute_geo_id)) { fe_packet.geo_id = it->id(); }
@@ -533,8 +534,13 @@ class fe_bilinear_form_assembly_loop :
                         value * fe_packet.measure);
                     }
                 }
-                local_cell_id ++;
-                ++it;
+                //cella successiva e it successivo sono avanti di num_worker, solo se non era l'ultimo (altrimenti va fuori range)
+                if(l != it_per_workers[ii]-1){
+                    for(int h = 0; h<num_worker; h++){
+                        local_cell_id ++;
+                        ++it;
+                    }
+                }
             }
             
         });
