@@ -247,23 +247,7 @@ class fe_bilinear_form_assembly_loop :
     //overload che crea threadpool al posto di averla in input
     Eigen::SparseMatrix<double> assemble(execution::execution_parallel,int n_thread = std::thread::hardware_concurrency(),int size_queue = 1024, int kk = 1) const { //int kk per il momento in input per fare test piu comodamente. OSS: per ora visto che kk=1 fino a kk=10 non c'è differenza. se troppo alto invece peggioramento evidente (es kk=100)
         fdapde::Threadpool<fdapde::steal::random> Tp(size_queue,n_thread);
-        Eigen::SparseMatrix<double> assembled_mat(test_dof_handler()->n_dofs(), trial_dof_handler()->n_dofs());
-
-        //TODO: creare alignedVector per evitare false sharing durante scrittura di triple da parte dei worker nel proprio vettore. 
-        std::vector<std::vector<Eigen::Triplet<double>>> triplet_lists(Tp.get_n_worker());
-        
-	    assemble(triplet_lists,Tp,kk); // poi n_job = kk*n_worker (+1 se numero_celle % (n_worker*kk) != 0)
-
-        //unico vettore con tutte le triple
-        std::vector<Eigen::Triplet<double>> triplet_list;
-        for (auto& triple : triplet_lists) {
-            triplet_list.insert(triplet_list.end(), triple.begin(), triple.end());
-        }
-
-	// linearity of the integral is implicitly used here, as duplicated triplets are summed up (see Eigen docs)
-        assembled_mat.setFromTriplets(triplet_list.begin(), triplet_list.end());
-        assembled_mat.makeCompressed();
-        return assembled_mat;
+        return assemble(execution::par,Tp,kk);
     }
 
     void assemble(std::vector<std::vector<Eigen::Triplet<double>>>& triplet_lists,fdapde::Threadpool<fdapde::steal::random> &Tp, int kk) const {
@@ -301,9 +285,12 @@ class fe_bilinear_form_assembly_loop :
         //paralleliziamo con parallel_for con defaul granularity = 1 e creiamo da qui i mini_for (cosi ogni iterazione è minifor e quindi anche se un job= 1 iterazione ogni ojob sara un minifor)
         int num_worker = Tp.get_n_worker();
         
-        int nodi = std::sqrt(test_dof_handler()->n_dofs()); //sicuro c'è num celle da qualche parte
-        //umero celle
-        int count = (nodi-1)*(nodi-1)*2;
+        //numero celle
+        int count = 0;
+        for (auto it = begin; it!=end; ++it){
+            count++;
+        }
+        
         //int kk = 10; // per il momento in input cosi piu comodo per test
         //dividiamo il range in k*num_worker (k*num_worker+1 se c'è resto) e poi vettore per ietrazioni in ogni job
         const int n_job = (count % (kk*num_worker) == 0)? (kk*num_worker):(kk*num_worker +1);
@@ -441,9 +428,11 @@ class fe_bilinear_form_assembly_loop :
         //paralleliziamo con parallel_for con defaul granularity = 1 e creiamo da qui i mini_for (cosi ogni iterazione è minifor e quindi anche se un job= 1 iterazione ogni ojob sara un minifor)
         int num_worker = Tp.get_n_worker();
         
-        int nodi = std::sqrt(test_dof_handler()->n_dofs()); 
-        //umero celle
-        int count = (nodi-1)*(nodi-1)*2;
+        //numero celle
+        int count = 0;
+        for (auto it = begin; it!=end; ++it){
+            count++;
+        }
 
         const int it_per_worker = ((count / num_worker) > 0)? (count / num_worker) : (0);
         const int it_per_worker_resto = count % num_worker;
