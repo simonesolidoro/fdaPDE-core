@@ -35,8 +35,8 @@ int main(int argc, char** argv){
     // matrix
     fdapde::ScalarField<2, decltype([](const Eigen::Matrix<double, 2, 1>& p) {
         int n = 50;
-        Eigen::MatrixXd A = Eigen::MatrixXd::Random(n, n);
-        Eigen::MatrixXd B = Eigen::MatrixXd::Random(n, n);
+        Eigen::MatrixXd A = Eigen::MatrixXd::Constant(n, n, 2.0);
+        Eigen::MatrixXd B = Eigen::MatrixXd::Constant(n, n, 3.0);
         Eigen::MatrixXd C = A * B; // moltiplicazione costosa
 
         return C.sum() + p[0]*p[0] + p[1]*p[1];
@@ -44,7 +44,8 @@ int main(int argc, char** argv){
 
 
     // definizione di griglia di possibili valori
-    Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic> grid;
+    //Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic> grid;
+    Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic,Eigen::RowMajor> grid;
     grid.resize(grid_size,2);
 
     // grid da popolare con la griglia dei valori da esplorare
@@ -81,7 +82,6 @@ int main(int argc, char** argv){
 
     auto start2 = std::chrono::high_resolution_clock::now();
 
-    //opt.optimize(rastrigin, grid, execution::par,job_per_worker); // <- da modificare questo step
     opt.optimize(rastrigin, grid, execution::par,Tp,job_per_worker); //Tp in input
 
     auto end2 = std::chrono::high_resolution_clock::now();

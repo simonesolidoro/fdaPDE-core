@@ -34,9 +34,9 @@ int main(int argc, char** argv){
 
     // matrix
     fdapde::ScalarField<2, decltype([](const Eigen::Matrix<double, 2, 1>& p) {
-        int n = 2000;
-        Eigen::MatrixXd A = Eigen::MatrixXd::Random(n, n);
-        Eigen::MatrixXd B = Eigen::MatrixXd::Random(n, n);
+        int n = 50;
+        Eigen::MatrixXd A = Eigen::MatrixXd::Constant(n, n, 2.0);
+        Eigen::MatrixXd B = Eigen::MatrixXd::Constant(n, n, 3.0);
         Eigen::MatrixXd C = A * B; // moltiplicazione costosa
 
         return C.sum() + p[0]*p[0] + p[1]*p[1];

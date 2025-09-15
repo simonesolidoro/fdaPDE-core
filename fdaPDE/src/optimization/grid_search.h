@@ -198,11 +198,11 @@ template <int N> class GridSearch {
         thread_local vector_t x_curr_local_thread;
         thread_local double obj_curr_local_thread;
 
-        int granularity = std::max(int(grid_.rows()/(n_threads*job_per_worker)),1); //per ora hardcode, poi versioe con gran "optimal" di defaul ( tipo grid_.rows()/Tp.get_n_worker()/10)
+        int granularity = std::max(int(grid_.rows()/(n_threads*job_per_worker)),1); //OSS: granularity massima (cioè t.c. 1 job per worker fa si che massimo cache friendly durante scorrimento di grid_)
         
         Tp.parallel_for(0,grid_.rows(), [&, this](int i){ //tutto tramite ref per occupare meno memoria ma piu lento
             int index_worker = Tp.get_index_worker_from_thread();
-            grid_.row(i).assign_to(x_curr_local_thread.transpose());
+            grid_.row(i).assign_to(x_curr_local_thread.transpose()); 
             double obj_curr_local_thread = objective(x_curr_local_thread);
             // update minimum of worker if better optimum found
             if (obj_curr_local_thread < value_optimum_workers[index_worker].first) {

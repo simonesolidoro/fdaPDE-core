@@ -249,7 +249,7 @@ class fe_bilinear_form_assembly_loop :
         fdapde::Threadpool<fdapde::steal::random> Tp(size_queue,n_thread);
         Eigen::SparseMatrix<double> assembled_mat(test_dof_handler()->n_dofs(), trial_dof_handler()->n_dofs());
 
-        //TODO: creare alignedVector per evitare false sharing durante scrittura di triple da parte dei worker nel proprio vettore
+        //TODO: creare alignedVector per evitare false sharing durante scrittura di triple da parte dei worker nel proprio vettore. 
         std::vector<std::vector<Eigen::Triplet<double>>> triplet_lists(Tp.get_n_worker());
         
 	    assemble(triplet_lists,Tp,kk); // poi n_job = kk*n_worker (+1 se numero_celle % (n_worker*kk) != 0)
