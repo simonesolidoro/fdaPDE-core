@@ -234,8 +234,15 @@ class fe_bilinear_form_assembly_loop :
         auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start);  
         std::cout<<"tempo P (in assemble parallel): "<<duration.count()<<std::endl;
     */
-        //unico vettore con tutte le triple
+        //unico vettore con tutte le triple, TODO: preallocare memoria per rendere insert costo 1, ma quanta ? 
         std::vector<Eigen::Triplet<double>> triplet_list;
+        //reserve spazio per tutte le triple (ne basterebbe di meno perchè triple duplicate si sommano)
+        int tot_triple = triplet_lists[0].size();
+        for (int i = 1; i<triplet_lists.size(); i++){
+            tot_triple += triplet_lists[i].size();
+        }
+        triplet_list.reserve(tot_triple);
+        //triplet_list.reserve((this->n_dofs())*100);
         for (auto& triple : triplet_lists) {
             triplet_list.insert(triplet_list.end(), triple.begin(), triple.end());
         }
