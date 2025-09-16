@@ -57,7 +57,7 @@ int main(int argc, char** argv){
     }
 
     //creazione threadpool per versioni con Tp in input
-    fdapde::Threadpool<fdapde::steal::random> Tp(grid.size() / 2, n_threads);
+    fdapde::Threadpool<fdapde::steal::random> Tp(1024, n_threads); //size queue grid.size()/2 era peggiore dei casi (1 worker granularity=1), ma non ha senso. in questo problema numero job per worker è 1-10 perchè visto che non c'è vantaggio ad aumentare, mettimo 1024 per simulare threadpool usata in generale e poi anche qui 
 
 
     //---------------------- no parallel---------------------- ---------------------- ---------------------- ---------------------- 
@@ -75,6 +75,7 @@ int main(int argc, char** argv){
     std::cout<<"value: "<<opt2.value()<<std::endl; 
     std::cout<<"optimum: "<<opt2.optimum()<<std::endl; 
     std::cout<<std::endl;
+    
 //---------------------- parallel: optimize (parallel_for_reduce_min)---------------------- ---------------------- ---------------------- ---------------------- 
     std::cout<<"parallel_for_reduce_min optimize, job per worker:"<<job_per_worker<<std::endl;
     // definizione dell'ottimizzatore 

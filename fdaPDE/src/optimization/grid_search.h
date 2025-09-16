@@ -150,7 +150,7 @@ template <int N> class GridSearch {
         requires((internals::is_vector_like_v<GridT> || internals::is_matrix_like_v<GridT>))
     vector_t optimize(ObjectiveT&& objective, const GridT& grid, execution::execution_parallel, int n_threads = std::thread::hardware_concurrency(),int job_per_worker = 1) {        
         //creazione threadpool
-        fdapde::Threadpool<fdapde::steal::random> Tp(grid.size() / size_, n_threads); 
+        fdapde::Threadpool<fdapde::steal::random> Tp(1024, n_threads); 
         return optimize(std::forward<ObjectiveT>(objective),grid,execution::par,Tp,job_per_worker);
     }
 
@@ -231,7 +231,7 @@ template <int N> class GridSearch {
     vector_t optimize2(ObjectiveT&& objective, const GridT& grid, execution::execution_parallel,int n_threads = std::thread::hardware_concurrency(), int job_per_worker = 1) { // per ora int job_per_worker in input perche piu comodo fare i test poi sostituire valore scelto
 
         //creazione threadpool
-        fdapde::Threadpool<fdapde::steal::random> Tp(grid.size() / size_, n_threads); //n_worker = hardwer_thread di defaul, size queue di worker = numero poit da valutare (male che va 1 worker e u jo per ogni iterazioe stao i queue)
+        fdapde::Threadpool<fdapde::steal::random> Tp(1024, n_threads); //n_worker = hardwer_thread di defaul, size queue 1024 hardcoded tanto visto job per worker da 1 a 10
 
         return optimize2(std::forward<ObjectiveT>(objective),grid,execution::par,Tp,job_per_worker);
     }

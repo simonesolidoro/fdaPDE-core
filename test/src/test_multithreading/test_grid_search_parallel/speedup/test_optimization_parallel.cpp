@@ -56,7 +56,7 @@ int main(int argc, char** argv){
         //std::cout << grid(i,0) << " " << grid(i,1) << std::endl;
     }
     //creazione threadpool per versioni con Tp in input
-    fdapde::Threadpool<fdapde::steal::random> Tp(grid.size() / 2, n_threads);
+    fdapde::Threadpool<fdapde::steal::random> Tp(1024, n_threads);
     // definizione dell'ottimizzatore 
     fdapde::GridSearch<2> opt;
 
@@ -64,7 +64,7 @@ int main(int argc, char** argv){
 
     auto start2 = std::chrono::high_resolution_clock::now();
 
-    opt.optimize2(matrix_function, grid, execution::par, Tp, job_per_worker); // <- da modificare questo step
+    opt.optimize2(rastrigin, grid, execution::par, Tp, job_per_worker); // <- da modificare questo step
     //opt.optimize2(matrix_function, grid, execution::par, Tp, job_per_worker);
     auto end2 = std::chrono::high_resolution_clock::now();
     auto duration2 = std::chrono::duration_cast<std::chrono::microseconds>(end2 - start2);  
