@@ -226,9 +226,9 @@ class fe_bilinear_form_assembly_loop :
         std::vector<std::vector<Eigen::Triplet<double>>> triplet_lists(Tp.get_n_worker());
         //cronometro tempo parallelo di algoritmo per analisi di speedup, da scommentare per fare test per stima S P
         //auto start = std::chrono::high_resolution_clock::now();
-	assemble(triplet_lists,Tp,kk); // poi n_job = kk*n_worker (+1 se numero_celle % (n_worker*kk) != 0)
+	//assemble(triplet_lists,Tp,kk); // poi n_job = kk*n_worker (+1 se numero_celle % (n_worker*kk) != 0)
     //assemble2(triplet_lists,Tp);// 1 job per worker, non serve kk 
-    //assemble3(triplet_lists,Tp);//      "                 "
+    assemble3(triplet_lists,Tp);//      "                 "
     /*  
         auto end = std::chrono::high_resolution_clock::now();
         auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start);  
@@ -402,7 +402,7 @@ class fe_bilinear_form_assembly_loop :
     // idea: al posto di scorrere prima tutti iterator per salvare iterator_begin_local e poi distribuzione di iterator tra i worker cosi: AAAAAABBBBBBCCCCCC
     //      scorrere direttamente dentro al job: ogni worker i parte da iterator i e poi scorre e fa solo i+numero_worker. distribuzione di iterator tra i worker cosi: ABCABCABCABCABC
     //      ogni thread scorre tutti iterator però lo fanno in parallelo quindi piu costoso computazionalmente ma tempo dovrebbe essere minore, prima invece prima scorre tutto e poi ogni thread riscorre solo la sua frazione (1/num_worker)
-    // OSS: non risolve problema di compilazione con -O2 perchè visto che anche con 2000 nodi overhead di threadpool è poco se compilato senza opt, quindi algortimo parallelo gia "buono", il problema è la threadpool che con i meccanismi di sincronizzazione vincola durante l'ottimizzazione il riordinamento del codice e overhead cresce, credo.
+    // OSS: si puo evitare false sharing qui senza vettore<vettori<triple>> allineati, ma ogni worker calcola il suo thread_local e poi finito fa il move 
     void assemble2(std::vector<std::vector<Eigen::Triplet<double>>>& triplet_lists,fdapde::Threadpool<fdapde::steal::random> &Tp) const {
         using iterator = typename Base::fe_traits::dof_iterator;
         iterator begin(Base::begin_.index(), test_dof_handler(), Base::begin_.marker());
@@ -463,7 +463,7 @@ class fe_bilinear_form_assembly_loop :
 
         Tp.parallel_for(0,num_worker,[=,this,&Tp,&triplet_lists](int ii)mutable{ //passare tutto come copia o reference ? ogni iterazione deve avere suo fe_packet ecc quindi copia. TODO: passare copia di solo quello che serve es fe_packet ecc e non tutto =
             int local_cell_id = ii; // primo inizia da 0, secondo 1 ecc... 
-             
+            thread_local std::vector<Eigen::Triplet<double>> triplet_list_thread_local;
             // iterator di job
             iterator it = vect_begin_iterator[ii];
             for (int l = 0; l<it_per_workers[ii]; l++) {
@@ -528,7 +528,7 @@ class fe_bilinear_form_assembly_loop :
                             value += Quadrature::weights[q_k] * form_(fe_packet);
                         }
                         //threadsafe perché ogni worker scrive su suo [index_worker] e vettore esterno non si rialloca
-                        triplet_lists[ii].emplace_back(
+                        triplet_list_thread_local.emplace_back(
                         test_active_dofs[j], is_galerkin ? test_active_dofs[i] : trial_active_dofs[i],
                         value * fe_packet.measure);
                     }
@@ -541,6 +541,8 @@ class fe_bilinear_form_assembly_loop :
                     }
                 }
             }
+            //finito il worker fa il move nel vettore di vettori comune. (evita false sharing)
+            triplet_lists[ii] = std::move(triplet_list_thread_local);
             
         });
         
@@ -597,6 +599,7 @@ class fe_bilinear_form_assembly_loop :
 
         Tp.parallel_for(0,num_worker,[=,this,&Tp,&triplet_lists](int ii)mutable{ //passare tutto come copia o reference ? ogni iterazione deve avere suo fe_packet ecc quindi copia. TODO: passare copia di solo quello che serve es fe_packet ecc e non tutto =
             int local_cell_id = ii; // primo inizia da 0, secondo 1 ecc... 
+            thread_local std::vector<Eigen::Triplet<double>> triplet_list_thread_local;
             for (iterator it = vect_begin_iterator[ii];  it!=end; ++it) {
                 //fa solo le iterazioni ogni n_worker, if{} dentro a for(){} però è pessimo
                 if((local_cell_id - ii) % num_worker == 0){
@@ -661,7 +664,7 @@ class fe_bilinear_form_assembly_loop :
                                 value += Quadrature::weights[q_k] * form_(fe_packet);
                             }
                             //threadsafe perché ogni worker scrive su suo [index_worker] e vettore esterno non si rialloca
-                            triplet_lists[ii].emplace_back(
+                            triplet_list_thread_local.emplace_back(
                             test_active_dofs[j], is_galerkin ? test_active_dofs[i] : trial_active_dofs[i],
                             value * fe_packet.measure);
                         }
@@ -669,7 +672,8 @@ class fe_bilinear_form_assembly_loop :
                 }    
                 local_cell_id ++;
             }
-            
+            //finito il worker fa il move nel vettore di vettori comune. (evita false sharing)
+            triplet_lists[ii] = std::move(triplet_list_thread_local);
         });
         
         return;
