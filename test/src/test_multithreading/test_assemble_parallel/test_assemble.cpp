@@ -37,7 +37,7 @@ int main(int argc, char** argv){
     std::cout<<A2.size()<<std::endl;
     //std::cout<<A<<std::endl;
     //std::cout<<A2<<std::endl;
-    if (A.isApprox(A2, 0.000000001)) {
+    if (A.isApprox(A2, 0.000000000000001)) {
         std::cout << "Le matrici sono identiche." << std::endl;
     }else{
         std::cout << "Le matrici sono diverse." << std::endl;

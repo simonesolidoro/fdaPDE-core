@@ -5,6 +5,7 @@ using namespace fdapde;
 int main(int argc, char** argv){
     int nodi = std::stoi(argv[1]);
     //int workers = std::stoi(argv[2]);
+    fdapde::Threadpool<fdapde::steal::random> Tp(1000,8);
     Triangulation<2, 2> unit_square = Triangulation<2, 2>::UnitSquare(nodi);
 
     FeSpace Vh(unit_square, P1<1>);
