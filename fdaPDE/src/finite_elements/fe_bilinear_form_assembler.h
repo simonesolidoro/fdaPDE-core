@@ -227,7 +227,7 @@ class fe_bilinear_form_assembly_loop :
 
     Eigen::SparseMatrix<double> assemble(execution::execution_parallel, fdapde::Threadpool<fdapde::steal::random>& Tp, int kk = 1) const { //int kk per il momento in input per fare test piu comodamente. OSS: per ora visto che kk=1 fino a kk=10 non c'è differenza. se troppo alto invece peggioramento evidente (es kk=100)
         Eigen::SparseMatrix<double> assembled_mat(test_dof_handler()->n_dofs(), trial_dof_handler()->n_dofs());
-    /*
+    
         //assemble
         std::vector<AlignedVectorTriple> triplet_lists(Tp.get_n_worker());
         assemble(triplet_lists,Tp,kk); // poi n_job = kk*n_worker (+1 se numero_celle % (n_worker*kk) != 0)
@@ -244,7 +244,7 @@ class fe_bilinear_form_assembly_loop :
         for (auto& triple : triplet_lists) {
             triplet_list.insert(triplet_list.end(), triple.vector_triple.begin(), triple.vector_triple.end());
         }
-    */
+    /*
         //assemble2/3
         std::vector<std::vector<Eigen::Triplet<double>>> triplet_lists(Tp.get_n_worker());
         //assemble2(triplet_lists,Tp);// 1 job per worker, non serve kk 
@@ -261,7 +261,7 @@ class fe_bilinear_form_assembly_loop :
         for (auto& triple : triplet_lists) {
             triplet_list.insert(triplet_list.end(), triple.begin(), triple.end());
         }
-
+        */
 	// linearity of the integral is implicitly used here, as duplicated triplets are summed up (see Eigen docs)
         assembled_mat.setFromTriplets(triplet_list.begin(), triplet_list.end());
         assembled_mat.makeCompressed();
@@ -310,10 +310,7 @@ class fe_bilinear_form_assembly_loop :
         int num_worker = Tp.get_n_worker();
         
         //numero celle
-        int count = 0;
-        for (auto it = begin; it!=end; ++it){
-            count++;
-        }
+        int count = this->Base::dof_handler_->triangulation()->n_cells();
         
         //int kk = 10; // per il momento in input cosi piu comodo per test
         //dividiamo il range in k*num_worker (k*num_worker+1 se c'è resto) e poi vettore per ietrazioni in ogni job
@@ -454,10 +451,7 @@ class fe_bilinear_form_assembly_loop :
         int num_worker = Tp.get_n_worker();
         
         //numero celle
-        int count = 0;
-        for (auto it = begin; it!=end; ++it){
-            count++;
-        }
+        int count = int count = this->Base::dof_handler_->triangulation()->n_cells();
 
         const int it_per_worker = ((count / num_worker) > 0)? (count / num_worker) : (0);
         const int it_per_worker_resto = count % num_worker;
