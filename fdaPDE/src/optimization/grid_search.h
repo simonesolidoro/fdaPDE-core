@@ -154,13 +154,7 @@ template <int N> class GridSearch {
         return optimize(std::forward<ObjectiveT>(objective),grid,execution::par,Tp,job_per_worker);
     }
 
-    // per evitare false sharing e rendere piu veloce (il mio computer ha 64 byte in cacheline credo tutti ormai, nel caso da verificare su linux con $ cat /sys/devices/system/cpu/cpu0/cache/index0/coherency_line_size  )
-    // TODO: dove mettere definizione di struct magari in multithreading/.  TODO: first e second template
-    struct alignas(64) AlignedPair {
-        double first = std::numeric_limits<double>::max();// inizializzato a massimo erch ein problema cerchiamo minimo
-        vector_t second;
-    };
-
+    
     //versione con parallel_for e reduce "fatto da qui", Threadpool in input
     
     template <typename ObjectiveT, typename GridT>
@@ -177,6 +171,12 @@ template <int N> class GridSearch {
             }
         }());
         using grid_t = MdMap<const double, MdExtents<Dynamic, Dynamic>, layout_policy>;
+        // per evitare false sharing e rendere piu veloce (il mio computer ha 64 byte in cacheline credo tutti ormai, nel caso da verificare su linux con $ cat /sys/devices/system/cpu/cpu0/cache/index0/coherency_line_size  )
+        struct alignas(64) AlignedPair {
+            double first = std::numeric_limits<double>::max();// inizializzato a massimo erch ein problema cerchiamo minimo
+            vector_t second;
+        };
+
         constexpr double NaN = std::numeric_limits<double>::quiet_NaN();
 
         grid_t grid_;
