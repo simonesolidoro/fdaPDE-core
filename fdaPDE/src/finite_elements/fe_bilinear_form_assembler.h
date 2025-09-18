@@ -227,7 +227,7 @@ class fe_bilinear_form_assembly_loop :
 
     Eigen::SparseMatrix<double> assemble(execution::execution_parallel, fdapde::Threadpool<fdapde::steal::random>& Tp, int kk = 1) const { //int kk per il momento in input per fare test piu comodamente. OSS: per ora visto che kk=1 fino a kk=10 non c'è differenza. se troppo alto invece peggioramento evidente (es kk=100)
         Eigen::SparseMatrix<double> assembled_mat(test_dof_handler()->n_dofs(), trial_dof_handler()->n_dofs());
-    
+    /*
         //assemble
         std::vector<AlignedVectorTriple> triplet_lists(Tp.get_n_worker());
         assemble(triplet_lists,Tp,kk); // poi n_job = kk*n_worker (+1 se numero_celle % (n_worker*kk) != 0)
@@ -244,11 +244,11 @@ class fe_bilinear_form_assembly_loop :
         for (auto& triple : triplet_lists) {
             triplet_list.insert(triplet_list.end(), triple.vector_triple.begin(), triple.vector_triple.end());
         }
-    /*
+    */
         //assemble2/3
         std::vector<std::vector<Eigen::Triplet<double>>> triplet_lists(Tp.get_n_worker());
-        //assemble2(triplet_lists,Tp);// 1 job per worker, non serve kk 
-        assemble3(triplet_lists,Tp);//      "                 "
+        assemble2(triplet_lists,Tp);// 1 job per worker, non serve kk 
+        //assemble3(triplet_lists,Tp);//      "                 "
 
         //unico vettore con tutte le triple, TODO: preallocare memoria per rendere insert costo 1, ma quanta ? 
         std::vector<Eigen::Triplet<double>> triplet_list;
@@ -261,7 +261,7 @@ class fe_bilinear_form_assembly_loop :
         for (auto& triple : triplet_lists) {
             triplet_list.insert(triplet_list.end(), triple.begin(), triple.end());
         }
-        */
+      
 	// linearity of the integral is implicitly used here, as duplicated triplets are summed up (see Eigen docs)
         assembled_mat.setFromTriplets(triplet_list.begin(), triplet_list.end());
         assembled_mat.makeCompressed();
@@ -460,21 +460,16 @@ class fe_bilinear_form_assembly_loop :
             it_per_workers[i]++; //add uno ai worker che fanno resto es:  3 worker A B C, 10 iterator--> resto = 1 cioe B C fanno 3 e A fa 3+1
         }
 
-        //vettori dei primi num_worker iterator. TODO: controllo num_worker minore di celle (scontato per qualsiasi esempio sensato) 
-        std::vector<iterator> vect_begin_iterator;
-        vect_begin_iterator.reserve(num_worker);
-        iterator begin_local = begin;
-        vect_begin_iterator.push_back(begin_local);
-        for(int k = 1; k<num_worker; k++){
-            ++begin_local;
-            vect_begin_iterator.emplace_back(begin_local);
-        }
+
 
         Tp.parallel_for(0,num_worker,[=,this,&Tp,&triplet_lists](int ii)mutable{ //passare tutto come copia o reference ? ogni iterazione deve avere suo fe_packet ecc quindi copia. TODO: passare copia di solo quello che serve es fe_packet ecc e non tutto =
             int local_cell_id = ii; // primo inizia da 0, secondo 1 ecc... 
             std::vector<Eigen::Triplet<double>> triplet_list_thread_local;
-            // iterator di job
-            iterator it = vect_begin_iterator[ii];
+            // iterator iniziale di job (job vanno da 0 a n_worker-1, 0 parte da begin, 1 da begin+1, 2 da begin+2 ecc)
+            iterator it = begin;
+            for(int j = ii; j>0; j--){
+                ++it; 
+            } 
             for (int l = 0; l<it_per_workers[ii]; l++) {
                 // update fe_packet content based on form requests
                 fe_packet.measure = it->measure();
@@ -594,22 +589,16 @@ class fe_bilinear_form_assembly_loop :
         //paralleliziamo con parallel_for con defaul granularity = 1 e creiamo da qui i mini_for (cosi ogni iterazione è minifor e quindi anche se un job= 1 iterazione ogni ojob sara un minifor)
         int num_worker = Tp.get_n_worker();
         
-        
-
-        //vettori dei primi num_worker iterator. TODO: controllo num_worker minore di celle (scontato per qualsiasi esempio sensato) 
-        std::vector<iterator> vect_begin_iterator;
-        vect_begin_iterator.reserve(num_worker);
-        iterator begin_local = begin;
-        vect_begin_iterator.push_back(begin_local);
-        for(int k = 1; k<num_worker; k++){
-            ++begin_local;
-            vect_begin_iterator.emplace_back(begin_local);
-        }
 
         Tp.parallel_for(0,num_worker,[=,this,&Tp,&triplet_lists](int ii)mutable{ //passare tutto come copia o reference ? ogni iterazione deve avere suo fe_packet ecc quindi copia. TODO: passare copia di solo quello che serve es fe_packet ecc e non tutto =
             int local_cell_id = ii; // primo inizia da 0, secondo 1 ecc... 
             std::vector<Eigen::Triplet<double>> triplet_list_thread_local;
-            for (iterator it = vect_begin_iterator[ii];  it!=end; ++it) {
+            // iterator iniziale di job (job vanno da 0 a n_worker-1, 0 parte da begin, 1 da begin+1, 2 da begin+2 ecc)
+            iterator begin_local = begin;
+            for(int j = ii; j>0; j--){
+                ++begin_local; 
+            } 
+            for (iterator it = begin_local;  it!=end; ++it) {
                 //fa solo le iterazioni ogni n_worker, if{} dentro a for(){} però è pessimo
                 if((local_cell_id - ii) % num_worker == 0){
                     // update fe_packet content based on form requests
