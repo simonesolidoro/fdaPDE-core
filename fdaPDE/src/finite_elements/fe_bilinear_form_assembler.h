@@ -451,7 +451,7 @@ class fe_bilinear_form_assembly_loop :
         int num_worker = Tp.get_n_worker();
         
         //numero celle
-        int count = int count = this->Base::dof_handler_->triangulation()->n_cells();
+        int count = this->Base::dof_handler_->triangulation()->n_cells();
 
         const int it_per_worker = ((count / num_worker) > 0)? (count / num_worker) : (0);
         const int it_per_worker_resto = count % num_worker;
