@@ -95,71 +95,12 @@ template <int N> class GridSearch {
 
         return optimum_;
     }
-
-    // versione che usa parallel_for_reduce_min(). threadpool in input
-    template <typename ObjectiveT, typename GridT>
-        requires((internals::is_vector_like_v<GridT> || internals::is_matrix_like_v<GridT>))
-    vector_t optimize(ObjectiveT&& objective, const GridT& grid, execution::execution_parallel,fdapde::Threadpool<fdapde::steal::random>& Tp, int job_per_worker=1) { //int job_per_worker per ora in input per semplicita in test
-        fdapde_static_assert(
-          std::is_same<decltype(std::declval<ObjectiveT>().operator()(vector_t())) FDAPDE_COMMA double>::value,
-          INVALID_CALL_TO_OPTIMIZE__OBJECTIVE_FUNCTOR_NOT_CALLABLE_AT_VECTOR_TYPE);
-        using layout_policy = decltype([]() {
-            if constexpr (internals::is_eigen_dense_xpr_v<GridT>) {
-                return std::conditional_t<GridT::IsRowMajor, internals::layout_right, internals::layout_left> {};
-            } else {
-                return internals::layout_right {};
-            }
-        }());
-        using grid_t = MdMap<const double, MdExtents<Dynamic, Dynamic>, layout_policy>;
-        constexpr double NaN = std::numeric_limits<double>::quiet_NaN();
-	
-        grid_t grid_;
-        value_ = std::numeric_limits<double>::max();
-        if constexpr (internals::is_vector_like_v<GridT>) {
-            fdapde_assert(grid.size() % size_ == 0);
-            grid_ = grid_t(grid.data(), grid.size() / size_, size_);
-        } else {
-            fdapde_assert(grid.cols() == size_);
-            grid_ = grid_t(grid.data(), grid.rows(), size_);
-        }      
-        
-        int n_threads = Tp.get_n_worker();
-        // variabile locale per ogni thread (evita dover creare una x_curr_local, obj_curr_local per ogni iterazione)
-        thread_local vector_t x_curr_local_thread;
-        
-        int granularity = std::max(int(grid_.rows()/(n_threads*job_per_worker)),1); //per ora job_per_worker input per test piu semplici, poi valore scelto
-
-        //TODO: logica di stop anticipato da capire, se possibile aggiungere in metodo tp.paralle_for_reduce il passaggio di una ref a bool stop cosi da stoppare il job e non fare iterazioni. 
-        //      per ora no stop anticipato, si finisce quando scorre tutta griglia
-        // problema: non si puo usare i metodi in callbacks.h perchè *this (e quidi x_curr_, ...) non sono modificati nel mentre, lo fossero bisognerebbe renderli threadsafe ma poi modifica sequenziale
-        std::pair<double,int> min_argmin = Tp.parallel_for_reduce_min(0,grid_.rows(), [&, this](int i) -> double {
-            grid_.row(i).assign_to(x_curr_local_thread.transpose());
-            return objective(x_curr_local_thread);
-            
-        },granularity);
-
-        grid_.row(min_argmin.second).assign_to(optimum_.transpose());
-        value_ = min_argmin.first;
-
-        return optimum_;
-    }
-
-
-    // overload con Threadpool costruità non passata in input.
-    template <typename ObjectiveT, typename GridT>
-        requires((internals::is_vector_like_v<GridT> || internals::is_matrix_like_v<GridT>))
-    vector_t optimize(ObjectiveT&& objective, const GridT& grid, execution::execution_parallel, int n_threads = std::thread::hardware_concurrency(),int job_per_worker = 1) {        
-        //creazione threadpool
-        fdapde::Threadpool<fdapde::steal::random> Tp(1024, n_threads); 
-        return optimize(std::forward<ObjectiveT>(objective),grid,execution::par,Tp,job_per_worker);
-    }
-
     
-    //versione con parallel_for e reduce "fatto da qui", Threadpool in input
+    
     
     template <typename ObjectiveT, typename GridT>
         requires((internals::is_vector_like_v<GridT> || internals::is_matrix_like_v<GridT>))
-    vector_t optimize2(ObjectiveT&& objective, const GridT& grid, execution::execution_parallel,fdapde::Threadpool<fdapde::steal::random>& Tp, int job_per_worker = 1) { // per ora int job_per_worker in input perche piu comodo fare i test poi sostituire valore scelto
+    vector_t optimize(ObjectiveT&& objective, const GridT& grid, execution::execution_parallel,fdapde::Threadpool<fdapde::steal::random>& Tp, int job_per_worker = 1) { // per ora int job_per_worker in input perche piu comodo fare i test poi sostituire valore scelto
         fdapde_static_assert(
           std::is_same<decltype(std::declval<ObjectiveT>().operator()(vector_t())) FDAPDE_COMMA double>::value,
           INVALID_CALL_TO_OPTIMIZE__OBJECTIVE_FUNCTOR_NOT_CALLABLE_AT_VECTOR_TYPE);
@@ -228,12 +169,12 @@ template <int N> class GridSearch {
 
     template <typename ObjectiveT, typename GridT>
         requires((internals::is_vector_like_v<GridT> || internals::is_matrix_like_v<GridT>))
-    vector_t optimize2(ObjectiveT&& objective, const GridT& grid, execution::execution_parallel,int n_threads = std::thread::hardware_concurrency(), int job_per_worker = 1) { // per ora int job_per_worker in input perche piu comodo fare i test poi sostituire valore scelto
+    vector_t optimize(ObjectiveT&& objective, const GridT& grid, execution::execution_parallel,int n_threads = std::thread::hardware_concurrency(), int job_per_worker = 1) { // per ora int job_per_worker in input perche piu comodo fare i test poi sostituire valore scelto
 
         //creazione threadpool
         fdapde::Threadpool<fdapde::steal::random> Tp(1024, n_threads); //n_worker = hardwer_thread di defaul, size queue 1024 hardcoded tanto visto job per worker da 1 a 10
 
-        return optimize2(std::forward<ObjectiveT>(objective),grid,execution::par,Tp,job_per_worker);
+        return optimize(std::forward<ObjectiveT>(objective),grid,execution::par,Tp,job_per_worker);
     }
 
     // observers
