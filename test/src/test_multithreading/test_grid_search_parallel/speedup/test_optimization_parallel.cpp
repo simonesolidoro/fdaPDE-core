@@ -64,7 +64,7 @@ int main(int argc, char** argv){
 
     auto start2 = std::chrono::high_resolution_clock::now();
 
-    opt.optimize2(rastrigin, grid, execution::par, Tp, job_per_worker); // <- da modificare questo step
+    opt.optimize(rastrigin, grid, execution::par, Tp, job_per_worker); // <- da modificare questo step
     //opt.optimize2(matrix_function, grid, execution::par, Tp, job_per_worker);
     auto end2 = std::chrono::high_resolution_clock::now();
     auto duration2 = std::chrono::duration_cast<std::chrono::microseconds>(end2 - start2);  

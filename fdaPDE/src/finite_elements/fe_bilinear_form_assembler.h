@@ -100,17 +100,16 @@ class fe_bilinear_form_assembly_loop :
     Eigen::SparseMatrix<double> assemble() const {
         Eigen::SparseMatrix<double> assembled_mat(test_dof_handler()->n_dofs(), trial_dof_handler()->n_dofs());
         std::vector<Eigen::Triplet<double>> triplet_list;
-        //cronometro tempo parallelo di algoritmo per analisi di speedup, da scommentare per fare test per stima S P
-        //auto start = std::chrono::high_resolution_clock::now();
+        
 	assemble(triplet_list);
-        /*
-        auto end = std::chrono::high_resolution_clock::now();
-        auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start);  
-        std::cout<<"tempo P : "<<duration.count()<<std::endl; 
-        */
+
+auto start = std::chrono::high_resolution_clock::now();
 	// linearity of the integral is implicitly used here, as duplicated triplets are summed up (see Eigen docs)
         assembled_mat.setFromTriplets(triplet_list.begin(), triplet_list.end());
         assembled_mat.makeCompressed();
+auto end = std::chrono::high_resolution_clock::now();
+auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start);  
+std::cout<<duration.count()<<",";  
         return assembled_mat;
     }
 
@@ -219,7 +218,7 @@ class fe_bilinear_form_assembly_loop :
     }
 
     //----------------------------scrittura di triple ogni worker in vettore<vector<triplet>>[index_worker]-------------------------------
-    //TODO:utilizarlo
+    //TODO: mettere dentro assemble la struct usata per assemble1, ma poi assemble1(...) non la vede
     //evitare false sharing in assemble(1)
     struct alignas(64) AlignedVectorTriple {
         std::vector<Eigen::Triplet<double>> vector_triple;
@@ -227,9 +226,10 @@ class fe_bilinear_form_assembly_loop :
 
     Eigen::SparseMatrix<double> assemble(execution::execution_parallel, fdapde::Threadpool<fdapde::steal::random>& Tp, int kk = 1) const { //int kk per il momento in input per fare test piu comodamente. OSS: per ora visto che kk=1 fino a kk=10 non c'è differenza. se troppo alto invece peggioramento evidente (es kk=100)
         Eigen::SparseMatrix<double> assembled_mat(test_dof_handler()->n_dofs(), trial_dof_handler()->n_dofs());
-    /*
+
         //assemble
         std::vector<AlignedVectorTriple> triplet_lists(Tp.get_n_worker());
+
         assemble(triplet_lists,Tp,kk); // poi n_job = kk*n_worker (+1 se numero_celle % (n_worker*kk) != 0)
 
         //unico vettore con tutte le triple, TODO: preallocare memoria per rendere insert costo 1, ma quanta ? 
@@ -243,12 +243,18 @@ class fe_bilinear_form_assembly_loop :
         triplet_list.reserve(tot_triple);
         for (auto& triple : triplet_lists) {
             triplet_list.insert(triplet_list.end(), triple.vector_triple.begin(), triple.vector_triple.end());
+            // svuota e azzera memoria allocata per vettori dei worker
+            triple.vector_triple.clear();
+            triple.vector_triple.shrink_to_fit();
         }
-    */
+
+/*
         //assemble2/3
         std::vector<std::vector<Eigen::Triplet<double>>> triplet_lists(Tp.get_n_worker());
-        assemble2(triplet_lists,Tp);// 1 job per worker, non serve kk 
-        //assemble3(triplet_lists,Tp);//      "                 "
+        
+
+        //assemble2(triplet_lists,Tp);// 1 job per worker, non serve kk 
+        assemble3(triplet_lists,Tp);//      "                 "
 
         //unico vettore con tutte le triple, TODO: preallocare memoria per rendere insert costo 1, ma quanta ? 
         std::vector<Eigen::Triplet<double>> triplet_list;
@@ -261,10 +267,14 @@ class fe_bilinear_form_assembly_loop :
         for (auto& triple : triplet_lists) {
             triplet_list.insert(triplet_list.end(), triple.begin(), triple.end());
         }
-      
+*/        
+    auto start = std::chrono::high_resolution_clock::now();
 	// linearity of the integral is implicitly used here, as duplicated triplets are summed up (see Eigen docs)
         assembled_mat.setFromTriplets(triplet_list.begin(), triplet_list.end());
         assembled_mat.makeCompressed();
+    auto end = std::chrono::high_resolution_clock::now();
+    auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start);  
+    std::cout<<duration.count()<<",";     
         return assembled_mat;
     }
 
@@ -676,7 +686,157 @@ class fe_bilinear_form_assembly_loop :
         
         return;
     }
-    
+/*
+    // assemble 4: sequenziale salva tutti i valori delle celle in unico vettore cosi che i thread non debbano farlo in contemporanea in memoria sparsa e poi fa in parallelo solo calcolo di integrali.
+    // oss: molto piu costoso per memoria.
+    // da vedere se salvare info sequenziale è piu veloce di farle ceracre in parallelo
+    // oss: prima versione veloce ad hoc per laplaciano
+     void assemble4(std::vector<AlignedVectorTriple>& triplet_lists,fdapde::Threadpool<fdapde::steal::random> &Tp, int kk) const {
+        using iterator = typename Base::fe_traits::dof_iterator;
+        iterator begin(Base::begin_.index(), test_dof_handler(), Base::begin_.marker());
+        iterator end  (Base::end_.index(),   test_dof_handler(), Base::end_.marker()  );
+        // prepare assembly loop
+	Eigen::Matrix<int, Dynamic, 1> test_active_dofs, trial_active_dofs;
+        MdArray<double, MdExtents<n_test_basis,  n_quadrature_nodes, embed_dim, n_test_components >> test_grads;
+        MdArray<double, MdExtents<n_trial_basis, n_quadrature_nodes, embed_dim, n_trial_components>> trial_grads;
+        Matrix<double, n_test_basis , n_quadrature_nodes> test_divs;
+        Matrix<double, n_trial_basis, n_quadrature_nodes> trial_divs;
+        MdArray<double, MdExtents<n_test_basis,  n_quadrature_nodes, n_test_components,  embed_dim, embed_dim>>
+	  test_hess;
+        MdArray<double, MdExtents<n_trial_basis, n_quadrature_nodes, n_trial_components, embed_dim, embed_dim>>
+          trial_hess;
+
+        if constexpr (Form::XprBits & int(fe_assembler_flags::compute_physical_quad_nodes)) {
+            Base::distribute_quadrature_nodes(begin, end);
+        }
+        // start assembly loop
+        internals::fe_assembler_packet<embed_dim> fe_packet(n_trial_components, n_test_components);
+	// if hessians are zero, assemble physical hessian once and never update
+        constexpr bool test_hess_is_zero = std::all_of(
+          test_shape_hess_.data(), test_shape_hess_.data() + test_shape_hess_.size(), [](double x) { return x == 0; });
+        constexpr bool trial_hess_is_zero =
+          std::all_of(trial_shape_hess_.data(), trial_shape_hess_.data() + trial_shape_hess_.size(), [](double x) {
+              return x == 0;
+          });
+        if constexpr (test_hess_is_zero ) { std::fill_n(fe_packet.test_hess.data(), fe_packet.test_hess.size(), 0.0); }
+        if constexpr (trial_hess_is_zero) {
+            std::fill_n(fe_packet.trial_hess.data(), fe_packet.trial_hess.size(), 0.0);
+        }
+
+        //paralleliziamo con parallel_for con defaul granularity = 1 e creiamo da qui i mini_for (cosi ogni iterazione è minifor e quindi anche se un job= 1 iterazione ogni ojob sara un minifor)
+        int num_worker = Tp.get_n_worker();
+        
+        //numero celle
+        int count = this->Base::dof_handler_->triangulation()->n_cells();
+        
+        //int kk = 10; // per il momento in input cosi piu comodo per test
+        //dividiamo il range in k*num_worker (k*num_worker+1 se c'è resto) e poi vettore per ietrazioni in ogni job
+        const int n_job = (count % (kk*num_worker) == 0)? (kk*num_worker):(kk*num_worker +1);
+        const int it_per_job = count/(kk*num_worker);
+        const int it_per_job_resto = count % (kk*num_worker);
+
+        //info raccolte subito
+        struct info_it{
+            int geo_id;
+            double measure;
+            MdArray<double, MdExtents<embed_dim, 1>> normal;
+        }
+        std::vector<info_it> infos;
+        infos.emplace_back(begin->id(),begin->measure(),begin->normal());
+        std::vector<iterator> vect_begin_iterator;
+        vect_begin_iterator.reserve(n_job);
+        iterator begin_local = begin;
+        vect_begin_iterator.emplace_back(begin_local);
+        for(int k = 1; k<n_job; k++){
+            for(int j = 0; j<it_per_job; j++){
+                ++begin_local;
+                infos.emplace_back(begin_local->id(),begin_local->measure(),begin_local->normal())
+            }
+            vect_begin_iterator.emplace_back(begin_local);
+        }
+        Tp.parallel_for(0,n_job,[=,this,&Tp,&triplet_lists,&infos](int ii)mutable{ //passare tutto come copia o reference ? ogni iterazione deve avere suo fe_packet ecc quindi copia. TODO: passare copia di solo quello che serve es fe_packet ecc e non tutto =
+            int index_worker = Tp.get_index_worker_from_thread();
+            int local_cell_id = ii*it_per_job; 
+            //se ultimo job iterazioni sono resto 
+            int iterazioni_per_job = (it_per_job_resto != 0 && ii == n_job-1)? it_per_job_resto : it_per_job; 
+            // iterator di job
+            iterator it = vect_begin_iterator[ii];
+            for (int l = 0; l<iterazioni_per_job; l++) {
+                // update fe_packet content based on form requests
+                fe_packet.measure = infos[local_cell_id].measure;
+                if constexpr (Form::XprBits & int(geo_assembler_flags::compute_geo_id)) { fe_packet.geo_id = infos[local_cell_id].geo_id; }
+                if constexpr (Form::XprBits & int(geo_assembler_flags::compute_face_normal)) {
+                    fdapde_static_assert(Options_ == FaceMajor, BILINEAR_FORM_REQUIRES_A_FACE_MAJOR_ASSEMBLY_LOOP);
+                    fe_packet.normal.assign_inplace_from(infos[local_cell_id].normal);
+                }
+                if constexpr (Form::XprBits & int(fe_assembler_flags::compute_shape_grad)) {
+                    Base::eval_shape_grads_on_cell(it, test_shape_grads_, test_grads);
+                    if constexpr (is_petrov_galerkin) Base::eval_shape_grads_on_cell(it, trial_shape_grads_, trial_grads);
+                }
+                if constexpr (Form::XprBits & int(fe_assembler_flags::compute_shape_div)) {
+                    fdapde_static_assert(
+                    n_test_components != 1 || n_trial_components != 1,
+                    DIVERGENCE_OPERATOR_IS_DEFINED_ONLY_FOR_VECTOR_ELEMENTS);
+                    if constexpr (n_test_components != 1) Base::eval_shape_div_on_cell(it, test_shape_grads_, test_divs);
+                    if constexpr (is_petrov_galerkin && n_trial_components != 1)
+                        Base::eval_shape_div_on_cell(it, trial_shape_grads_, trial_divs);
+                }
+                if constexpr (Form::XprBits & int(fe_assembler_flags::compute_shape_hess)) {
+                    if constexpr (!test_hess_is_zero) Base::eval_shape_hess_on_cell(it, test_shape_hess_, test_hess);
+                    if constexpr (is_petrov_galerkin && !trial_hess_is_zero)
+                        Base::eval_shape_hess_on_cell(it, trial_shape_hess_, trial_hess);
+                }
+
+                // perform integration of weak form for (i, j)-th basis pair
+                test_active_dofs = it->dofs();
+                if constexpr (is_petrov_galerkin) { trial_active_dofs = trial_dof_handler()->active_dofs(it->id()); }
+                for (int i = 0; i < n_trial_basis; ++i) {      // trial function loop
+                    for (int j = 0; j < n_test_basis; ++j) {   // test function loop
+                        double value = 0;
+                        for (int q_k = 0; q_k < n_quadrature_nodes; ++q_k) {
+                            if constexpr (Form::XprBits & int(fe_assembler_flags::compute_shape_values)) {
+                                fe_packet.trial_value.assign_inplace_from(trial_shape_values_.template slice<0, 1>(i, q_k));
+                                fe_packet.test_value .assign_inplace_from(test_shape_values_ .template slice<0, 1>(j, q_k));
+                            }
+                            if constexpr (Form::XprBits & int(fe_assembler_flags::compute_shape_grad)) {
+                                fe_packet.trial_grad.assign_inplace_from(is_galerkin ?
+                                    test_grads.template slice<0, 1>(i, q_k) : trial_grads.template slice<0, 1>(i, q_k));
+                                fe_packet.test_grad .assign_inplace_from(test_grads.template slice<0, 1>(j, q_k));
+                            }
+                            if constexpr (Form::XprBits & int(fe_assembler_flags::compute_shape_div)) {
+                                if constexpr (n_trial_components != 1) {
+                                    fe_packet.trial_div =
+                                    (is_galerkin && n_test_components != 1) ? test_divs(i, q_k) : trial_divs(i, q_k);
+                                }
+                                if constexpr (n_test_components != 1) fe_packet.test_div = test_divs(j, q_k);
+                            }
+                            if constexpr (Form::XprBits & int(fe_assembler_flags::compute_shape_hess)) {
+                                if constexpr (!trial_hess_is_zero)
+                                    fe_packet.trial_hess.assign_inplace_from(is_galerkin ?
+                        test_hess.template slice<0, 1>(i, q_k) : trial_hess.template slice<0, 1>(i, q_k));
+                                if constexpr (!test_hess_is_zero)
+                                    fe_packet.test_hess.assign_inplace_from(test_hess.template slice<0, 1>(j, q_k));
+                            }
+                            if constexpr (Form::XprBits & int(fe_assembler_flags::compute_physical_quad_nodes)) {
+                                fe_packet.quad_node_id = local_cell_id * n_quadrature_nodes + q_k; 
+                            }
+                            value += Quadrature::weights[q_k] * form_(fe_packet);
+                        }
+                        //threadsafe perché ogni worker scrive su suo [index_worker] e vettore esterno non si rialloca
+                        triplet_lists[index_worker].vector_triple.emplace_back(
+                        test_active_dofs[j], is_galerkin ? test_active_dofs[i] : trial_active_dofs[i],
+                        value * fe_packet.measure);
+                    }
+                }
+                local_cell_id ++;
+                ++it;
+            }
+            
+        });
+        
+        return;
+    }
+*/    
     constexpr int n_dofs() const { return trial_dof_handler()->n_dofs(); }
     constexpr int rows() const { return test_dof_handler()->n_dofs(); }
     constexpr int cols() const { return trial_dof_handler()->n_dofs(); }

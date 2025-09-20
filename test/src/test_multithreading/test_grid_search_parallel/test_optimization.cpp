@@ -76,30 +76,16 @@ int main(int argc, char** argv){
     std::cout<<"optimum: "<<opt2.optimum()<<std::endl; 
     std::cout<<std::endl;
     
-//---------------------- parallel: optimize (parallel_for_reduce_min)---------------------- ---------------------- ---------------------- ---------------------- 
-    std::cout<<"parallel_for_reduce_min optimize, job per worker:"<<job_per_worker<<std::endl;
-    // definizione dell'ottimizzatore 
-    fdapde::GridSearch<2> opt;
 
-    auto start2 = std::chrono::high_resolution_clock::now();
-
-    opt.optimize(rastrigin, grid, execution::par,Tp,job_per_worker); //Tp in input
-
-    auto end2 = std::chrono::high_resolution_clock::now();
-    auto duration2 = std::chrono::duration_cast<std::chrono::microseconds>(end2 - start2);  
-    std::cout<<"tempo impiegato"<<duration2.count()<<","<<std::endl;
-    std::cout<<"value: "<<opt.value()<<std::endl; 
-    std::cout<<"optimum: "<<opt.optimum()<<std::endl;
-    std::cout<<std::endl;
-//---------------------- parallel: optimize2 (parallel_for)---------------------- ---------------------- ---------------------- ---------------------- 
-    std::cout<<"parallel_for optimize2, job per worker:"<<job_per_worker<<std::endl;
+//---------------------- parallel: optimize (parallel_for)---------------------- ---------------------- ---------------------- ---------------------- 
+    std::cout<<"parallel_for optimize, job per worker:"<<job_per_worker<<std::endl;
     // definizione dell'ottimizzatore 
     fdapde::GridSearch<2> opt3;
 
     auto start4 = std::chrono::high_resolution_clock::now();
 
-    //opt3.optimize2(rastrigin, grid, execution::par,job_per_worker, n_threads); // <- da modificare questo step
-    opt3.optimize2(rastrigin, grid, execution::par,Tp,job_per_worker); //Tp in input
+    //opt3.optimize(rastrigin, grid, execution::par,job_per_worker, n_threads); // <- da modificare questo step
+    opt3.optimize(rastrigin, grid, execution::par,Tp,job_per_worker); //Tp in input
 
     auto end4 = std::chrono::high_resolution_clock::now();
     auto duration4 = std::chrono::duration_cast<std::chrono::microseconds>(end4 - start4);  
