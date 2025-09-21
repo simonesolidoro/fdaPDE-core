@@ -103,13 +103,11 @@ class fe_bilinear_form_assembly_loop :
         
 	assemble(triplet_list);
 
-auto start = std::chrono::high_resolution_clock::now();
+
 	// linearity of the integral is implicitly used here, as duplicated triplets are summed up (see Eigen docs)
         assembled_mat.setFromTriplets(triplet_list.begin(), triplet_list.end());
         assembled_mat.makeCompressed();
-auto end = std::chrono::high_resolution_clock::now();
-auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start);  
-std::cout<<duration.count()<<",";  
+
         return assembled_mat;
     }
 
@@ -229,9 +227,12 @@ std::cout<<duration.count()<<",";
 
         //assemble
         std::vector<AlignedVectorTriple> triplet_lists(Tp.get_n_worker());
+        for(auto& alignedvector : triplet_lists){
+            alignedvector.vector_triple.reserve((test_dof_handler()->n_dofs()*6*6)/Tp.get_n_worker()); //reserve ad hoc per problema esagerato, solo per testare se aiuta
+        }
 
-        assemble(triplet_lists,Tp,kk); // poi n_job = kk*n_worker (+1 se numero_celle % (n_worker*kk) != 0)
-
+        //assemble(triplet_lists,Tp,kk); // poi n_job = kk*n_worker (+1 se numero_celle % (n_worker*kk) != 0)
+        assemble4(triplet_lists,Tp,kk);
         //unico vettore con tutte le triple, TODO: preallocare memoria per rendere insert costo 1, ma quanta ? 
         std::vector<Eigen::Triplet<double>> triplet_list;
         //reserve spazio per tutte le triple (ne basterebbe di meno perchè triple duplicate si sommano)
@@ -268,13 +269,11 @@ std::cout<<duration.count()<<",";
             triplet_list.insert(triplet_list.end(), triple.begin(), triple.end());
         }
 */        
-    auto start = std::chrono::high_resolution_clock::now();
+
 	// linearity of the integral is implicitly used here, as duplicated triplets are summed up (see Eigen docs)
         assembled_mat.setFromTriplets(triplet_list.begin(), triplet_list.end());
         assembled_mat.makeCompressed();
-    auto end = std::chrono::high_resolution_clock::now();
-    auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start);  
-    std::cout<<duration.count()<<",";     
+
         return assembled_mat;
     }
 
@@ -686,12 +685,30 @@ std::cout<<duration.count()<<",";
         
         return;
     }
-/*
-    // assemble 4: sequenziale salva tutti i valori delle celle in unico vettore cosi che i thread non debbano farlo in contemporanea in memoria sparsa e poi fa in parallelo solo calcolo di integrali.
-    // oss: molto piu costoso per memoria.
-    // da vedere se salvare info sequenziale è piu veloce di farle ceracre in parallelo
-    // oss: prima versione veloce ad hoc per laplaciano
-     void assemble4(std::vector<AlignedVectorTriple>& triplet_lists,fdapde::Threadpool<fdapde::steal::random> &Tp, int kk) const {
+
+    //assemble parallelo con unicco vettore, 2 modi:
+    // - prealocare size_triple = numero celle*9 (9 perche triangoli iniziamo hardcoded per veder se funzione), e poi ogni worker scrive in vettore cosi ABCDABCDABCD ...
+    // -usare synchroqueue, ma anche qui servirebbe size inziale = size_triple, però evita penality di concurrency di vettore con mutex e push_back
+
+    Eigen::SparseMatrix<double> assemble_unicovettore(execution::execution_parallel, fdapde::Threadpool<fdapde::steal::random>& Tp, int kk = 1) const {
+        Eigen::SparseMatrix<double> assembled_mat(test_dof_handler()->n_dofs(), trial_dof_handler()->n_dofs());
+        
+        int n_cell = this->Base::dof_handler_->triangulation()->n_cells();
+        int triple_per_cella = n_trial_basis * n_test_basis; //9; //hardcoded per caso specifico poi sara componenti test * componenti trial qualcosa cosi 
+        int tot_triple = n_cell * triple_per_cella;
+        std::vector<Eigen::Triplet<double>> triplet_list(tot_triple);
+
+	assemble_unicovettore(triplet_list,Tp,kk);
+
+
+	// linearity of the integral is implicitly used here, as duplicated triplets are summed up (see Eigen docs)
+        assembled_mat.setFromTriplets(triplet_list.begin(), triplet_list.end());
+        assembled_mat.makeCompressed();
+
+        return assembled_mat;
+    }
+
+    void assemble_unicovettore(std::vector<Eigen::Triplet<double>>& triplet_list,fdapde::Threadpool<fdapde::steal::random> &Tp, int kk) const {
         using iterator = typename Base::fe_traits::dof_iterator;
         iterator begin(Base::begin_.index(), test_dof_handler(), Base::begin_.marker());
         iterator end  (Base::end_.index(),   test_dof_handler(), Base::end_.marker()  );
@@ -735,14 +752,6 @@ std::cout<<duration.count()<<",";
         const int it_per_job = count/(kk*num_worker);
         const int it_per_job_resto = count % (kk*num_worker);
 
-        //info raccolte subito
-        struct info_it{
-            int geo_id;
-            double measure;
-            MdArray<double, MdExtents<embed_dim, 1>> normal;
-        }
-        std::vector<info_it> infos;
-        infos.emplace_back(begin->id(),begin->measure(),begin->normal());
         std::vector<iterator> vect_begin_iterator;
         vect_begin_iterator.reserve(n_job);
         iterator begin_local = begin;
@@ -750,24 +759,24 @@ std::cout<<duration.count()<<",";
         for(int k = 1; k<n_job; k++){
             for(int j = 0; j<it_per_job; j++){
                 ++begin_local;
-                infos.emplace_back(begin_local->id(),begin_local->measure(),begin_local->normal())
             }
             vect_begin_iterator.emplace_back(begin_local);
         }
-        Tp.parallel_for(0,n_job,[=,this,&Tp,&triplet_lists,&infos](int ii)mutable{ //passare tutto come copia o reference ? ogni iterazione deve avere suo fe_packet ecc quindi copia. TODO: passare copia di solo quello che serve es fe_packet ecc e non tutto =
+        Tp.parallel_for(0,n_job,[=,this,&Tp,&triplet_list](int ii)mutable{ //passare tutto come copia o reference ? ogni iterazione deve avere suo fe_packet ecc quindi copia. TODO: passare copia di solo quello che serve es fe_packet ecc e non tutto =
             int index_worker = Tp.get_index_worker_from_thread();
             int local_cell_id = ii*it_per_job; 
+            int triple_per_cella = n_trial_basis * n_test_basis; //9; //hardcoded per il momento
             //se ultimo job iterazioni sono resto 
             int iterazioni_per_job = (it_per_job_resto != 0 && ii == n_job-1)? it_per_job_resto : it_per_job; 
             // iterator di job
             iterator it = vect_begin_iterator[ii];
             for (int l = 0; l<iterazioni_per_job; l++) {
                 // update fe_packet content based on form requests
-                fe_packet.measure = infos[local_cell_id].measure;
-                if constexpr (Form::XprBits & int(geo_assembler_flags::compute_geo_id)) { fe_packet.geo_id = infos[local_cell_id].geo_id; }
+                fe_packet.measure = it->measure();
+                if constexpr (Form::XprBits & int(geo_assembler_flags::compute_geo_id)) { fe_packet.geo_id = it->id(); }
                 if constexpr (Form::XprBits & int(geo_assembler_flags::compute_face_normal)) {
                     fdapde_static_assert(Options_ == FaceMajor, BILINEAR_FORM_REQUIRES_A_FACE_MAJOR_ASSEMBLY_LOOP);
-                    fe_packet.normal.assign_inplace_from(infos[local_cell_id].normal);
+                    fe_packet.normal.assign_inplace_from(it->normal());
                 }
                 if constexpr (Form::XprBits & int(fe_assembler_flags::compute_shape_grad)) {
                     Base::eval_shape_grads_on_cell(it, test_shape_grads_, test_grads);
@@ -788,6 +797,7 @@ std::cout<<duration.count()<<",";
                 }
 
                 // perform integration of weak form for (i, j)-th basis pair
+                int index_global_triplet_list = local_cell_id*triple_per_cella;
                 test_active_dofs = it->dofs();
                 if constexpr (is_petrov_galerkin) { trial_active_dofs = trial_dof_handler()->active_dofs(it->id()); }
                 for (int i = 0; i < n_trial_basis; ++i) {      // trial function loop
@@ -823,9 +833,9 @@ std::cout<<duration.count()<<",";
                             value += Quadrature::weights[q_k] * form_(fe_packet);
                         }
                         //threadsafe perché ogni worker scrive su suo [index_worker] e vettore esterno non si rialloca
-                        triplet_lists[index_worker].vector_triple.emplace_back(
-                        test_active_dofs[j], is_galerkin ? test_active_dofs[i] : trial_active_dofs[i],
-                        value * fe_packet.measure);
+                        Eigen::Triplet<double> tripla(test_active_dofs[j], is_galerkin ? test_active_dofs[i] : trial_active_dofs[i],value * fe_packet.measure);
+                        triplet_list[index_global_triplet_list] = std::move(tripla);
+                        index_global_triplet_list ++;
                     }
                 }
                 local_cell_id ++;
@@ -836,7 +846,8 @@ std::cout<<duration.count()<<",";
         
         return;
     }
-*/    
+
+    
     constexpr int n_dofs() const { return trial_dof_handler()->n_dofs(); }
     constexpr int rows() const { return test_dof_handler()->n_dofs(); }
     constexpr int cols() const { return trial_dof_handler()->n_dofs(); }
