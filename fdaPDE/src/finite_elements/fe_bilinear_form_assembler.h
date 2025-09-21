@@ -100,7 +100,7 @@ class fe_bilinear_form_assembly_loop :
     Eigen::SparseMatrix<double> assemble() const {
         Eigen::SparseMatrix<double> assembled_mat(test_dof_handler()->n_dofs(), trial_dof_handler()->n_dofs());
         std::vector<Eigen::Triplet<double>> triplet_list;
-        
+
 	assemble(triplet_list);
 
 
@@ -231,11 +231,11 @@ class fe_bilinear_form_assembly_loop :
             alignedvector.vector_triple.reserve((test_dof_handler()->n_dofs()*6*6)/Tp.get_n_worker()); //reserve ad hoc per problema esagerato, solo per testare se aiuta
         }
 
-        //assemble(triplet_lists,Tp,kk); // poi n_job = kk*n_worker (+1 se numero_celle % (n_worker*kk) != 0)
-        assemble4(triplet_lists,Tp,kk);
+        assemble(triplet_lists,Tp,kk); // poi n_job = kk*n_worker (+1 se numero_celle % (n_worker*kk) != 0)
+        
         //unico vettore con tutte le triple, TODO: preallocare memoria per rendere insert costo 1, ma quanta ? 
         std::vector<Eigen::Triplet<double>> triplet_list;
-        //reserve spazio per tutte le triple (ne basterebbe di meno perchè triple duplicate si sommano)
+        //reserve spazio per tutte le triple 
         int tot_triple = triplet_lists[0].vector_triple.size();
         for (int i = 1; i<triplet_lists.size(); i++){
             tot_triple += triplet_lists[i].vector_triple.size();
@@ -700,7 +700,6 @@ class fe_bilinear_form_assembly_loop :
 
 	assemble_unicovettore(triplet_list,Tp,kk);
 
-
 	// linearity of the integral is implicitly used here, as duplicated triplets are summed up (see Eigen docs)
         assembled_mat.setFromTriplets(triplet_list.begin(), triplet_list.end());
         assembled_mat.makeCompressed();
@@ -746,31 +745,37 @@ class fe_bilinear_form_assembly_loop :
         //numero celle
         int count = this->Base::dof_handler_->triangulation()->n_cells();
         
-        //int kk = 10; // per il momento in input cosi piu comodo per test
-        //dividiamo il range in k*num_worker (k*num_worker+1 se c'è resto) e poi vettore per ietrazioni in ogni job
-        const int n_job = (count % (kk*num_worker) == 0)? (kk*num_worker):(kk*num_worker +1);
-        const int it_per_job = count/(kk*num_worker);
-        const int it_per_job_resto = count % (kk*num_worker);
+
+        const int it_per_worker = ((count / num_worker) > 0)? (count / num_worker) : (0);
+        const int it_per_worker_resto = count % num_worker;
+        std::vector<int> it_per_workers(num_worker,it_per_worker);
+        for(int i = 0; i<it_per_worker_resto; i++){
+            it_per_workers[i]++; //add uno ai worker che fanno resto es:  3 worker A B C, 10 iterator--> resto = 1 cioe B C fanno 3 e A fa 3+1
+        }
 
         std::vector<iterator> vect_begin_iterator;
-        vect_begin_iterator.reserve(n_job);
+        vect_begin_iterator.reserve(num_worker);
         iterator begin_local = begin;
         vect_begin_iterator.emplace_back(begin_local);
-        for(int k = 1; k<n_job; k++){
-            for(int j = 0; j<it_per_job; j++){
+        for(int k = 1; k<num_worker; k++){
+            for(int j = 0; j<it_per_workers[k-1]; j++){
                 ++begin_local;
             }
             vect_begin_iterator.emplace_back(begin_local);
         }
-        Tp.parallel_for(0,n_job,[=,this,&Tp,&triplet_list](int ii)mutable{ //passare tutto come copia o reference ? ogni iterazione deve avere suo fe_packet ecc quindi copia. TODO: passare copia di solo quello che serve es fe_packet ecc e non tutto =
+
+        Tp.parallel_for(0,num_worker,[=,this,&Tp,&triplet_list](int ii)mutable{ //passare tutto come copia o reference ? ogni iterazione deve avere suo fe_packet ecc quindi copia. TODO: passare copia di solo quello che serve es fe_packet ecc e non tutto =
             int index_worker = Tp.get_index_worker_from_thread();
-            int local_cell_id = ii*it_per_job; 
+            int local_cell_id = 0;
+            for (int l = 0; l<ii; l++){
+                local_cell_id += it_per_workers[l];
+            }
+             
             int triple_per_cella = n_trial_basis * n_test_basis; //9; //hardcoded per il momento
-            //se ultimo job iterazioni sono resto 
-            int iterazioni_per_job = (it_per_job_resto != 0 && ii == n_job-1)? it_per_job_resto : it_per_job; 
+            
             // iterator di job
             iterator it = vect_begin_iterator[ii];
-            for (int l = 0; l<iterazioni_per_job; l++) {
+            for (int l = 0; l<it_per_workers[ii]; l++) {
                 // update fe_packet content based on form requests
                 fe_packet.measure = it->measure();
                 if constexpr (Form::XprBits & int(geo_assembler_flags::compute_geo_id)) { fe_packet.geo_id = it->id(); }
