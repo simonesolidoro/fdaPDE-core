@@ -326,21 +326,14 @@ class fe_bilinear_form_assembly_loop :
         const int it_per_job = count/(kk*num_worker);
         const int it_per_job_resto = count % (kk*num_worker);
 
-        std::vector<iterator> vect_begin_iterator;
-        vect_begin_iterator.reserve(n_job);
-        iterator begin_local = begin;
-        vect_begin_iterator.emplace_back(begin_local);
-        for(int k = 1; k<n_job; k++){
-            begin_local += it_per_job;
-            vect_begin_iterator.emplace_back(begin_local);
-        }
         Tp.parallel_for(0,n_job,[=,this,&Tp,&triplet_lists](int ii)mutable{ //passare tutto come copia o reference ? ogni iterazione deve avere suo fe_packet ecc quindi copia. TODO: passare copia di solo quello che serve es fe_packet ecc e non tutto =
             int index_worker = Tp.get_index_worker_from_thread();
             int local_cell_id = ii*it_per_job; 
+            iterator it = begin;
+            it += (ii*it_per_job);
             //se ultimo job iterazioni sono resto 
             int iterazioni_per_job = (it_per_job_resto != 0 && ii == n_job-1)? it_per_job_resto : it_per_job; 
-            // iterator di job
-            iterator it = vect_begin_iterator[ii];
+            
             for (int l = 0; l<iterazioni_per_job; l++) {
                 // update fe_packet content based on form requests
                 fe_packet.measure = it->measure();
@@ -418,15 +411,12 @@ class fe_bilinear_form_assembly_loop :
     }
 
     
-    //assemble parallelo con unicco vettore, 2 modi:
-    // - prealocare size_triple = numero celle*9 (9 perche triangoli iniziamo hardcoded per veder se funzione), e poi ogni worker scrive in vettore cosi ABCDABCDABCD ...
-    // -usare synchroqueue, ma anche qui servirebbe size inziale = size_triple, però evita penality di concurrency di vettore con mutex e push_back
-
+    //assemble parallelo con unicco vettore
     Eigen::SparseMatrix<double> assemble_unicovettore(execution::execution_parallel, fdapde::Threadpool<fdapde::steal::random>& Tp, int kk = 1) const {
         Eigen::SparseMatrix<double> assembled_mat(test_dof_handler()->n_dofs(), trial_dof_handler()->n_dofs());
         
         int n_cell = this->Base::dof_handler_->triangulation()->n_cells();
-        int triple_per_cella = n_trial_basis * n_test_basis; //9; //hardcoded per caso specifico poi sara componenti test * componenti trial qualcosa cosi 
+        int triple_per_cella = n_trial_basis * n_test_basis; //9 qui;
         int tot_triple = n_cell * triple_per_cella;
         std::vector<Eigen::Triplet<double>> triplet_list(tot_triple);
 
