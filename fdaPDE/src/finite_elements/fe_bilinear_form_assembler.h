@@ -755,9 +755,7 @@ class fe_bilinear_form_assembly_loop :
         iterator begin_local = begin;
         vect_begin_iterator.emplace_back(begin_local);
         for(int k = 1; k<num_worker; k++){
-            for(int j = 0; j<it_per_workers[k-1]; j++){
-                ++begin_local;
-            }
+            begin_local+=it_per_workers[k-1]; 
             vect_begin_iterator.emplace_back(begin_local);
         }
 
