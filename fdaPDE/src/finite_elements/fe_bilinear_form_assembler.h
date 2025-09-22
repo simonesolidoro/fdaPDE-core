@@ -223,15 +223,19 @@ class fe_bilinear_form_assembly_loop :
 
     Eigen::SparseMatrix<double> assemble(execution::execution_parallel, fdapde::Threadpool<fdapde::steal::random>& Tp, int kk = 1) const { //int kk per il momento in input per fare test piu comodamente. OSS: per ora visto che kk=1 fino a kk=10 non c'è differenza. se troppo alto invece peggioramento evidente (es kk=100)
         Eigen::SparseMatrix<double> assembled_mat(test_dof_handler()->n_dofs(), trial_dof_handler()->n_dofs());
-
+        int n_worker = Tp.get_n_worker();
         //assemble
-        std::vector<AlignedVectorTriple> triplet_lists(Tp.get_n_worker());
+        std::vector<AlignedVectorTriple> triplet_lists(n_worker);
+
+        int n_cell = this->Base::dof_handler_->triangulation()->n_cells();
+        int triple_per_cella = n_trial_basis * n_test_basis; //9 qui;
+        int tot_triple = n_cell * triple_per_cella;
         for(auto& alignedvector : triplet_lists){
-            alignedvector.vector_triple.reserve((test_dof_handler()->n_dofs()*6*6)/Tp.get_n_worker()); //reserve ad hoc per problema esagerato, solo per testare se aiuta
+            alignedvector.vector_triple.reserve(static_cast<int>((tot_triple/n_worker)*1.5)); //? reserve per ciascun worker quanto ? considerando steal ecc non va bene tot_triple/n_worker perché basta che un worker ne fa una in piu e si rialloca, ma quanto aumentare ??  
         }
 
-        //assemble(triplet_lists,Tp,kk); // poi n_job = kk*n_worker (+1 se numero_celle % (n_worker*kk) != 0)
-        assemble2(triplet_lists,Tp);
+        assemble(triplet_lists,Tp,kk); // poi n_job = kk*n_worker (+1 se numero_celle % (n_worker*kk) != 0)
+        //assemble2(triplet_lists,Tp);
 
         //unico vettore con tutte le triple
         std::vector<Eigen::Triplet<double>> triplet_list;
@@ -248,7 +252,6 @@ class fe_bilinear_form_assembly_loop :
             triple.vector_triple.clear();
             triple.vector_triple.shrink_to_fit();
         }
-      
 
 	// linearity of the integral is implicitly used here, as duplicated triplets are summed up (see Eigen docs)
         assembled_mat.setFromTriplets(triplet_list.begin(), triplet_list.end());
