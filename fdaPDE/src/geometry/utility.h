@@ -62,7 +62,8 @@ template <typename IteratorType, typename ValueType> class index_iterator {
       std::add_lvalue_reference_t<std::decay_t<ValueType>>>;
     using size_type = std::size_t;
     using difference_type = std::ptrdiff_t;
-    using iterator_category = std::bidirectional_iterator_tag;
+    //using iterator_category = std::bidirectional_iterator_tag;
+    using iterator_category = std::random_access_iterator_tag;
 
     index_iterator() = default;
     index_iterator(int index, int begin, int end) : index_(index), begin_(begin), end_(end) { }
@@ -102,6 +103,22 @@ template <typename IteratorType, typename ValueType> class index_iterator {
         if (index_ >= begin_) derived().operator()(index_);
         return derived();
     }
+    IteratorType& operator+=(int n) {
+        index_+=n;
+        if (index_ < end_) derived().operator()(index_);
+        return derived();
+    }
+    IteratorType& operator-=(int n) {
+        index_-=n;
+        if (index_ >= begin_) derived().operator()(index_);
+        return derived();
+    }
+
+    /*errore in uso di derived().operator()(index_): ../../../../fdaPDE/src/geometry/utility.h:108:48: error: 'fdapde::internals::fe_dof_handler_base<LocalDim, EmbedDim, Derived>::cell_iterator& fdapde::internals::fe_dof_handler_base<LocalDim, EmbedDim, Derived>::cell_iterator::operator()(int) [with int LocalDim = 2; int EmbedDim = 2; Derived = fdapde::DofHandler<2, 2, fdapde::finite_element_tag>]' is private within this context
+  108 |         if (index_ < end_) derived().operator()(index_);
+  momemntanea amicizia tra index_iterator e cell_iterator in dof_handler.h riga 80
+  */
+
     friend bool
     operator!=(const index_iterator<IteratorType, ValueType>& lhs, const index_iterator<IteratorType, ValueType>& rhs) {
         return lhs.index_ != rhs.index_;
