@@ -22,6 +22,6 @@ int main(int argc, char** argv){
 
     auto end = std::chrono::high_resolution_clock::now();
     auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start);  
-    //std::cout<<"tempo (microsec) assemblaggio non parallelo: "<<duration.count()<<std::endl; 
+    std::cout<<"tempo (microsec) assemblaggio non parallelo: "<<duration.count()<<std::endl; 
     return 0;
 }

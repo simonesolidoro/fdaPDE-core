@@ -1,15 +1,13 @@
 #!/bin/bash
 
-#$1 is the number of times the file is ran
+#$1 nodi 
+#$2 n thread
+#$3 kk. n_job = kk*numero_worker (+1 se (numero_celle % num_worker*kk)!= 0)
 
-#$2 nodi 
-#$3 n thread
-#$4 kk. n_job = kk*numero_worker (+1 se (numero_celle % num_worker*kk)!= 0)
-
-output_file="test_assemble_nodi"$2"_thread"$3".txt"
+output_file="test_assemble_nodi"$1"_thread"$2".txt"
 touch "$output_file"
 
 
-./"test_assemble_parallel" "$2" "$3" "$4" >> "$output_file" 
+./"test_assemble_parallel" "$1" "$2" "$3" >> "$output_file" 
 
 
