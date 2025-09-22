@@ -103,7 +103,6 @@ class fe_bilinear_form_assembly_loop :
 
 	assemble(triplet_list);
 
-
 	// linearity of the integral is implicitly used here, as duplicated triplets are summed up (see Eigen docs)
         assembled_mat.setFromTriplets(triplet_list.begin(), triplet_list.end());
         assembled_mat.makeCompressed();
@@ -332,9 +331,7 @@ class fe_bilinear_form_assembly_loop :
         iterator begin_local = begin;
         vect_begin_iterator.emplace_back(begin_local);
         for(int k = 1; k<n_job; k++){
-            for(int j = 0; j<it_per_job; j++){
-                ++begin_local;
-            }
+            begin_local += it_per_job;
             vect_begin_iterator.emplace_back(begin_local);
         }
         Tp.parallel_for(0,n_job,[=,this,&Tp,&triplet_lists](int ii)mutable{ //passare tutto come copia o reference ? ogni iterazione deve avere suo fe_packet ecc quindi copia. TODO: passare copia di solo quello che serve es fe_packet ecc e non tutto =
@@ -765,12 +762,10 @@ class fe_bilinear_form_assembly_loop :
         }
 
         Tp.parallel_for(0,num_worker,[=,this,&Tp,&triplet_list](int ii)mutable{ //passare tutto come copia o reference ? ogni iterazione deve avere suo fe_packet ecc quindi copia. TODO: passare copia di solo quello che serve es fe_packet ecc e non tutto =
-            int index_worker = Tp.get_index_worker_from_thread();
             int local_cell_id = 0;
             for (int l = 0; l<ii; l++){
                 local_cell_id += it_per_workers[l];
             }
-             
             int triple_per_cella = n_trial_basis * n_test_basis; //9; //hardcoded per il momento
             
             // iterator di job
