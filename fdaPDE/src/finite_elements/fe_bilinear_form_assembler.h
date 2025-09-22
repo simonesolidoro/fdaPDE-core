@@ -750,24 +750,15 @@ class fe_bilinear_form_assembly_loop :
             it_per_workers[i]++; //add uno ai worker che fanno resto es:  3 worker A B C, 10 iterator--> resto = 1 cioe B C fanno 3 e A fa 3+1
         }
 
-        std::vector<iterator> vect_begin_iterator;
-        vect_begin_iterator.reserve(num_worker);
-        iterator begin_local = begin;
-        vect_begin_iterator.emplace_back(begin_local);
-        for(int k = 1; k<num_worker; k++){
-            begin_local+=it_per_workers[k-1]; 
-            vect_begin_iterator.emplace_back(begin_local);
-        }
-
         Tp.parallel_for(0,num_worker,[=,this,&Tp,&triplet_list](int ii)mutable{ //passare tutto come copia o reference ? ogni iterazione deve avere suo fe_packet ecc quindi copia. TODO: passare copia di solo quello che serve es fe_packet ecc e non tutto =
             int local_cell_id = 0;
+            iterator it = begin;
             for (int l = 0; l<ii; l++){
                 local_cell_id += it_per_workers[l];
+                it+=it_per_workers[l];
             }
             int triple_per_cella = n_trial_basis * n_test_basis; //9; //hardcoded per il momento
             
-            // iterator di job
-            iterator it = vect_begin_iterator[ii];
             for (int l = 0; l<it_per_workers[ii]; l++) {
                 // update fe_packet content based on form requests
                 fe_packet.measure = it->measure();
