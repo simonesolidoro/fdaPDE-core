@@ -26,7 +26,7 @@ int main(int argc, char** argv){
 //cronometro assemblaggio parallelo
     auto start2 = std::chrono::high_resolution_clock::now();
 
-    Eigen::SparseMatrix<double> A2 = b.assemble_unicovettore(execution::par,Tp,kk); // use parallel version 
+    Eigen::SparseMatrix<double> A2 = b.assemble_unicovettore(execution::par,Tp,kk); // use parallel versione 
     //Eigen::SparseMatrix<double> A2 = b.assemble(execution::par,Tp,kk); // use parallel version 
 
     auto end2 = std::chrono::high_resolution_clock::now();

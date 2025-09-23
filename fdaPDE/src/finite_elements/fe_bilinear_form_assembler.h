@@ -240,8 +240,8 @@ class fe_bilinear_form_assembly_loop :
             alignedvector.vector_triple.reserve(static_cast<int>((tot_triple/n_worker)*1.5)); //? reserve per ciascun worker quanto ? considerando steal ecc non va bene tot_triple/n_worker perché basta che un worker ne fa una in piu e si rialloca, ma quanto aumentare ??  
         }
 
-        //assemble(triplet_lists,Tp,kk); // poi n_job = kk*n_worker (+1 se numero_celle % (n_worker*kk) != 0)
-        assemble2(triplet_lists,Tp);
+        assemble(triplet_lists,Tp,kk); // poi n_job = kk*n_worker (+1 se numero_celle % (n_worker*kk) != 0)
+        //assemble2(triplet_lists,Tp);
 
         //unico vettore con tutte le triple
         std::vector<Eigen::Triplet<double>> triplet_list;
