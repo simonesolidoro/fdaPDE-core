@@ -100,7 +100,13 @@ class fe_bilinear_form_assembly_loop :
     Eigen::SparseMatrix<double> assemble() const {
         Eigen::SparseMatrix<double> assembled_mat(test_dof_handler()->n_dofs(), trial_dof_handler()->n_dofs());
         std::vector<Eigen::Triplet<double>> triplet_list;
-
+/*
+        //riserva spazio per evitare riallocamento vettore
+        int n_cell = this->Base::dof_handler_->triangulation()->n_cells();
+        int triple_per_cella = n_trial_basis * n_test_basis; //9 qui;
+        int tot_triple = n_cell * triple_per_cella;
+        triplet_list.reserve(tot_triple);
+*/
 	assemble(triplet_list);
 
 	// linearity of the integral is implicitly used here, as duplicated triplets are summed up (see Eigen docs)
@@ -234,16 +240,18 @@ class fe_bilinear_form_assembly_loop :
             alignedvector.vector_triple.reserve(static_cast<int>((tot_triple/n_worker)*1.5)); //? reserve per ciascun worker quanto ? considerando steal ecc non va bene tot_triple/n_worker perché basta che un worker ne fa una in piu e si rialloca, ma quanto aumentare ??  
         }
 
-        assemble(triplet_lists,Tp,kk); // poi n_job = kk*n_worker (+1 se numero_celle % (n_worker*kk) != 0)
-        //assemble2(triplet_lists,Tp);
+        //assemble(triplet_lists,Tp,kk); // poi n_job = kk*n_worker (+1 se numero_celle % (n_worker*kk) != 0)
+        assemble2(triplet_lists,Tp);
 
         //unico vettore con tutte le triple
         std::vector<Eigen::Triplet<double>> triplet_list;
         //reserve spazio per tutte le triple 
+        /*//non serve se va bene il tot_triple di sopra (se per qualche motivo non andrà bene allora calcolo manuale cosi da rimettere)
         int tot_triple = triplet_lists[0].vector_triple.size();
         for (int i = 1; i<triplet_lists.size(); i++){
             tot_triple += triplet_lists[i].vector_triple.size();
         }
+        */
         //unisce vettori
         triplet_list.reserve(tot_triple);
         for (auto& triple : triplet_lists) {
@@ -432,6 +440,8 @@ class fe_bilinear_form_assembly_loop :
         
         //numero celle
         int count = this->Base::dof_handler_->triangulation()->n_cells();
+        int triple_per_cella = n_trial_basis * n_test_basis; //9 qui;
+        int tot_triple = count * triple_per_cella;
         
 
         const int it_per_worker = ((count / n_worker) > 0)? (count / n_worker) : (0);
@@ -442,7 +452,11 @@ class fe_bilinear_form_assembly_loop :
         }
 
         Tp.parallel_for(0,n_worker,[=,this,&Tp,&triplet_lists](int ii)mutable{ //passare tutto come copia o reference ? ogni iterazione deve avere suo fe_packet ecc quindi copia. TODO: passare copia di solo quello che serve es fe_packet ecc e non tutto =
+            //ogni worker crea il suo vettore di triple locale e poi farà il move nel vettore di vettori globale
+            std::vector<Eigen::Triplet<double>> local_vector_triple;
+            local_vector_triple.reserve(static_cast<int>((tot_triple/n_worker)*1.5));
             int index_worker = Tp.get_index_worker_from_thread();
+            //cella e iterator iniziale
             int local_cell_id = 0;
             iterator it = begin;
             for (int l = 0; l<ii; l++){
@@ -511,7 +525,7 @@ class fe_bilinear_form_assembly_loop :
                             value += Quadrature::weights[q_k] * form_(fe_packet);
                         }
                         //threadsafe perché ogni worker scrive su suo [index_worker] e vettore esterno non si rialloca
-                        triplet_lists[index_worker].vector_triple.emplace_back(
+                        local_vector_triple.emplace_back(
                         test_active_dofs[j], is_galerkin ? test_active_dofs[i] : trial_active_dofs[i],
                         value * fe_packet.measure);
                     }
@@ -519,7 +533,7 @@ class fe_bilinear_form_assembly_loop :
                 local_cell_id ++;
                 ++it;
             }
-            
+            triplet_lists[index_worker].vector_triple = std::move(local_vector_triple);
         });
         
         return;
@@ -681,7 +695,7 @@ class fe_bilinear_form_assembly_loop :
     }
 
     //1 job per worker
-    void assemble_unicovettor2(std::vector<Eigen::Triplet<double>>& triplet_list,fdapde::Threadpool<fdapde::steal::random> &Tp) const {
+    void assemble_unicovettore2(std::vector<Eigen::Triplet<double>>& triplet_list,fdapde::Threadpool<fdapde::steal::random> &Tp) const {
         using iterator = typename Base::fe_traits::dof_iterator;
         iterator begin(Base::begin_.index(), test_dof_handler(), Base::begin_.marker());
         iterator end  (Base::end_.index(),   test_dof_handler(), Base::end_.marker()  );
