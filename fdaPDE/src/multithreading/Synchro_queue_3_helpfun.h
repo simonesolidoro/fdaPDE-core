@@ -114,7 +114,6 @@ namespace fdapde{
         }
         if constexpr(std::is_same_v<M,hold_nowait> || std::is_same_v<M,hold_wait>){
             E.state_ = false; //aggiorna stato di elem a full
-            E.cv_ready_to_pop_.notify_one(); // notifica pop dormiente su stesso elemento
         }
     };
 
@@ -128,7 +127,6 @@ namespace fdapde{
         if constexpr(std::is_same_v<M,hold_nowait> || std::is_same_v<M,hold_wait>){
             E.state_ = true;
             E.count_pop_ --;
-            E.cv_ready_to_push_.notify_one();
         }
         return ret; 
     };

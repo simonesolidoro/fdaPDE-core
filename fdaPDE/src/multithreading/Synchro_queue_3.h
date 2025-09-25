@@ -330,6 +330,7 @@ namespace fdapde{
                 if(!active_){return false;}
                 push_fb_push<T,hold_nowait>(queue_[h],t);
                 loc_el.unlock();
+                queue_[h].cv_ready_to_pop_.notify_one(); // notifica pop dormiente su stesso elemento
                 return true; 
             }
 
@@ -345,7 +346,8 @@ namespace fdapde{
                 if(!active_) return std::nullopt;
                 // pop 
                 value_type ret = pop_fb_pop<T,hold_nowait>(queue_[new_head]);
-                loc_el.unlock();                
+                loc_el.unlock();  
+                queue_[new_head].cv_ready_to_push_.notify_one();              
                 return ret;                  
             }
 
@@ -360,6 +362,7 @@ namespace fdapde{
                 if(!active_){return false;}
                 push_fb_push<T,hold_nowait>(queue_[new_tail],t);
                 loc_el.unlock();
+                queue_[new_tail].cv_ready_to_pop_.notify_one();
 
                 return true;
             }
@@ -376,6 +379,7 @@ namespace fdapde{
                 // sostituisce in posto che viene liberato il valore di defaul di value_type
                 value_type ret = pop_fb_pop<T,hold_nowait>(queue_[t]);
                 loc_el.unlock();
+                queue_[t].cv_ready_to_push_.notify_one();
                 
 
                 return ret;
@@ -506,6 +510,7 @@ namespace fdapde{
                 if(!active_){return false;}
                 push_fb_push<T,hold_wait>(queue_[h],t);
                 loc_el.unlock();
+                queue_[h].cv_ready_to_pop_.notify_one();
             
                 return true; 
             }
@@ -524,6 +529,7 @@ namespace fdapde{
                 if(!active_){return false;}
                 push_fb_push<T,hold_wait>(queue_[h],t);
                 loc_el.unlock();
+                queue_[h].cv_ready_to_pop_.notify_one();
             
                 return true; 
 
@@ -542,6 +548,7 @@ namespace fdapde{
                 if(!active_){return false;}
                 push_fb_push<T,hold_wait>(queue_[h],t);
                 loc_el.unlock();
+                queue_[h].cv_ready_to_pop_.notify_one();
             
                 return true; 
 
@@ -560,7 +567,8 @@ namespace fdapde{
                 if(!active_) return std::nullopt;
                 // pop 
                 value_type ret = pop_fb_pop<T,hold_wait>(queue_[new_head]); 
-                loc_el.unlock();                
+                loc_el.unlock();  
+                queue_[new_head].cv_ready_to_push_.notify_one();              
                 return ret;
                 
             }
@@ -581,7 +589,8 @@ namespace fdapde{
                 if(!active_) return std::nullopt;
                 // pop 
                 value_type ret = pop_fb_pop<T,hold_wait>(queue_[new_head]);
-                loc_el.unlock();                
+                loc_el.unlock(); 
+                queue_[new_head].cv_ready_to_push_.notify_one();               
 
                 return ret;
                         
@@ -602,7 +611,8 @@ namespace fdapde{
                 if(!active_) return std::nullopt;
                 // pop 
                 value_type ret = pop_fb_pop<T,hold_wait>(queue_[new_head]);
-                loc_el.unlock();                
+                loc_el.unlock();     
+                queue_[new_head].cv_ready_to_push_.notify_one();           
 
                 return ret;
                         
@@ -621,6 +631,7 @@ namespace fdapde{
                 if(!active_){return false;}
                 push_fb_push<T,hold_wait>(queue_[new_tail],t);
                 loc_el.unlock();
+                queue_[new_tail].cv_ready_to_pop_.notify_one();
 
                 return true;
             }
@@ -639,6 +650,7 @@ namespace fdapde{
                 if(!active_){return false;}
                 push_fb_push<T,hold_wait>(queue_[new_tail],t);
                 loc_el.unlock();
+                queue_[new_tail].cv_ready_to_pop_.notify_one();
                 
                 return true;
             }
@@ -656,6 +668,7 @@ namespace fdapde{
                 if(!active_){return false;};
                 push_fb_push<T,hold_wait>(queue_[new_tail],t);
                 loc_el.unlock();
+                queue_[new_tail].cv_ready_to_pop_.notify_one();
                 
                 return true;
             }
@@ -674,6 +687,7 @@ namespace fdapde{
                 // sostituisce in posto che viene liberato il valore di defaul di value_type
                 value_type ret = pop_fb_pop<T,hold_wait>(queue_[t]);
                 loc_el.unlock();
+                queue_[t].cv_ready_to_push_.notify_one();
                 return ret;
             }
 
@@ -693,6 +707,7 @@ namespace fdapde{
                 // sostituisce in posto che viene liberato il valore di defaul di value_type
                 value_type ret = pop_fb_pop<T,hold_wait>(queue_[t]);
                 loc_el.unlock();
+                queue_[t].cv_ready_to_push_.notify_one();
                 return ret;
             }
 
@@ -711,6 +726,7 @@ namespace fdapde{
                 // sostituisce in posto che viene liberato il valore di defaul di value_type
                 value_type ret = pop_fb_pop<T,hold_wait>(queue_[t]);
                 loc_el.unlock();
+                queue_[t].cv_ready_to_push_.notify_one();
                 return ret;
             }
 
