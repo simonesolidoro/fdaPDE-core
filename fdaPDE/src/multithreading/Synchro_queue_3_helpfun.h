@@ -39,9 +39,6 @@ namespace fdapde{
             S.queue_[h].state_.store(Synchro_queue<T,relax_nowait>::Busy, std::memory_order_release); //TODO: capire se forse dato che dentro mutex memory order superfluo. forse ottimale  memory_order_relax
         }
         S.head_ = (S.head_ == S.size_-1)? (0) : (S.head_ + 1); //head_++
-        if constexpr(std::is_same_v<M,hold_wait>){
-            S.cv_can_pop_.notify_one(); // for pop_or_wait 
-        }
         return h;
     };
 
@@ -64,9 +61,6 @@ namespace fdapde{
             if(S.head_==S.tail_) {S.empty_queue_ = true;} 
             S.queue_[new_head].count_pop_ ++;
         }
-        if constexpr(std::is_same_v<M,hold_wait>){
-            S.cv_can_push_.notify_one();
-        }
         return new_head;
     };
 
@@ -86,9 +80,6 @@ namespace fdapde{
             S.queue_[new_tail].state_.store(Synchro_queue<T,relax_nowait>::Busy, std::memory_order_release);
         }
         S.tail_ = new_tail;                         
-        if constexpr(std::is_same_v<M,hold_wait>){
-            S.cv_can_pop_.notify_one();
-        }
         return new_tail;
     };
 
@@ -110,12 +101,7 @@ namespace fdapde{
         if constexpr(std::is_same_v<M,hold_nowait> || std::is_same_v<M,hold_wait>){
             if(S.head_==S.tail_) {S.empty_queue_ = true;}
             S.queue_[t].count_pop_ ++;
-        }
-        
-        if constexpr(std::is_same_v<M,hold_wait>){
-            S.cv_can_push_.notify_one();
-        }
-            
+        }   
         return t;
     };
 

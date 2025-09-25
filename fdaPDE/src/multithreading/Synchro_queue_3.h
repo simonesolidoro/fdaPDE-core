@@ -498,6 +498,7 @@ namespace fdapde{
                 std::unique_lock<std::mutex> loc(m_);
                 int h = push_f_indx<T,hold_wait>(*this);
                 loc.unlock();
+                cv_can_pop_.notify_one(); // for pop_or_wait, fuori da mutex per evitare che notifica arrivi con mutex ancora lock
                 if(h<0) return false;
 
                 std::unique_lock<std::mutex> loc_el(queue_[h].m_el_);
@@ -516,6 +517,7 @@ namespace fdapde{
                 if(!flag){return false;}
                 int h = push_f_indx<T,hold_wait>(*this);
                 loc.unlock();
+                cv_can_pop_.notify_one();
 
                 std::unique_lock<std::mutex> loc_el(queue_[h].m_el_);
                 queue_[h].cv_ready_to_push_.wait(loc_el,[this,h](){return queue_[h].state_ || !active_;}); // to be sure state_ = true (empty)
@@ -533,6 +535,7 @@ namespace fdapde{
                 if(!active_){return false;}
                 int h = push_f_indx<T,hold_wait>(*this);
                 loc.unlock();
+                cv_can_pop_.notify_one();
 
                 std::unique_lock<std::mutex> loc_el(queue_[h].m_el_);
                 queue_[h].cv_ready_to_push_.wait(loc_el,[this,h](){return queue_[h].state_ || !this->active_;}); // to be sure state_ = true (empty)
@@ -548,6 +551,7 @@ namespace fdapde{
                 std::unique_lock<std::mutex> loc(m_);
                 int new_head = pop_f_indx<T,hold_wait>(*this);
                 loc.unlock();
+                cv_can_push_.notify_one();
                 if(new_head<0) return std::nullopt;
 
                 //OSS: importate lasciare new_head perche poi head_ potrebbe essere modificata da altri thread
@@ -569,6 +573,7 @@ namespace fdapde{
                 // new_head = index di elemento da rimuovere
                 int new_head = pop_f_indx<T,hold_wait>(*this);
                 loc.unlock();
+                cv_can_push_.notify_one();
 
                 //OSS: importate lasciare new_head perche poi head_ potrebbe essere modificata da altri thread
                 std::unique_lock<std::mutex> loc_el(queue_[new_head].m_el_);
@@ -589,6 +594,7 @@ namespace fdapde{
                 // new_head = index di elemento da rimuovere
                 int new_head = pop_f_indx<T,hold_wait>(*this);
                 loc.unlock();
+                cv_can_push_.notify_one();
 
                 //OSS: importate lasciare new_head perche poi head_ potrebbe essere modificata da altri thread
                 std::unique_lock<std::mutex> loc_el(queue_[new_head].m_el_);
@@ -607,6 +613,7 @@ namespace fdapde{
                 std::unique_lock<std::mutex> loc(m_);
                 int new_tail = push_b_indx<T,hold_wait>(*this);
                 loc.unlock();
+                cv_can_pop_.notify_one();
                 if(new_tail<0) return false;
 
                 std::unique_lock<std::mutex> loc_el(queue_[new_tail].m_el_);
@@ -625,6 +632,7 @@ namespace fdapde{
                 if(!flag){return false;}
                 int new_tail = push_b_indx<T,hold_wait>(*this);
                 loc.unlock();
+                cv_can_pop_.notify_one();
 
                 std::unique_lock<std::mutex> loc_el(queue_[new_tail].m_el_);
                 queue_[new_tail].cv_ready_to_push_.wait(loc_el,[this,new_tail](){return queue_[new_tail].state_ || !this->active_;});
@@ -641,6 +649,7 @@ namespace fdapde{
                 if(!active_){return false;}
                 int new_tail = push_b_indx<T,hold_wait>(*this);
                 loc.unlock();
+                cv_can_pop_.notify_one();
 
                 std::unique_lock<std::mutex> loc_el(queue_[new_tail].m_el_);
                 queue_[new_tail].cv_ready_to_push_.wait(loc_el,[this,new_tail](){return queue_[new_tail].state_ || !this->active_;});
@@ -656,6 +665,7 @@ namespace fdapde{
                 std::unique_lock<std::mutex> loc(m_);
                 int t = pop_b_indx<T,hold_wait>(*this);
                 loc.unlock();
+                cv_can_push_.notify_one();
                 if(t<0) return std::nullopt;
 
                 std::unique_lock<std::mutex> loc_el(queue_[t].m_el_);
@@ -675,6 +685,7 @@ namespace fdapde{
                 if(!flag){return std::nullopt;}
                 int t = pop_b_indx<T,hold_wait>(*this);
                 loc.unlock();
+                cv_can_push_.notify_one();
 
                 std::unique_lock<std::mutex> loc_el(queue_[t].m_el_);
                 queue_[t].cv_ready_to_pop_.wait(loc_el,[this,t](){return !queue_[t].state_ || !this->active_;});
@@ -692,6 +703,7 @@ namespace fdapde{
                 if(!active_) return std::nullopt; //se chiamato distruttore distruttore notifica a tutti di verificare condizione wait 
                 int t = pop_b_indx<T,hold_wait>(*this);
                 loc.unlock();
+                cv_can_push_.notify_one();
 
                 std::unique_lock<std::mutex> loc_el(queue_[t].m_el_);
                 queue_[t].cv_ready_to_pop_.wait(loc_el,[this,t](){return !queue_[t].state_ || !this->active_;});
