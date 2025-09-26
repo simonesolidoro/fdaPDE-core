@@ -551,6 +551,7 @@ class fe_bilinear_form_assembly_loop :
 
 	assemble_unicovettore(triplet_list,Tp,kk);
     //assemble_unicovettore2(triplet_list,Tp);
+    sum_same_triple_parallel(triplet_list,Tp,kk);
 
 	// linearity of the integral is implicitly used here, as duplicated triplets are summed up (see Eigen docs)
         assembled_mat.setFromTriplets(triplet_list.begin(), triplet_list.end());
@@ -565,6 +566,50 @@ class fe_bilinear_form_assembly_loop :
         return assemble_unicovettore(execution::par,Tp,kk);
     }
 
+    //somma di triple di stessa entarta in matrix in parallelo
+    //idea: dividere righe di matrice che vanno da 0 ad test_dof_handler()->n_dofs() tra i worker ed ogni worker somma triple delle sue righe, salvando somma in primo elmento di vettore comune (cosi threadsafe e non serve ricopiare però non è ordinato molto false sharing potrebbe rallenatere poi da valutare opzione ogni worker salva in suo vettore e poi unire)
+    //poi da mettere direttamente in assemble_unicovettore(...) per ora funzione a se per test
+    void sum_same_triple_parallel(std::vector<Eigen::Triplet<double>>& triplet_list,fdapde::Threadpool<fdapde::steal::random> &Tp, int kk) const {
+        int n_worker = Tp.get_n_worker();
+        Tp.parallel_for(0,n_worker,[n_worker,this, &triplet_list](int ii){
+            int tot_row = test_dof_handler()->n_dofs();
+            int row_per_worker = tot_row / n_worker;
+            int start_row = row_per_worker * ii;
+            int end_row = (ii != n_worker-1)? (start_row + row_per_worker):(tot_row);
+            
+            std::unordered_map<int,std::unordered_map<int,int>> index_of_entry; //mappa(riga,mappa(colonna,index_global)).  mappa({row,col},index_global) non fattibile perché hash map per coppie di int indici non saprei come farla
+            double value = 0.0; //value di nuova tripla
+            for(int i = 0; i<triplet_list.size(); i++){
+                int row = triplet_list[i].row();
+                int col = triplet_list[i].col();
+                if( row >= start_row && row < end_row){
+                    auto it = index_of_entry.find(row);
+                    if(it == index_of_entry.end()){
+                        //se prima volta che incontro indice riga  
+                        index_of_entry.insert({row,{{col,i}}});
+                    }
+                    else{
+                        if(index_of_entry[row].find(col) == index_of_entry[row].end()){
+                            //se riga gia vitsa ma coppia (r,c) no 
+                            index_of_entry[row].insert({col,i});
+                        }else{
+                        //se già incontrata vado a sommare in tripla incontrata per prima
+                        int global_index = index_of_entry[row][col];
+                        //tripla di eigen non ha set_value ma solo get e quindi va creata nuova ogni volta
+                        value = triplet_list[i].value()+triplet_list[global_index].value();
+                        Eigen::Triplet<double> new_tripla(row,col,value);
+                        triplet_list[global_index] = std::move(new_tripla);
+                        //elimina tripla sommata
+                        triplet_list[i] = Eigen::Triplet<double>(0, 0, 0.0);
+                        value = 0.0;
+                        }
+                    }
+                }
+            }
+        });
+        
+        
+    };
     void assemble_unicovettore(std::vector<Eigen::Triplet<double>>& triplet_list,fdapde::Threadpool<fdapde::steal::random> &Tp, int kk) const {
         using iterator = typename Base::fe_traits::dof_iterator;
         iterator begin(Base::begin_.index(), test_dof_handler(), Base::begin_.marker());
