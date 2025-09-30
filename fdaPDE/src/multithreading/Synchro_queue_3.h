@@ -209,7 +209,9 @@ namespace fdapde{
 
                 return ret;
             }
-
+/*  //SBAGLIATO!!
+    // entra nell if se head==tail e stato non full (quindi empty o busy), e poi aspetta che diventi empty con while, MA è possibile che lo stato sia busy perche è stato fatto un push che ancora non è terminato sulla coda a cui mancava un solo ele,emnto per essere piena.
+    // e quindi ultimo push sposta indici head==tail e mette a busy poi empty() blocca mutex legge indici uguali vede busy ed entra nel whiele che aspetta che diventi empty ma stato diventa full e quindi deadlock
             bool empty() const {
                 std::lock_guard<std::mutex> loc(m_);
                 if(head_ == tail_ && queue_[tail_].state_.load(std::memory_order_acquire)!=Full){ //OSS: massimo un pop che deve acora eseguire perchè altri vedono busy e non si mettoo in coda
@@ -219,6 +221,28 @@ namespace fdapde{
                 else
                     return false; 
             }
+*/
+            bool empty() const {
+                std::lock_guard<std::mutex> loc(m_);
+                //nel mutex quindi head e tail non si modificano nel mentre
+                if(head_ == tail_){
+                    //entrati qui o perche coda piena o perche vuota, while serve ad aspettare fine di ultimo intervento nel caso stato di elemento == busy
+                    while(true){
+                        if(queue_[tail_].state_.load(std::memory_order_acquire)==Empty){ 
+                            return true;
+                        }
+                        if(queue_[tail_].state_.load(std::memory_order_acquire)==Full){ 
+                            return false;
+                        }
+                    }
+                }else{
+                    return false;
+                }
+            
+            }
+            //OSS: in relax si puo usare head==tail e lettura stato, non serve empty_queue_, perché durante lock di mutex massimo c'é un metodo che sta modificando cella puntata da head e tail
+            // e stato puo passare solo da busy a empty o full. quindi letto durante lock mutex (head==tail && stato=empty) sei certo che coda vuota 
+            // mentre in hold fuori da mutex stato passa da empty a full e viceversa, allora con empty_queue_ ch si modifica solo dentro a mutex hai la certezza che se durante lock di mutex lo leggi true la coda è vuota, bisogna poi aspettare che le celle vengano eventualmente svuotate dai metodi che devono completarsi ancora e quello si aspetta con i count_pop
 
     };
 
