@@ -285,9 +285,10 @@ namespace fdapde{
             }
 
             ~Synchro_queue(){
-                active_ = false;
                 for(elem<T,hold_nowait> & e : queue_){
                     std::lock_guard<std::mutex> loc(e.m_el_); //add lock mutex per avere notifica coerente
+                    // spostato dentro a lock di mutex perché da cpp reference (https://cppreference.net/cpp/thread/condition_variable):"Even if the shared variable is atomic, it must be modified while owning the mutex to correctly publish the modification to the waiting thread"
+                    active_ = false; //lo so che ripetitivo ma penso sia necessario, anche se mi puzza
                     e.cv_ready_to_pop_.notify_all();
                     e.cv_ready_to_push_.notify_all();
                 } 
@@ -466,7 +467,7 @@ namespace fdapde{
                 cv_can_push_.notify_all();  
                 for(elem<T,hold_wait> & e : queue_){
                     std::lock_guard<std::mutex> loc_el(e.m_el_);
-                    active_ = false; //TODO: dubbio: ripetuto perchè non certo che modifica in mutex globale garantisca visione coerente in mutex singoli elementi 
+                    active_ = false; //ripetuto perchè modifica in mutex globale non garantisca visione coerente in mutex singoli elementi 
                     e.cv_ready_to_pop_.notify_all();
                     e.cv_ready_to_push_.notify_all();
                 } 
