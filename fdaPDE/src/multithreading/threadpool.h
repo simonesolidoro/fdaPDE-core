@@ -375,7 +375,7 @@ namespace fdapde{
 
             //send a giro usando struct indxw             
             template<typename F, typename... Args>
-            auto send_task_round_strong(F&& f,Args&&... args) -> std::optional<std::future<decltype(f(args...))>>{
+            auto send_task_round_strong(F&& f,Args&&... args) -> std::future<decltype(f(args...))>{
                 //wrap 
                 using return_type = decltype(f(args...));
                 std::shared_ptr<std::packaged_task<return_type()>> ptr_task = std::make_shared<std::packaged_task<return_type()>> ([fun = std::forward<F>(f), ...args_catturati = std::forward<Args>(args) ]()mutable{return fun(args_catturati...);});
