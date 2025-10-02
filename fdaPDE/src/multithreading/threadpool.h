@@ -47,7 +47,11 @@ namespace fdapde{
                     // costruttore con numero elementi di coda
                     //inizializza thread con funzione membro worker_loop di Threadpoool cosi che accessibili altre code senza passaggio di puntatore/reference a threadpool in worker   
                     Worker(int n, void (Threadpool::*worker_loop)(int),Threadpool* Th, int idx):indx_(idx),sync_queue_(n),t_(worker_loop,Th,idx){}; 
-
+                /*//messo in distruttore di Threadpool
+                    ~Worker(){
+                        t_.join();
+                    }
+                */
                     //  TUTTI WRAP "INUTILI" BASTA FATTO CHE SIA FRIEND PER ACCESSO DIRETTO, FORSE PIU LEGGIBILE USARLI PERO.
                     //per poter bloccare il mutex di Worker m_ in threadpool
                     std::unique_lock<std::mutex> get_loc()const{
@@ -71,7 +75,6 @@ namespace fdapde{
                         return sync_queue_.push_front(fun);
                     };
                     bool push_back(job fun){
-                        //std::cout<<"incremento count in push_back, count: "<<count_job_<<std::endl;
                         return sync_queue_.push_back(fun);
                     };
                     std::optional<job> pop_front(){
@@ -368,6 +371,25 @@ namespace fdapde{
                 }
                 lock.unlock();
                 return std::nullopt;
+            };
+
+            //send a giro usando struct indxw             
+            template<typename F, typename... Args>
+            auto send_task_round_strong(F&& f,Args&&... args) -> std::optional<std::future<decltype(f(args...))>>{
+                //wrap 
+                using return_type = decltype(f(args...));
+                std::shared_ptr<std::packaged_task<return_type()>> ptr_task = std::make_shared<std::packaged_task<return_type()>> ([fun = std::forward<F>(f), ...args_catturati = std::forward<Args>(args) ]()mutable{return fun(args_catturati...);});
+                std::future<return_type> fut = ptr_task->get_future();
+                job j = [ptr_task](){(*ptr_task)();};
+            
+                std::unique_lock<std::mutex> lock(workers_[indxw_.indx_]->get_loc());
+                bool flag = false;
+                while(!flag){flag = workers_[indxw_.indx_]->push_back(j);}
+                count_job_[indxw_.indx_].fetch_add(1,std::memory_order_release);
+                lock.unlock();
+                indxw_.next(n_worker_); 
+                workers_[indxw_.indx_]->cv_.notify_one();// notifica solo a chi riceve e non notifica a tutti, perchè tanto cv manda a dormire quando non ci sono job e poi quando vengono inviati ogni worker riceve una notifica un job ogni $n_worker inviati, tanto basta 
+                return fut;
             };
 
             //send a sola meta di worker per debug/ test di steal job. 
