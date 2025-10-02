@@ -22,8 +22,6 @@ namespace fdapde{
 
     enum class steal {no_steal, random, most_busy, random_half_most_busy};
 
-    enum class op {sum,mult};
-
     template <steal T> class Threadpool{
         using job = std::function<void()>;
         //usato per send_task_round 
@@ -204,24 +202,6 @@ namespace fdapde{
                     workers_[i]->cv_.wait(loc,[&](){return get_count_all_job()>0 || count_job_[i].load(std::memory_order_acquire) > 0 || workers_[i]->stop_;}); // get_count_all_job > n_worker cosi da svegliare per steal solo se c'è da rubare per tutti (questa è l'idea, non proprio precisa l'esecuzione ma vabbè), poi count_job[i] cosi worker si sveglia se è inviato job a lui (è certo che si svegli se send job a lui perchè count_job sincronizzati da mutex di CV qui e di send in send)
                     loc.unlock();
                     if(workers_[i]->stop_){return;}
-                    done_own_job = try_do(workers_[i]->pop_front(),i); //riprova a fare proprio job, (se svegliato per count_job[i]>0)
-                    if(!done_own_job){ //steal.
-                        if constexpr(T == steal::random){
-                            indx_steal = indx_random_from_busy();
-                        }
-                        if constexpr(T == steal::most_busy){
-                            indx_steal = indx_most_busy();
-                        }
-                        if constexpr(T == steal::random_half_most_busy){
-                            indx_steal = indx_random_from_half_most_busy();
-                            //oss: steal_random_from_most_busy_and_do() ha senso solo per N > 5 (perche dimezza i worker con job tra cui sceglie random)
-                        } 
-
-                        if(indx_steal != -1){
-                            //do job steal
-                            try_do(workers_[indx_steal]->pop_back(),indx_steal);
-                        }                             
-                    }
                 }
             };
 
