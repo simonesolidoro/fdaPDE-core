@@ -966,6 +966,7 @@ class fe_bilinear_form_assembly_loop :
         return;
     }
    
+// in parallelo fa somma delle triple uguali e quindi calcolo matrice ma in formato diverso da eigen, quindi poi passaggio da matrice fatta da vettore<map<int,double>> a sparse matrix con prima copia di triple vector quindi risultato speedup totale metodo non buono 
     Eigen::SparseMatrix<double> assemble_unicamatrix(execution::execution_parallel, fdapde::Threadpool<fdapde::steal::random>& Tp, int kk = 1) const {
         Eigen::SparseMatrix<double> assembled_mat(test_dof_handler()->n_dofs(), trial_dof_handler()->n_dofs());
         
@@ -973,7 +974,7 @@ class fe_bilinear_form_assembly_loop :
         int n_worker = Tp.get_n_worker();
         //vettore dove ogni elemento i-esimo è riga i-esima di matrice, ogni vector[j] = mappa di <colonna,value> 
         //perché le righe sono tutte presenti (size vector a priori cosi threadsafe), le colonne sono sparse quindi no size a priori allora serve mutex per modifica mappe(aggiunta o somma a colonne) 
-        std::vector<std::map<int,double>> matrix (n_nodes);
+        std::vector<std::map<int,double>> matrix (n_nodes); //in caso generale non è nodes ma test_dof_handler()->n_dofs(), qui funziona perché ogni nodo corrisponde a test function. TODO: cambiare conn n_dofs  
         std::vector<std::mutex> mutexs (n_worker); //vettore di mutex per modifica parallela di matrxi comune, ogni mutex j associato a righe vettore di matrice da (j)*(tot_righe/n_worker) ad (j+1)*(tot_righe/n_worker) (ideale sarebbe ogni worker sblocca il suo mutex, ma dipende da divisione di celle)
         
 	assemble_unicamatrix(matrix,Tp,mutexs);
