@@ -978,13 +978,23 @@ class fe_bilinear_form_assembly_loop :
         
 	assemble_unicamatrix(matrix,Tp,mutexs);
 
+        std::vector<Eigen::Triplet<double>> triplet_list;
+
+        //reserve per evitare riallocamento, reserva spazio di tot triple anche se basta spazio di tot_triple uniche (todo: stima per eccesso ma minore di tot_triple sarebbe meglio)
+        int n_cell = this->Base::dof_handler_->triangulation()->n_cells();
+        int triple_per_cella = n_trial_basis * n_test_basis; 
+        int tot_triple = n_cell * triple_per_cella;
+        triplet_list.reserve(tot_triple);
         for(int r = 0; r<matrix.size(); r++){
             for(auto it = matrix[r].begin(); it != matrix[r].end(); it++){
-                assembled_mat.coeffRef(r,it->first) = it->second;
+                triplet_list.emplace_back(r,it->first,it->second);
             }
         }
         
+        // linearity of the integral is implicitly used here, as duplicated triplets are summed up (see Eigen docs)
+        assembled_mat.setFromTriplets(triplet_list.begin(), triplet_list.end());
         assembled_mat.makeCompressed();
+
 
         return assembled_mat;
     }
@@ -1046,7 +1056,8 @@ class fe_bilinear_form_assembly_loop :
             int triple_per_cella = n_trial_basis * n_test_basis; //9; //hardcoded per il momento
             auto mutex_of_row = [num_worker, tot_row = n_nodes](int row) -> int {
                 int row_per_worker = tot_row / num_worker;
-                return row / row_per_worker; // esempio di valore di ritorno
+                int indx = row / row_per_worker;
+                return std::min(indx, num_worker - 1); // evita sforare per ultime righe maggiori di row_per_worker*(num_worker+1). es (tot_row = 15, num_worker=4, row_per_worker = 3, ma 13,14/3 fa 4 e max indice è 3 )
             };
             for (int l = 0; l<it_per_workers[ii]; l++) {
                 // update fe_packet content based on form requests
@@ -1114,7 +1125,6 @@ class fe_bilinear_form_assembly_loop :
                         int c = is_galerkin ? test_active_dofs[i] : trial_active_dofs[i];
                         std::unique_lock<std::mutex> lock(mutexs[mutex_of_row(r)]);
                         matrix[r][c]+=value * fe_packet.measure;
-                        lock.unlock();
                     }
                 }
                 local_cell_id ++;
