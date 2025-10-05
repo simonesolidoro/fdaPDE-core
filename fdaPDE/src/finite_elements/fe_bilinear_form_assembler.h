@@ -551,7 +551,7 @@ class fe_bilinear_form_assembly_loop :
 
 	assemble_unicovettore(triplet_list,Tp,kk);
     //assemble_unicovettore2(triplet_list,Tp);
-    sum_same_triple_parallel(triplet_list,Tp,kk);
+    //assemble_unicovettore3(triplet_list,Tp);
 
 	// linearity of the integral is implicitly used here, as duplicated triplets are summed up (see Eigen docs)
         assembled_mat.setFromTriplets(triplet_list.begin(), triplet_list.end());
@@ -565,51 +565,8 @@ class fe_bilinear_form_assembly_loop :
         fdapde::Threadpool<fdapde::steal::random> Tp(size_queue,n_thread);
         return assemble_unicovettore(execution::par,Tp,kk);
     }
-
-    //somma di triple di stessa entarta in matrix in parallelo
-    //idea: dividere righe di matrice che vanno da 0 ad test_dof_handler()->n_dofs() tra i worker ed ogni worker somma triple delle sue righe, salvando somma in primo elmento di vettore comune (cosi threadsafe e non serve ricopiare però non è ordinato molto false sharing potrebbe rallenatere poi da valutare opzione ogni worker salva in suo vettore e poi unire)
-    //poi da mettere direttamente in assemble_unicovettore(...) per ora funzione a se per test
-    void sum_same_triple_parallel(std::vector<Eigen::Triplet<double>>& triplet_list,fdapde::Threadpool<fdapde::steal::random> &Tp, int kk) const {
-        int n_worker = Tp.get_n_worker();
-        Tp.parallel_for(0,n_worker,[n_worker,this, &triplet_list](int ii){
-            int tot_row = test_dof_handler()->n_dofs();
-            int row_per_worker = tot_row / n_worker;
-            int start_row = row_per_worker * ii;
-            int end_row = (ii != n_worker-1)? (start_row + row_per_worker):(tot_row);
-            
-            std::unordered_map<int,std::unordered_map<int,int>> index_of_entry; //mappa(riga,mappa(colonna,index_global)).  mappa({row,col},index_global) non fattibile perché hash map per coppie di int indici non saprei come farla
-            double value = 0.0; //value di nuova tripla
-            for(int i = 0; i<triplet_list.size(); i++){
-                int row = triplet_list[i].row();
-                int col = triplet_list[i].col();
-                if( row >= start_row && row < end_row){
-                    auto it = index_of_entry.find(row);
-                    if(it == index_of_entry.end()){
-                        //se prima volta che incontro indice riga  
-                        index_of_entry.insert({row,{{col,i}}});
-                    }
-                    else{
-                        if(index_of_entry[row].find(col) == index_of_entry[row].end()){
-                            //se riga gia vitsa ma coppia (r,c) no 
-                            index_of_entry[row].insert({col,i});
-                        }else{
-                        //se già incontrata vado a sommare in tripla incontrata per prima
-                        int global_index = index_of_entry[row][col];
-                        //tripla di eigen non ha set_value ma solo get e quindi va creata nuova ogni volta
-                        value = triplet_list[i].value()+triplet_list[global_index].value();
-                        Eigen::Triplet<double> new_tripla(row,col,value);
-                        triplet_list[global_index] = std::move(new_tripla);
-                        //elimina tripla sommata
-                        triplet_list[i] = Eigen::Triplet<double>(0, 0, 0.0);
-                        value = 0.0;
-                        }
-                    }
-                }
-            }
-        });
-        
-        
-    };
+    
+    
     void assemble_unicovettore(std::vector<Eigen::Triplet<double>>& triplet_list,fdapde::Threadpool<fdapde::steal::random> &Tp, int kk) const {
         using iterator = typename Base::fe_traits::dof_iterator;
         iterator begin(Base::begin_.index(), test_dof_handler(), Base::begin_.marker());
@@ -872,6 +829,302 @@ class fe_bilinear_form_assembly_loop :
         return;
     }
 
+    //assemble_unicovettore con 1 job per worker(quindi assemble_unicovettore2) perché strutture per calcoli inizializzate dentro ogni worker non fuori e poi parallel_for ma parallel_for che contiene creazione strutture e loop su celle
+    void assemble_unicovettore3(std::vector<Eigen::Triplet<double>>& triplet_list,fdapde::Threadpool<fdapde::steal::random> &Tp) const {
+    
+        using iterator = typename Base::fe_traits::dof_iterator;
+        iterator begin(Base::begin_.index(), test_dof_handler(), Base::begin_.marker());
+        iterator end  (Base::end_.index(),   test_dof_handler(), Base::end_.marker()  );
+        if constexpr (Form::XprBits & int(fe_assembler_flags::compute_physical_quad_nodes)) {
+            Base::distribute_quadrature_nodes(begin, end);
+        }
+
+        //paralleliziamo con parallel_for con defaul granularity = 1 e creiamo da qui i mini_for (cosi ogni iterazione è minifor e quindi anche se un job= 1 iterazione ogni ojob sara un minifor)
+        int num_worker = Tp.get_n_worker();
+        
+        //numero celle
+        int count = this->Base::dof_handler_->triangulation()->n_cells();
+        
+
+        const int it_per_worker = ((count / num_worker) > 0)? (count / num_worker) : (0);
+        const int it_per_worker_resto = count % num_worker;
+        std::vector<int> it_per_workers(num_worker,it_per_worker);
+        for(int i = 0; i<it_per_worker_resto; i++){
+            it_per_workers[i]++; //add uno ai worker che fanno resto es:  3 worker A B C, 10 iterator--> resto = 1 cioe B C fanno 3 e A fa 3+1
+        }
+
+        Tp.parallel_for(0,num_worker,[&,this](int ii)mutable{ //passare tutto come copia o reference ? ogni iterazione deve avere suo fe_packet ecc quindi copia. TODO: passare copia di solo quello che serve es fe_packet ecc e non tutto =
+
+            // prepare assembly loop
+        Eigen::Matrix<int, Dynamic, 1> test_active_dofs, trial_active_dofs;
+            MdArray<double, MdExtents<n_test_basis,  n_quadrature_nodes, embed_dim, n_test_components >> test_grads;
+            MdArray<double, MdExtents<n_trial_basis, n_quadrature_nodes, embed_dim, n_trial_components>> trial_grads;
+            Matrix<double, n_test_basis , n_quadrature_nodes> test_divs;
+            Matrix<double, n_trial_basis, n_quadrature_nodes> trial_divs;
+            MdArray<double, MdExtents<n_test_basis,  n_quadrature_nodes, n_test_components,  embed_dim, embed_dim>>
+        test_hess;
+            MdArray<double, MdExtents<n_trial_basis, n_quadrature_nodes, n_trial_components, embed_dim, embed_dim>>
+            trial_hess;
+
+            // start assembly loop
+            internals::fe_assembler_packet<embed_dim> fe_packet(n_trial_components, n_test_components);
+        // if hessians are zero, assemble physical hessian once and never update
+            constexpr bool test_hess_is_zero = std::all_of(
+            test_shape_hess_.data(), test_shape_hess_.data() + test_shape_hess_.size(), [](double x) { return x == 0; });
+            constexpr bool trial_hess_is_zero =
+            std::all_of(trial_shape_hess_.data(), trial_shape_hess_.data() + trial_shape_hess_.size(), [](double x) {
+                return x == 0;
+            });
+            if constexpr (test_hess_is_zero ) { std::fill_n(fe_packet.test_hess.data(), fe_packet.test_hess.size(), 0.0); }
+            if constexpr (trial_hess_is_zero) {
+                std::fill_n(fe_packet.trial_hess.data(), fe_packet.trial_hess.size(), 0.0);
+            }
+
+
+            int local_cell_id = 0;
+            iterator it = begin;
+            for (int l = 0; l<ii; l++){
+                local_cell_id += it_per_workers[l];
+                it+=it_per_workers[l];
+            }
+            int triple_per_cella = n_trial_basis * n_test_basis; //9; //hardcoded per il momento
+            
+            for (int l = 0; l<it_per_workers[ii]; l++) {
+                // update fe_packet content based on form requests
+                fe_packet.measure = it->measure();
+                if constexpr (Form::XprBits & int(geo_assembler_flags::compute_geo_id)) { fe_packet.geo_id = it->id(); }
+                if constexpr (Form::XprBits & int(geo_assembler_flags::compute_face_normal)) {
+                    fdapde_static_assert(Options_ == FaceMajor, BILINEAR_FORM_REQUIRES_A_FACE_MAJOR_ASSEMBLY_LOOP);
+                    fe_packet.normal.assign_inplace_from(it->normal());
+                }
+                if constexpr (Form::XprBits & int(fe_assembler_flags::compute_shape_grad)) {
+                    Base::eval_shape_grads_on_cell(it, test_shape_grads_, test_grads);
+                    if constexpr (is_petrov_galerkin) Base::eval_shape_grads_on_cell(it, trial_shape_grads_, trial_grads);
+                }
+                if constexpr (Form::XprBits & int(fe_assembler_flags::compute_shape_div)) {
+                    fdapde_static_assert(
+                    n_test_components != 1 || n_trial_components != 1,
+                    DIVERGENCE_OPERATOR_IS_DEFINED_ONLY_FOR_VECTOR_ELEMENTS);
+                    if constexpr (n_test_components != 1) Base::eval_shape_div_on_cell(it, test_shape_grads_, test_divs);
+                    if constexpr (is_petrov_galerkin && n_trial_components != 1)
+                        Base::eval_shape_div_on_cell(it, trial_shape_grads_, trial_divs);
+                }
+                if constexpr (Form::XprBits & int(fe_assembler_flags::compute_shape_hess)) {
+                    if constexpr (!test_hess_is_zero) Base::eval_shape_hess_on_cell(it, test_shape_hess_, test_hess);
+                    if constexpr (is_petrov_galerkin && !trial_hess_is_zero)
+                        Base::eval_shape_hess_on_cell(it, trial_shape_hess_, trial_hess);
+                }
+
+                // perform integration of weak form for (i, j)-th basis pair
+                int index_global_triplet_list = local_cell_id*triple_per_cella;
+                test_active_dofs = it->dofs();
+                if constexpr (is_petrov_galerkin) { trial_active_dofs = trial_dof_handler()->active_dofs(it->id()); }
+                for (int i = 0; i < n_trial_basis; ++i) {      // trial function loop
+                    for (int j = 0; j < n_test_basis; ++j) {   // test function loop
+                        double value = 0;
+                        for (int q_k = 0; q_k < n_quadrature_nodes; ++q_k) {
+                            if constexpr (Form::XprBits & int(fe_assembler_flags::compute_shape_values)) {
+                                fe_packet.trial_value.assign_inplace_from(trial_shape_values_.template slice<0, 1>(i, q_k));
+                                fe_packet.test_value .assign_inplace_from(test_shape_values_ .template slice<0, 1>(j, q_k));
+                            }
+                            if constexpr (Form::XprBits & int(fe_assembler_flags::compute_shape_grad)) {
+                                fe_packet.trial_grad.assign_inplace_from(is_galerkin ?
+                                    test_grads.template slice<0, 1>(i, q_k) : trial_grads.template slice<0, 1>(i, q_k));
+                                fe_packet.test_grad .assign_inplace_from(test_grads.template slice<0, 1>(j, q_k));
+                            }
+                            if constexpr (Form::XprBits & int(fe_assembler_flags::compute_shape_div)) {
+                                if constexpr (n_trial_components != 1) {
+                                    fe_packet.trial_div =
+                                    (is_galerkin && n_test_components != 1) ? test_divs(i, q_k) : trial_divs(i, q_k);
+                                }
+                                if constexpr (n_test_components != 1) fe_packet.test_div = test_divs(j, q_k);
+                            }
+                            if constexpr (Form::XprBits & int(fe_assembler_flags::compute_shape_hess)) {
+                                if constexpr (!trial_hess_is_zero)
+                                    fe_packet.trial_hess.assign_inplace_from(is_galerkin ?
+                        test_hess.template slice<0, 1>(i, q_k) : trial_hess.template slice<0, 1>(i, q_k));
+                                if constexpr (!test_hess_is_zero)
+                                    fe_packet.test_hess.assign_inplace_from(test_hess.template slice<0, 1>(j, q_k));
+                            }
+                            if constexpr (Form::XprBits & int(fe_assembler_flags::compute_physical_quad_nodes)) {
+                                fe_packet.quad_node_id = local_cell_id * n_quadrature_nodes + q_k; 
+                            }
+                            value += Quadrature::weights[q_k] * form_(fe_packet);
+                        }
+                        //threadsafe perché ogni worker scrive su suo [index_worker] e vettore esterno non si rialloca
+                        Eigen::Triplet<double> tripla(test_active_dofs[j], is_galerkin ? test_active_dofs[i] : trial_active_dofs[i],value * fe_packet.measure);
+                        triplet_list[index_global_triplet_list] = std::move(tripla);
+                        index_global_triplet_list ++;
+                    }
+                }
+                local_cell_id ++;
+                ++it;
+            }
+            
+        });
+        
+        return;
+    }
+   
+    Eigen::SparseMatrix<double> assemble_unicamatrix(execution::execution_parallel, fdapde::Threadpool<fdapde::steal::random>& Tp, int kk = 1) const {
+        Eigen::SparseMatrix<double> assembled_mat(test_dof_handler()->n_dofs(), trial_dof_handler()->n_dofs());
+        
+        int n_nodes = this->Base::dof_handler_->triangulation()->n_nodes();
+        int n_worker = Tp.get_n_worker();
+        //vettore dove ogni elemento i-esimo è riga i-esima di matrice, ogni vector[j] = mappa di <colonna,value> 
+        //perché le righe sono tutte presenti (size vector a priori cosi threadsafe), le colonne sono sparse quindi no size a priori allora serve mutex per modifica mappe(aggiunta o somma a colonne) 
+        std::vector<std::map<int,double>> matrix (n_nodes);
+        std::vector<std::mutex> mutexs (n_worker); //vettore di mutex per modifica parallela di matrxi comune, ogni mutex j associato a righe vettore di matrice da (j)*(tot_righe/n_worker) ad (j+1)*(tot_righe/n_worker) (ideale sarebbe ogni worker sblocca il suo mutex, ma dipende da divisione di celle)
+        
+	assemble_unicamatrix(matrix,Tp,mutexs);
+
+        for(int r = 0; r<matrix.size(); r++){
+            for(auto it = matrix[r].begin(); it != matrix[r].end(); it++){
+                assembled_mat.coeffRef(r,it->first) = it->second;
+            }
+        }
+        
+        assembled_mat.makeCompressed();
+
+        return assembled_mat;
+    }
+
+    void assemble_unicamatrix(std::vector<std::map<int,double>>& matrix,fdapde::Threadpool<fdapde::steal::random> &Tp,std::vector<std::mutex>& mutexs) const {
+        using iterator = typename Base::fe_traits::dof_iterator;
+        iterator begin(Base::begin_.index(), test_dof_handler(), Base::begin_.marker());
+        iterator end  (Base::end_.index(),   test_dof_handler(), Base::end_.marker()  );
+        // prepare assembly loop
+	Eigen::Matrix<int, Dynamic, 1> test_active_dofs, trial_active_dofs;
+        MdArray<double, MdExtents<n_test_basis,  n_quadrature_nodes, embed_dim, n_test_components >> test_grads;
+        MdArray<double, MdExtents<n_trial_basis, n_quadrature_nodes, embed_dim, n_trial_components>> trial_grads;
+        Matrix<double, n_test_basis , n_quadrature_nodes> test_divs;
+        Matrix<double, n_trial_basis, n_quadrature_nodes> trial_divs;
+        MdArray<double, MdExtents<n_test_basis,  n_quadrature_nodes, n_test_components,  embed_dim, embed_dim>>
+	  test_hess;
+        MdArray<double, MdExtents<n_trial_basis, n_quadrature_nodes, n_trial_components, embed_dim, embed_dim>>
+          trial_hess;
+
+        if constexpr (Form::XprBits & int(fe_assembler_flags::compute_physical_quad_nodes)) {
+            Base::distribute_quadrature_nodes(begin, end);
+        }
+        // start assembly loop
+        internals::fe_assembler_packet<embed_dim> fe_packet(n_trial_components, n_test_components);
+	// if hessians are zero, assemble physical hessian once and never update
+        constexpr bool test_hess_is_zero = std::all_of(
+          test_shape_hess_.data(), test_shape_hess_.data() + test_shape_hess_.size(), [](double x) { return x == 0; });
+        constexpr bool trial_hess_is_zero =
+          std::all_of(trial_shape_hess_.data(), trial_shape_hess_.data() + trial_shape_hess_.size(), [](double x) {
+              return x == 0;
+          });
+        if constexpr (test_hess_is_zero ) { std::fill_n(fe_packet.test_hess.data(), fe_packet.test_hess.size(), 0.0); }
+        if constexpr (trial_hess_is_zero) {
+            std::fill_n(fe_packet.trial_hess.data(), fe_packet.trial_hess.size(), 0.0);
+        }
+
+        //paralleliziamo con parallel_for con defaul granularity = 1 e creiamo da qui i mini_for (cosi ogni iterazione è minifor e quindi anche se un job= 1 iterazione ogni ojob sara un minifor)
+        int num_worker = Tp.get_n_worker();
+        
+        //numero celle
+        int count = this->Base::dof_handler_->triangulation()->n_cells();
+        
+
+        const int it_per_worker = ((count / num_worker) > 0)? (count / num_worker) : (0);
+        const int it_per_worker_resto = count % num_worker;
+        std::vector<int> it_per_workers(num_worker,it_per_worker);
+        for(int i = 0; i<it_per_worker_resto; i++){
+            it_per_workers[i]++; //add uno ai worker che fanno resto es:  3 worker A B C, 10 iterator--> resto = 1 cioe B C fanno 3 e A fa 3+1
+        }
+
+        Tp.parallel_for(0,num_worker,[=,this,&Tp,&matrix,&mutexs](int ii)mutable{ //passare tutto come copia o reference ? ogni iterazione deve avere suo fe_packet ecc quindi copia. TODO: passare copia di solo quello che serve es fe_packet ecc e non tutto =
+            int n_nodes = this->Base::dof_handler_->triangulation()->n_nodes();
+            int local_cell_id = 0;
+            iterator it = begin;
+            for (int l = 0; l<ii; l++){
+                local_cell_id += it_per_workers[l];
+                it+=it_per_workers[l];
+            }
+            int triple_per_cella = n_trial_basis * n_test_basis; //9; //hardcoded per il momento
+            auto mutex_of_row = [num_worker, tot_row = n_nodes](int row) -> int {
+                int row_per_worker = tot_row / num_worker;
+                return row / row_per_worker; // esempio di valore di ritorno
+            };
+            for (int l = 0; l<it_per_workers[ii]; l++) {
+                // update fe_packet content based on form requests
+                fe_packet.measure = it->measure();
+                if constexpr (Form::XprBits & int(geo_assembler_flags::compute_geo_id)) { fe_packet.geo_id = it->id(); }
+                if constexpr (Form::XprBits & int(geo_assembler_flags::compute_face_normal)) {
+                    fdapde_static_assert(Options_ == FaceMajor, BILINEAR_FORM_REQUIRES_A_FACE_MAJOR_ASSEMBLY_LOOP);
+                    fe_packet.normal.assign_inplace_from(it->normal());
+                }
+                if constexpr (Form::XprBits & int(fe_assembler_flags::compute_shape_grad)) {
+                    Base::eval_shape_grads_on_cell(it, test_shape_grads_, test_grads);
+                    if constexpr (is_petrov_galerkin) Base::eval_shape_grads_on_cell(it, trial_shape_grads_, trial_grads);
+                }
+                if constexpr (Form::XprBits & int(fe_assembler_flags::compute_shape_div)) {
+                    fdapde_static_assert(
+                    n_test_components != 1 || n_trial_components != 1,
+                    DIVERGENCE_OPERATOR_IS_DEFINED_ONLY_FOR_VECTOR_ELEMENTS);
+                    if constexpr (n_test_components != 1) Base::eval_shape_div_on_cell(it, test_shape_grads_, test_divs);
+                    if constexpr (is_petrov_galerkin && n_trial_components != 1)
+                        Base::eval_shape_div_on_cell(it, trial_shape_grads_, trial_divs);
+                }
+                if constexpr (Form::XprBits & int(fe_assembler_flags::compute_shape_hess)) {
+                    if constexpr (!test_hess_is_zero) Base::eval_shape_hess_on_cell(it, test_shape_hess_, test_hess);
+                    if constexpr (is_petrov_galerkin && !trial_hess_is_zero)
+                        Base::eval_shape_hess_on_cell(it, trial_shape_hess_, trial_hess);
+                }
+
+                // perform integration of weak form for (i, j)-th basis pair
+                test_active_dofs = it->dofs();
+                if constexpr (is_petrov_galerkin) { trial_active_dofs = trial_dof_handler()->active_dofs(it->id()); }
+                for (int i = 0; i < n_trial_basis; ++i) {      // trial function loop
+                    for (int j = 0; j < n_test_basis; ++j) {   // test function loop
+                        double value = 0;
+                        for (int q_k = 0; q_k < n_quadrature_nodes; ++q_k) {
+                            if constexpr (Form::XprBits & int(fe_assembler_flags::compute_shape_values)) {
+                                fe_packet.trial_value.assign_inplace_from(trial_shape_values_.template slice<0, 1>(i, q_k));
+                                fe_packet.test_value .assign_inplace_from(test_shape_values_ .template slice<0, 1>(j, q_k));
+                            }
+                            if constexpr (Form::XprBits & int(fe_assembler_flags::compute_shape_grad)) {
+                                fe_packet.trial_grad.assign_inplace_from(is_galerkin ?
+                                    test_grads.template slice<0, 1>(i, q_k) : trial_grads.template slice<0, 1>(i, q_k));
+                                fe_packet.test_grad .assign_inplace_from(test_grads.template slice<0, 1>(j, q_k));
+                            }
+                            if constexpr (Form::XprBits & int(fe_assembler_flags::compute_shape_div)) {
+                                if constexpr (n_trial_components != 1) {
+                                    fe_packet.trial_div =
+                                    (is_galerkin && n_test_components != 1) ? test_divs(i, q_k) : trial_divs(i, q_k);
+                                }
+                                if constexpr (n_test_components != 1) fe_packet.test_div = test_divs(j, q_k);
+                            }
+                            if constexpr (Form::XprBits & int(fe_assembler_flags::compute_shape_hess)) {
+                                if constexpr (!trial_hess_is_zero)
+                                    fe_packet.trial_hess.assign_inplace_from(is_galerkin ?
+                        test_hess.template slice<0, 1>(i, q_k) : trial_hess.template slice<0, 1>(i, q_k));
+                                if constexpr (!test_hess_is_zero)
+                                    fe_packet.test_hess.assign_inplace_from(test_hess.template slice<0, 1>(j, q_k));
+                            }
+                            if constexpr (Form::XprBits & int(fe_assembler_flags::compute_physical_quad_nodes)) {
+                                fe_packet.quad_node_id = local_cell_id * n_quadrature_nodes + q_k; 
+                            }
+                            value += Quadrature::weights[q_k] * form_(fe_packet);
+                        }
+
+                        int r = test_active_dofs[j];
+                        int c = is_galerkin ? test_active_dofs[i] : trial_active_dofs[i];
+                        std::unique_lock<std::mutex> lock(mutexs[mutex_of_row(r)]);
+                        matrix[r][c]+=value * fe_packet.measure;
+                        lock.unlock();
+                    }
+                }
+                local_cell_id ++;
+                ++it;
+            }
+            
+        });
+        
+        return;
+    }
 
     constexpr int n_dofs() const { return trial_dof_handler()->n_dofs(); }
     constexpr int rows() const { return test_dof_handler()->n_dofs(); }
