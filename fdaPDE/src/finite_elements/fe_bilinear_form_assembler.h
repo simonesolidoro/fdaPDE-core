@@ -1057,7 +1057,7 @@ class fe_bilinear_form_assembly_loop :
             auto mutex_of_row = [num_worker, tot_row = n_nodes](int row) -> int {
                 int row_per_worker = tot_row / num_worker;
                 int indx = row / row_per_worker;
-                return std::min(indx, num_worker - 1); // evita sforare per ultime righe maggiori di row_per_worker*(num_worker+1). es (tot_row = 15, num_worker=4, row_per_worker = 3, ma 13,14/3 fa 4 e max indice è 3 )
+                return std::min(indx, num_worker - 1); // evita sforare per ultime righe maggiori di row_per_worker*(num_worker). es (tot_row = 15, num_worker=4, row_per_worker = 3, ma 13,14/3 fa 4 e max indice è 3 )
             };
             for (int l = 0; l<it_per_workers[ii]; l++) {
                 // update fe_packet content based on form requests
