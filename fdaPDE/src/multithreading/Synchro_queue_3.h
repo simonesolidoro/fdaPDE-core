@@ -413,7 +413,11 @@ namespace fdapde{
             bool empty() const {
                 std::lock_guard<std::mutex> loc(m_);
                 if(empty_queue_){
-                    while(queue_[tail_].count_pop_ != 0){}; //wait untile count_pop == 0 OSS: while al posto di condition variable, ma contatori lasciati perche altrimenti stao == empty anche tra un pop e un psuh successivo gia in coda
+                    bool not_empty = true;  //lettura di count pop dentro a mutex di elemento cosi da aver ecertezza che se count_pop==0 allora l'ultimo pop (move di elemento fuori da coda) effetivamente eseguito. alternativa era count_pop atomico con acquire e realise ma costa di piu aggiornamento in metodi push e pop che ci interessa siano performanti, con loc di mutex empty() peggiora ma di empty non ci interessa performance ma affdabilità 
+                    while(not_empty){
+                        std::unique_lock<std::mutex> loc_el(queue_[tail_].m_el_);
+                        not_empty = (queue_[tail_].count_pop_ != 0);
+                    }; //wait untile count_pop == 0 OSS: while al posto di condition variable, ma contatori lasciati perche altrimenti stao == empty anche tra un pop e un psuh successivo gia in coda
                     return true;
                 }
                 else
