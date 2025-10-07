@@ -28,7 +28,7 @@ namespace fdapde{
         concept vector_array_list = std::contiguous_iterator<Iterator> || std::same_as<Iterator, typename std::list<T>::iterator> ;
     }
 
-    struct relax_nowait{};
+    struct relax{};
     struct hold_nowait{};
     struct hold_wait{};
     //forward declaration
@@ -39,8 +39,8 @@ namespace fdapde{
     struct elem;
 
     template<typename T>
-    struct elem<T,relax_nowait>{
-        std::atomic<char> state_ = Synchro_queue<T,relax_nowait>::Empty; 
+    struct elem<T,relax>{
+        std::atomic<char> state_ = Synchro_queue<T,relax>::Empty; 
         std::optional<T> v_;
     };
 
@@ -79,10 +79,10 @@ namespace fdapde{
     T pop_fb_pop(elem<T,M>& E);
 
     template<typename T>
-    class Synchro_queue<T,relax_nowait>{
+    class Synchro_queue<T,relax>{
         using value_type = T;
         
-        typedef std::vector<elem<value_type,relax_nowait>> container;
+        typedef std::vector<elem<value_type,relax>> container;
         private:
             container queue_;
             int head_ = 0; //indx of 1 over "first" element
@@ -109,7 +109,7 @@ namespace fdapde{
             requires internals::vector_array_list<Iterator,T>
             Synchro_queue(Iterator begin, Iterator end){
                 int n = std::distance(begin, end); //itertor di list non supportano end-begin
-                std::vector<elem<T,relax_nowait>> temp_queue(n);
+                std::vector<elem<T,relax>> temp_queue(n);
                 for(int i =0; i<n;i++){
                     temp_queue[i].state_.store(Full);
                     temp_queue[i].v_ = *(begin);
@@ -124,7 +124,7 @@ namespace fdapde{
         
             void resize(int n){
                 std::lock_guard<std::mutex> loc(m_);
-                std::vector<elem<T,relax_nowait>> temp_queue(n);
+                std::vector<elem<T,relax>> temp_queue(n);
                 std::swap(queue_, temp_queue);
                 size_ = n;
                 head_ = 0;
@@ -162,50 +162,50 @@ namespace fdapde{
             }
 
             //dichiarazioni di amicizia
-            friend int push_f_indx<T,relax_nowait>(Synchro_queue<T,relax_nowait> & S);
-            friend int pop_f_indx<T,relax_nowait>(Synchro_queue<T,relax_nowait> & S);
-            friend int push_b_indx<T,relax_nowait>(Synchro_queue<T,relax_nowait> & S);
-            friend int pop_b_indx<T,relax_nowait>(Synchro_queue<T,relax_nowait> & S);
+            friend int push_f_indx<T,relax>(Synchro_queue<T,relax> & S);
+            friend int pop_f_indx<T,relax>(Synchro_queue<T,relax> & S);
+            friend int push_b_indx<T,relax>(Synchro_queue<T,relax> & S);
+            friend int pop_b_indx<T,relax>(Synchro_queue<T,relax> & S);
 
 
             bool push_front(value_type t){
                 std::unique_lock<std::mutex> loc(m_);
-                int h = push_f_indx<T,relax_nowait>(*this);
+                int h = push_f_indx<T,relax>(*this);
                 loc.unlock();
                 if(h<0) return false; //check extra dovuto a refactorig, ?=ne vale la pena?. OSS:spostato fuoti da lock perchè non serve fare questo check con mutex lock
                 //push di elemento
-                push_fb_push<T,relax_nowait>(queue_[h], t);
+                push_fb_push<T,relax>(queue_[h], t);
                 return true; 
             }
 
             std::optional<value_type> pop_front(){
                 std::unique_lock<std::mutex> loc(m_);
-                int new_head = pop_f_indx<T,relax_nowait>(*this);
+                int new_head = pop_f_indx<T,relax>(*this);
                 loc.unlock();
                 if(new_head<0) return std::nullopt;
                 // pop 
-                value_type ret = pop_fb_pop<T,relax_nowait>(queue_[new_head]);
+                value_type ret = pop_fb_pop<T,relax>(queue_[new_head]);
                 return ret;
             }
 
             bool push_back(value_type t){
                 std::unique_lock<std::mutex> loc(m_);
-                int new_tail = push_b_indx<T,relax_nowait>(*this);
+                int new_tail = push_b_indx<T,relax>(*this);
                 loc.unlock();
                 if(new_tail<0) return false;
 
-                push_fb_push<T,relax_nowait>(queue_[new_tail], t);                
+                push_fb_push<T,relax>(queue_[new_tail], t);                
                 return true;
             }
 
             std::optional<value_type> pop_back(){
                 std::unique_lock<std::mutex> loc(m_);
-                int t = pop_b_indx<T,relax_nowait>(*this);
+                int t = pop_b_indx<T,relax>(*this);
                 loc.unlock();
                 if(t<0) return std::nullopt;
 
                 // sostituisce in posto che viene liberato il valore di defaul di value_type
-                value_type ret = pop_fb_pop<T,relax_nowait>(queue_[t]);
+                value_type ret = pop_fb_pop<T,relax>(queue_[t]);
 
                 return ret;
             }

@@ -22,11 +22,11 @@
     std::cout<<"---------------------------------test pop push con relax_nowait---------------------------------"<<std::endl;
     std::vector<int> test = {1,2,3,4,5,6};
 
-    fdapde::Synchro_queue<int,fdapde::relax_nowait> q1(test.begin(),test.end());
+    fdapde::Synchro_queue<int,fdapde::relax> q1(test.begin(),test.end());
 
     q1.print();
 
-    fdapde::Synchro_queue<int,fdapde::relax_nowait> q(10);
+    fdapde::Synchro_queue<int,fdapde::relax> q(10);
 
     //push_front()
     for (int i =1; i<11; i++){

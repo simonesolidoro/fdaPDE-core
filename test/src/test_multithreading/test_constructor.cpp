@@ -24,15 +24,15 @@ int main(){
     value el = 1;
     std::list<value> v ={el,el,el};
 
-    fdapde::Synchro_queue<int,fdapde::relax_nowait> q(v.begin(),v.end());
+    fdapde::Synchro_queue<int,fdapde::relax> q(v.begin(),v.end());
     q.print();
     std::vector<value> v1 ={el,el,el};
 
-    fdapde::Synchro_queue<int,fdapde::relax_nowait> q1(v1.begin(),v1.end());
+    fdapde::Synchro_queue<int,fdapde::relax> q1(v1.begin(),v1.end());
     q1.print();
     std::array<value,3> v2 ={el,el,el};
 
-    fdapde::Synchro_queue<int,fdapde::relax_nowait>q2(v2.begin(),v2.end());
+    fdapde::Synchro_queue<int,fdapde::relax>q2(v2.begin(),v2.end());
     q2.print();
 }
 {// hold nowait

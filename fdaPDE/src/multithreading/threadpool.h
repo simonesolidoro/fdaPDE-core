@@ -37,7 +37,7 @@ namespace fdapde{
             class Worker{
                 private:
                     int indx_; 
-                    fdapde::Synchro_queue<job,fdapde::relax_nowait> sync_queue_;
+                    fdapde::Synchro_queue<job,fdapde::relax> sync_queue_;
                     std::thread t_;
                     bool stop_ = false;
                     mutable std::mutex m_;
@@ -449,7 +449,7 @@ namespace fdapde{
             template<typename F> 
             requires std::is_same_v<std::invoke_result_t<F,int>, void>
             void parallel_for(int start, int end, F&& f){
-                using return_type = std::invoke_result_t<F, int>; // sarebbe void
+                using return_type = void; //std::invoke_result_t<F, int>; // sarebbe void
                 std::vector<std::future<return_type>> ret_fut;
                 ret_fut.reserve(end-start);
                 int j = start;

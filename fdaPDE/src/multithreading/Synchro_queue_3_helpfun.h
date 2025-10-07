@@ -33,10 +33,10 @@ namespace fdapde{
             S.empty_queue_ = false; //magari gia false quindi ridondante,ma evita if(empty_queue_) {empty_queue_ = false;} non so quale piu efficiente. 
         }
         int h = S.head_; //index dove inserira elemento
-        if constexpr(std::is_same_v<M,relax_nowait>){//OSS: non atomico lettura e modifica di stato con compare_exchange perchè tanto è gia dentro al mutex. oss fuori da mutex unico cambiamento è da busy->empty/full e qui la scrittura viene fatta solo se la lettura da !=busy quindi ce garanzia che tra lettura e scrittura non cambi niente nel mentre
-            if(S.queue_[h].state_.load(std::memory_order_acquire) != Synchro_queue<T,relax_nowait>::Empty)
+        if constexpr(std::is_same_v<M,relax>){//OSS: non atomico lettura e modifica di stato con compare_exchange perchè tanto è gia dentro al mutex. oss fuori da mutex unico cambiamento è da busy->empty/full e qui la scrittura viene fatta solo se la lettura da !=busy quindi ce garanzia che tra lettura e scrittura non cambi niente nel mentre
+            if(S.queue_[h].state_.load(std::memory_order_acquire) != Synchro_queue<T,relax>::Empty)
                 return -1;
-            S.queue_[h].state_.store(Synchro_queue<T,relax_nowait>::Busy, std::memory_order_release); //TODO: capire se forse dato che dentro mutex memory order superfluo. forse ottimale  memory_order_relax
+            S.queue_[h].state_.store(Synchro_queue<T,relax>::Busy, std::memory_order_release); //TODO: capire se forse dato che dentro mutex memory order superfluo. forse ottimale  memory_order_relax
         }
         S.head_ = (S.head_ == S.size_-1)? (0) : (S.head_ + 1); //head_++
         return h;
@@ -51,10 +51,10 @@ namespace fdapde{
             }
         }
         int new_head = (S.head_== 0)? (S.size_-1) : (S.head_-1); // new_head = index di elemento da rimuovere
-        if constexpr(std::is_same_v<M,relax_nowait>){
-            if(S.queue_[new_head].state_.load(std::memory_order_acquire) != Synchro_queue<T,relax_nowait>::Full)
+        if constexpr(std::is_same_v<M,relax>){
+            if(S.queue_[new_head].state_.load(std::memory_order_acquire) != Synchro_queue<T,relax>::Full)
                 return -1;
-            S.queue_[new_head].state_.store(Synchro_queue<T,relax_nowait>::Busy, std::memory_order_release);
+            S.queue_[new_head].state_.store(Synchro_queue<T,relax>::Busy, std::memory_order_release);
         }
         S.head_ = new_head; 
         if constexpr(std::is_same_v<M,hold_nowait> || std::is_same_v<M,hold_wait>){
@@ -74,10 +74,10 @@ namespace fdapde{
             S.empty_queue_ = false;
         }
         int new_tail = (S.tail_ == 0)? (S.size_-1) : (S.tail_ -1);
-        if constexpr(std::is_same_v<M,relax_nowait>){
-            if(S.queue_[new_tail].state_.load(std::memory_order_acquire) != Synchro_queue<T,relax_nowait>::Empty)
+        if constexpr(std::is_same_v<M,relax>){
+            if(S.queue_[new_tail].state_.load(std::memory_order_acquire) != Synchro_queue<T,relax>::Empty)
                 return -1;
-            S.queue_[new_tail].state_.store(Synchro_queue<T,relax_nowait>::Busy, std::memory_order_release);
+            S.queue_[new_tail].state_.store(Synchro_queue<T,relax>::Busy, std::memory_order_release);
         }
         S.tail_ = new_tail;                         
         return new_tail;
@@ -92,10 +92,10 @@ namespace fdapde{
             }
         }
         int t = S.tail_; // tmp idice di elmeto da pop
-        if constexpr(std::is_same_v<M,relax_nowait>){
-            if(S.queue_[t].state_.load(std::memory_order_acquire) != Synchro_queue<T,relax_nowait>::Full)
+        if constexpr(std::is_same_v<M,relax>){
+            if(S.queue_[t].state_.load(std::memory_order_acquire) != Synchro_queue<T,relax>::Full)
                 return -1;
-            S.queue_[t].state_.store(Synchro_queue<T,relax_nowait>::Busy, std::memory_order_release);
+            S.queue_[t].state_.store(Synchro_queue<T,relax>::Busy, std::memory_order_release);
         }
         S.tail_ = (S.tail_ == S.size_-1)? (0):(S.tail_+1);
         if constexpr(std::is_same_v<M,hold_nowait> || std::is_same_v<M,hold_wait>){
@@ -109,8 +109,8 @@ namespace fdapde{
     template<typename T,typename M> 
     void push_fb_push(elem<T,M>& E, T& new_value){ 
         E.v_ = std::move(new_value);
-        if constexpr(std::is_same_v<M,relax_nowait>){
-            E.state_.store(Synchro_queue<T,relax_nowait>::Full, std::memory_order_release); //aggiorna stato di elem con release.  SE un pop vede lo stato = FUll grazie a release allora sicuro vede anche l'elemeto pushato
+        if constexpr(std::is_same_v<M,relax>){
+            E.state_.store(Synchro_queue<T,relax>::Full, std::memory_order_release); //aggiorna stato di elem con release.  SE un pop vede lo stato = FUll grazie a release allora sicuro vede anche l'elemeto pushato
         }
         if constexpr(std::is_same_v<M,hold_nowait> || std::is_same_v<M,hold_wait>){
             E.state_ = false; //aggiorna stato di elem a full
@@ -121,8 +121,8 @@ namespace fdapde{
     T pop_fb_pop(elem<T,M>& E){
         T ret = std::move(E.v_.value());
         E.v_ = std::nullopt;
-        if constexpr(std::is_same_v<M,relax_nowait>){
-            E.state_.store(Synchro_queue<T,relax_nowait>::Empty, std::memory_order_release);
+        if constexpr(std::is_same_v<M,relax>){
+            E.state_.store(Synchro_queue<T,relax>::Empty, std::memory_order_release);
         }
         if constexpr(std::is_same_v<M,hold_nowait> || std::is_same_v<M,hold_wait>){
             E.state_ = true;
