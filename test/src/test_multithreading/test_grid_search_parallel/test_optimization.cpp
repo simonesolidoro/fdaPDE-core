@@ -26,6 +26,7 @@ int main(int argc, char** argv){
     int grid_size = std::stoi(argv[1]);
     int n_threads = std::stoi(argv[2]);
     int job_per_worker = std::stoi(argv[3]);
+    int granularity = std::stoi(argv[4]); 
 
     // funzione x^2 + y^2
     fdapde::ScalarField<2, decltype([](const Eigen::Matrix<double, 2, 1>& p) { return std::pow(p[0], 2) + std::pow(p[1], 2); })> objective;
@@ -55,7 +56,7 @@ int main(int argc, char** argv){
         grid(i,1) = unif(re);
         //std::cout << grid(i,0) << " " << grid(i,1) << std::endl;
     }
-
+ 
     //creazione threadpool per versioni con Tp in input
     fdapde::Threadpool<fdapde::steal::random> Tp(1024, n_threads); //size queue grid.size()/2 era peggiore dei casi (1 worker granularity=1), ma non ha senso. in questo problema numero job per worker è 1-10 perchè visto che non c'è vantaggio ad aumentare, mettimo 1024 per simulare threadpool usata in generale e poi anche qui 
 
@@ -84,8 +85,7 @@ int main(int argc, char** argv){
 
     auto start4 = std::chrono::high_resolution_clock::now();
 
-    //opt3.optimize(rastrigin, grid, execution::par,job_per_worker, n_threads); // <- da modificare questo step
-    opt3.optimize(rastrigin, grid, execution::par,Tp,job_per_worker); //Tp in input
+    opt3.optimize(rastrigin, grid, execution::par,Tp,granularity); //parallel_for con divisione in job esterna 
 
     auto end4 = std::chrono::high_resolution_clock::now();
     auto duration4 = std::chrono::duration_cast<std::chrono::microseconds>(end4 - start4);  
