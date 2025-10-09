@@ -144,7 +144,7 @@ template <int N> class GridSearch {
         Tp.parallel_for(0,grid_.rows(), [&, this](int i){ //tutto tramite ref per occupare meno memoria ma piu lento
             int index_worker = Tp.get_index_worker_from_thread();
             grid_.row(i).assign_to(x_curr_local_thread.transpose()); 
-            double obj_curr_local_thread = objective(x_curr_local_thread);
+            obj_curr_local_thread = objective(x_curr_local_thread);
             // update minimum of worker if better optimum found
             if (obj_curr_local_thread < value_optimum_workers[index_worker].first) {
                 value_optimum_workers[index_worker].first = obj_curr_local_thread;
@@ -175,6 +175,149 @@ template <int N> class GridSearch {
         fdapde::Threadpool<fdapde::steal::random> Tp(1024, n_threads); //n_worker = hardwer_thread di defaul, size queue 1024 hardcoded tanto visto job per worker da 1 a 10
 
         return optimize(std::forward<ObjectiveT>(objective),grid,execution::par,Tp,job_per_worker);
+    }
+
+// no thread_local variabili curr ma tutto in AlignedVariable, perche thread_local durano finche dura thread ma in threadpool thread dura tutto programma meglio non riempirlo di thread_local 
+        template <typename ObjectiveT, typename GridT>
+        requires((internals::is_vector_like_v<GridT> || internals::is_matrix_like_v<GridT>))
+    vector_t optimize2(ObjectiveT&& objective, const GridT& grid, execution::execution_parallel,fdapde::Threadpool<fdapde::steal::random>& Tp, int job_per_worker = 1) { // per ora int job_per_worker in input perche piu comodo fare i test poi sostituire valore scelto
+        fdapde_static_assert(
+          std::is_same<decltype(std::declval<ObjectiveT>().operator()(vector_t())) FDAPDE_COMMA double>::value,
+          INVALID_CALL_TO_OPTIMIZE__OBJECTIVE_FUNCTOR_NOT_CALLABLE_AT_VECTOR_TYPE);
+        using layout_policy = decltype([]() {
+            if constexpr (internals::is_eigen_dense_xpr_v<GridT>) {
+                return std::conditional_t<GridT::IsRowMajor, internals::layout_right, internals::layout_left> {};
+            } else {
+                return internals::layout_right {};
+            }
+        }());
+        using grid_t = MdMap<const double, MdExtents<Dynamic, Dynamic>, layout_policy>;
+
+        constexpr double NaN = std::numeric_limits<double>::quiet_NaN();
+
+        grid_t grid_;
+        value_ = std::numeric_limits<double>::max();
+        if constexpr (internals::is_vector_like_v<GridT>) {
+            fdapde_assert(grid.size() % size_ == 0);
+            grid_ = grid_t(grid.data(), grid.size() / size_, size_);
+        } else {
+            fdapde_assert(grid.cols() == size_);
+            grid_ = grid_t(grid.data(), grid.rows(), size_);
+        }
+
+        // per evitare false sharing e rendere piu veloce (il mio computer ha 64 byte in cacheline credo tutti ormai, nel caso da verificare su linux con $ cat /sys/devices/system/cpu/cpu0/cache/index0/coherency_line_size  )
+        struct alignas(64) AlignedVariable {
+            double obj = std::numeric_limits<double>::max();// inizializzato a massimo erch ein problema cerchiamo minimo
+            vector_t x;
+            double obj_curr = std::numeric_limits<double>::max();
+            vector_t x_curr;
+        };
+
+        int n_threads = Tp.get_n_worker();
+        // vettore di (value,optimum) per ogni worker, alla fine ci saranno min,argmin trovati da ogni worker e poi reduce di questo vettore darà min argmin finali
+        std::vector<AlignedVariable> variable_workers(n_threads); //inizializzato con n_thread elementi vuoti cosi da non riallocare ed essere threadsafe
+        
+        int granularity = std::max(int(grid_.rows()/(n_threads*job_per_worker)),1); //OSS: granularity massima (cioè t.c. 1 job per worker fa si che massimo cache friendly durante scorrimento di grid_)
+        
+        Tp.parallel_for(0,grid_.rows(), [&, this](int i){ //tutto tramite ref per occupare meno memoria ma piu lento
+            int index_worker = Tp.get_index_worker_from_thread();
+            grid_.row(i).assign_to(variable_workers[index_worker].x_curr.transpose()); 
+            variable_workers[index_worker].obj_curr = objective(variable_workers[index_worker].x_curr);
+            // update minimum of worker if better optimum found
+            if (variable_workers[index_worker].obj_curr < variable_workers[index_worker].obj) {
+                variable_workers[index_worker].x = variable_workers[index_worker].x_curr;
+                variable_workers[index_worker].obj = variable_workers[index_worker].obj_curr;
+            }
+        },granularity);
+
+        // reduce di value_optimum_workers[], minimo in value_ argmin in optimum_
+        value_ = variable_workers[0].obj;
+        optimum_ = variable_workers[0].x;
+        for (int i = 1; i<n_threads; i++){
+            if(variable_workers[i].obj < value_){
+                value_ = variable_workers[i].obj;
+                optimum_ = variable_workers[i].x;
+            }
+        }
+
+        return optimum_;
+    }
+
+// parallel_for e divisione in job fatta a mano, evita uso thread_local variabili per x_curr e obj_curr (thread_local si distruggono quando chiusura thread quindi meglio non usarle in threadpool dove thread dura tutto programma)
+    template <typename ObjectiveT, typename GridT>
+        requires((internals::is_vector_like_v<GridT> || internals::is_matrix_like_v<GridT>))
+    vector_t optimize3(ObjectiveT&& objective, const GridT& grid, execution::execution_parallel,fdapde::Threadpool<fdapde::steal::random>& Tp, int granularity = 1) { // per ora int job_per_worker in input perche piu comodo fare i test poi sostituire valore scelto
+        fdapde_static_assert(
+          std::is_same<decltype(std::declval<ObjectiveT>().operator()(vector_t())) FDAPDE_COMMA double>::value,
+          INVALID_CALL_TO_OPTIMIZE__OBJECTIVE_FUNCTOR_NOT_CALLABLE_AT_VECTOR_TYPE);
+        using layout_policy = decltype([]() {
+            if constexpr (internals::is_eigen_dense_xpr_v<GridT>) {
+                return std::conditional_t<GridT::IsRowMajor, internals::layout_right, internals::layout_left> {};
+            } else {
+                return internals::layout_right {};
+            }
+        }());
+        using grid_t = MdMap<const double, MdExtents<Dynamic, Dynamic>, layout_policy>;
+        
+        constexpr double NaN = std::numeric_limits<double>::quiet_NaN();
+
+        grid_t grid_;
+        value_ = std::numeric_limits<double>::max();
+        if constexpr (internals::is_vector_like_v<GridT>) {
+            fdapde_assert(grid.size() % size_ == 0);
+            grid_ = grid_t(grid.data(), grid.size() / size_, size_);
+        } else {
+            fdapde_assert(grid.cols() == size_);
+            grid_ = grid_t(grid.data(), grid.rows(), size_);
+        }
+        
+        // per evitare false sharing e rendere piu veloce (il mio computer ha 64 byte in cacheline credo tutti ormai, nel caso da verificare su linux con $ cat /sys/devices/system/cpu/cpu0/cache/index0/coherency_line_size  )
+        struct alignas(64) AlignedPair {
+            double first = std::numeric_limits<double>::max();// inizializzato a massimo erch ein problema cerchiamo minimo
+            vector_t second;
+        };
+        int n_threads = Tp.get_n_worker();
+        // vettore di (value,optimum) per ogni worker, alla fine ci saranno min,argmin trovati da ogni worker e poi reduce di questo vettore darà min argmin finali
+        std::vector<AlignedPair> value_optimum_workers(n_threads); //inizializzato con n_thread elementi vuoti cosi da non riallocare ed essere threadsafe
+        
+        int granularity_last_job = grid_.rows()% granularity;
+        int n_job = (granularity_last_job == 0) ? grid_.rows()/granularity : grid_.rows()/granularity +1 ;
+    
+        Tp.parallel_for(0,n_job, [&, this](int i){ //tutto tramite ref per occupare meno memoria ma piu lento
+            int index_worker = Tp.get_index_worker_from_thread();
+            vector_t x_curr;
+            double obj_curr =std::numeric_limits<double>::max();
+            vector_t x;
+            double obj = std::numeric_limits<double>::max();
+            int start = i*granularity;
+            int end = (i != (n_job-1))? (i+1)*granularity : start+granularity_last_job;
+            for(int j = start; j<end; j++){
+                grid_.row(j).assign_to(x_curr.transpose()); 
+                obj_curr = objective(x_curr);
+                // update minimum of worker if better optimum found
+                if (obj_curr < obj) {
+                    obj = obj_curr;
+                    x = x_curr;
+                }
+            }
+            // eventuale insert worker's optimum in Aligned vector a fine job. accesso a vettore commune solo una volta per job quindi meno senso fare alignedvector, lo lasciamo comunqeu ? (per me si tanto pochi worker spazio in piu occupato da vettore allineato rispetto a vettore normale non è tanto)
+            if(obj < value_optimum_workers[index_worker].first){
+                value_optimum_workers[index_worker].first = obj;
+                value_optimum_workers[index_worker].second = x;
+            }
+        });
+
+        // reduce di value_optimum_workers[], minimo in value_ argmin in optimum_
+        value_ = value_optimum_workers[0].first;
+        optimum_ = value_optimum_workers[0].second;
+        for (int i = 1; i<n_threads; i++){
+            if(value_optimum_workers[i].first < value_){
+                value_ = value_optimum_workers[i].first;
+                optimum_ = value_optimum_workers[i].second;
+            }
+        }
+
+        return optimum_;
     }
 
     // observers
