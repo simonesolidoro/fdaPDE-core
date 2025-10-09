@@ -36,7 +36,7 @@ namespace fdapde{
         if constexpr(std::is_same_v<M,relax>){//OSS: non atomico lettura e modifica di stato con compare_exchange perchè tanto è gia dentro al mutex. oss fuori da mutex unico cambiamento è da busy->empty/full e qui la scrittura viene fatta solo se la lettura da !=busy quindi ce garanzia che tra lettura e scrittura non cambi niente nel mentre
             if(S.queue_[h].state_.load(std::memory_order_acquire) != Synchro_queue<T,relax>::Empty)
                 return -1;
-            S.queue_[h].state_.store(Synchro_queue<T,relax>::Busy, memory_order_relaxed); //TODO: capire se forse dato che dentro mutex memory order superfluo. forse ottimale  memory_order_relax. SI
+            S.queue_[h].state_.store(Synchro_queue<T,relax>::Busy, std::memory_order_relaxed); //TODO: capire se forse dato che dentro mutex memory order superfluo. forse ottimale  memory_order_relax. SI
         }
         S.head_ = (S.head_ == S.size_-1)? (0) : (S.head_ + 1); //head_++
         return h;
