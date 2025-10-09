@@ -282,7 +282,7 @@ template <int N> class GridSearch {
         
         int granularity_last_job = grid_.rows()% granularity;
         int n_job = (granularity_last_job == 0) ? grid_.rows()/granularity : grid_.rows()/granularity +1 ;
-    
+
         Tp.parallel_for(0,n_job, [&, this](int i){ //tutto tramite ref per occupare meno memoria ma piu lento
             int index_worker = Tp.get_index_worker_from_thread();
             vector_t x_curr;
@@ -290,7 +290,14 @@ template <int N> class GridSearch {
             vector_t x;
             double obj = std::numeric_limits<double>::max();
             int start = i*granularity;
-            int end = (i != (n_job-1))? (i+1)*granularity : start+granularity_last_job;
+            int end = 0;
+            //se ultimo job ha granularity diverso allora verifico se è ultimo job (i==n_job-1) e nel caso metto granularity = gran_last_job
+            if(granularity_last_job != 0){
+                end = (i != (n_job-1))? (i+1)*granularity : start+granularity_last_job;
+            }else{
+                end = (i+1)*granularity;
+            }
+             
             for(int j = start; j<end; j++){
                 grid_.row(j).assign_to(x_curr.transpose()); 
                 obj_curr = objective(x_curr);
