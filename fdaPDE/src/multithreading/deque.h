@@ -54,14 +54,13 @@ public:
         std::lock_guard<std::mutex> loc(m);
         return queue_.size();
     }
-    bool empty(){
-        std::lock_guard<std::mutex> loc(m);
+    bool empty(){//usato in pop durante lock di mutex quindi servirebbe mutex ricorsivo, alternativa togliere il mutex tanto a noi serve solo per test
         return queue_.empty();
     }
     //per debug momentanei
     void print(){
-        for (T i : queue_)
-            std::cout<<i<<"  ";
+        for (auto i : queue_)
+            std::cout<<i.value()<<"  ";
         std::cout<<std::endl;
     }
 };
