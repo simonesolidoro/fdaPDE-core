@@ -100,13 +100,13 @@ class fe_bilinear_form_assembly_loop :
     Eigen::SparseMatrix<double> assemble() const {
         Eigen::SparseMatrix<double> assembled_mat(test_dof_handler()->n_dofs(), trial_dof_handler()->n_dofs());
         std::vector<Eigen::Triplet<double>> triplet_list;
-/*
+
         //riserva spazio per evitare riallocamento vettore
         int n_cell = this->Base::dof_handler_->triangulation()->n_cells();
         int triple_per_cella = n_trial_basis * n_test_basis; //9 qui;
         int tot_triple = n_cell * triple_per_cella;
         triplet_list.reserve(tot_triple);
-*/
+
 	assemble(triplet_list);
 
 	// linearity of the integral is implicitly used here, as duplicated triplets are summed up (see Eigen docs)
