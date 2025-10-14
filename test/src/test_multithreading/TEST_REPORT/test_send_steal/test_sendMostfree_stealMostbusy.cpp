@@ -25,15 +25,13 @@ int main(int argc, char** argv){
 
     fdapde::Threadpool<fdapde::steal::most_busy> tp(size_queue,n_thread);
 
-    std::vector<std::optional<std::future<void>>> futs;
+    std::vector<std::future<void>> futs;
     futs.reserve(n_job);
     std::atomic<int> count(0);
-    int i = 0;
 
     auto start2 = std::chrono::high_resolution_clock::now();
-    //send job con certezza
-    while( i<n_job){
-        futs.push_back(std::move(tp.send_task([&](){
+    for( int i =0; i<n_job; i++){
+        futs.push_back(std::move(tp.send_task_mostfree([&](){
             count++;
             int a= 0;
             for (int j = 0; j<n_cicli_in_job; j++){
@@ -43,22 +41,14 @@ int main(int argc, char** argv){
                 a--;
             }
         })));
-        if(futs[i]){
-            i++;
-        }
-        else{
-            futs.pop_back();
-        }
     }
     //get dei future per aspettare che lavori siano finiti
     for(int i= 0; i<n_job; i++){
-        futs[i].value().get();
+        futs[i].get();
     }
-
     auto end2 = std::chrono::high_resolution_clock::now();
     auto duration2 = std::chrono::duration_cast<std::chrono::microseconds>(end2 - start2);  
-    //std::cout<<"operazioni fatte: "<<n*n_job<<"  con n_job: "<<n_job<<"mandati su n_thread:"<<n_thread<<" impiegato:"<<duration2.count()<< " microsecondi\n";
-    if(count.load() == n_job)//per verifica tutti i job eseguiti
+    if(count.load() == n_job)//per verifica tutti i job eseguiti. non dovrebbe servire 
         std::cout<<duration2.count()<<",";
     return 0;
 }
