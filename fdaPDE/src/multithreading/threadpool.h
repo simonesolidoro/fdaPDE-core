@@ -245,7 +245,7 @@ namespace fdapde{
 
            //send_task_mostfree
             template<typename F, typename... Args>
-            auto send_task(F&& f,Args&&... args) -> std::optional<std::future<decltype(f(args...))>>{
+            auto send_task_mostfree_weak(F&& f,Args&&... args) -> std::optional<std::future<decltype(f(args...))>>{
                 //wrap 
                 using return_type = decltype(f(args...));
                 std::shared_ptr<std::packaged_task<return_type()>> ptr_task = std::make_shared<std::packaged_task<return_type()>> ([fun = std::forward<F>(f), ...args_catturati = std::forward<Args>(args) ]()mutable{return fun(args_catturati...);});
@@ -264,10 +264,28 @@ namespace fdapde{
                 lock.unlock();
                 return std::nullopt; 
             };
+            //send mostbusy, for sure (while-loop as long as push ends successfully)
+            template<typename F, typename... Args>
+            auto send_task_mostfree(F&& f,Args&&... args) -> std::future<decltype(f(args...))>{
+                //wrap 
+                using return_type = decltype(f(args...));
+                std::shared_ptr<std::packaged_task<return_type()>> ptr_task = std::make_shared<std::packaged_task<return_type()>> ([fun = std::forward<F>(f), ...args_catturati = std::forward<Args>(args) ]()mutable{return fun(args_catturati...);});
+                std::future<return_type> fut = ptr_task->get_future();
+                job j = [ptr_task](){(*ptr_task)();};
+
+                int indx_worker = indx_most_free();
+                std::unique_lock<std::mutex> lock(workers_[indx_worker]->get_loc()); 
+                bool flag = workers_[indx_worker]->push_back(j);
+                while(!flag){ flag = workers_[indx_worker]->push_back(j);}
+                count_job_[indx_worker].fetch_add(1,std::memory_order_release); 
+                lock.unlock();
+                workers_[indx_worker]->cv_.notify_one();  
+                return fut;
+            };
 
             //send round using struct indxw             
             template<typename F, typename... Args>
-            auto send_task_round(F&& f,Args&&... args) -> std::optional<std::future<decltype(f(args...))>>{
+            auto send_task_round_weak(F&& f,Args&&... args) -> std::optional<std::future<decltype(f(args...))>>{
                 //wrap 
                 using return_type = decltype(f(args...));
                 std::shared_ptr<std::packaged_task<return_type()>> ptr_task = std::make_shared<std::packaged_task<return_type()>> ([fun = std::forward<F>(f), ...args_catturati = std::forward<Args>(args) ]()mutable{return fun(args_catturati...);});
@@ -289,7 +307,7 @@ namespace fdapde{
 
             //send round using struct indxw, for sure (while-loop as long as push ends successfully)             
             template<typename F, typename... Args>
-            auto send_task_round_strong(F&& f,Args&&... args) -> std::future<decltype(f(args...))>{
+            auto send_task_round(F&& f,Args&&... args) -> std::future<decltype(f(args...))>{
                 //wrap 
                 using return_type = decltype(f(args...));
                 std::shared_ptr<std::packaged_task<return_type()>> ptr_task = std::make_shared<std::packaged_task<return_type()>> ([fun = std::forward<F>(f), ...args_catturati = std::forward<Args>(args) ]()mutable{return fun(args_catturati...);});
@@ -297,7 +315,7 @@ namespace fdapde{
                 job j = [ptr_task](){(*ptr_task)();};
             
                 std::unique_lock<std::mutex> lock(workers_[indxw_.indx_]->get_loc());
-                bool flag = false;
+                bool flag = workers_[indxw_.indx_]->push_back(j);;
                 while(!flag){flag = workers_[indxw_.indx_]->push_back(j);}
                 count_job_[indxw_.indx_].fetch_add(1,std::memory_order_release);
                 lock.unlock();
@@ -306,7 +324,14 @@ namespace fdapde{
                 return fut;
             };
 
-            //only for test logic of steal.
+            
+/*//only for test logic of steal.
+            //per notificare tutte le CV_ dei worker
+            void notifica_tutti()const{ //possibile const perche cv di singoli worker sono messe mutable
+                for(int i=0; i<n_worker_; i++){
+                    workers_[i]->cv_.notify_one();
+                }
+            }
             //send a sola meta di worker per debug/ test di steal job. 
             template<typename F, typename... Args>
             auto send_task_only_to_some(F&& f,Args&&... args) -> std::optional<std::future<decltype(f(args...))>>{
@@ -350,9 +375,9 @@ namespace fdapde{
                 lock.unlock();
                 return std::nullopt;
             };
+*/
 
-
-            //parallel_for 
+            //parallel_for //TODO: controllo start<end va aggiunto ?
             //OVERLOAD:
             // parallel_for(int,int,F&&) --> granularity = 1
             // parallel_for(int,int,F&&,function<int(int)> incr) --> custom increment to scroll range, granularity = 1
@@ -362,13 +387,13 @@ namespace fdapde{
             //F = body_function, firm of F: void (int i)
             template<typename F> 
             requires std::is_same_v<std::invoke_result_t<F,int>, void>
-            void parallel_for(int start, int end, F&& f){
+            void parallel_for_weak(int start, int end, F&& f){
                 using return_type = void; 
                 std::vector<std::future<return_type>> ret_fut;
                 ret_fut.reserve(end-start);
                 int j = start;
                 while(j<end){
-                    std::optional<std::future<return_type>> opt_fut= this->send_task_round(f,j);
+                    std::optional<std::future<return_type>> opt_fut= this->send_task_round_weak(f,j);
                     if(opt_fut){
                         ret_fut.push_back(std::move(opt_fut.value()));
                         j++;
@@ -387,10 +412,9 @@ namespace fdapde{
                 using return_type = void; 
                 std::vector<std::future<return_type>> ret_fut;
                 ret_fut.reserve(end-start);
-                int j = start;
                 for (int j = start; j<end; j++){
-                    std::future<return_type> fut = this->send_task_round_strong(f,j);
-                    ret.push_back(std::move(fut))
+                    std::future<return_type> fut = this->send_task_round(f,j);
+                    ret_fut.push_back(std::move(fut));
                 }
                 for(std::future<void>& fut : ret_fut){
                     fut.get(); 
@@ -401,13 +425,13 @@ namespace fdapde{
             
             template<typename F> 
             requires std::is_same_v<std::invoke_result_t<F,int>, void>
-            void parallel_for(int start, int end, F&& f, std::function<int(int)> incr){
-                using return_type = std::invoke_result_t<F, int>; // sarebbe void
+            void parallel_for_weak(int start, int end, F&& f, std::function<int(int)> incr){
+                using return_type = void;
                 std::vector<std::future<return_type>> ret_fut;
                 ret_fut.reserve(end-start);
                 int j = start;
                 while(j<end){
-                    std::optional<std::future<return_type>> opt_fut= this->send_task_round(f,j);
+                    std::optional<std::future<return_type>> opt_fut= this->send_task_round_weak(f,j);
                     if(opt_fut){
                         ret_fut.push_back(std::move(opt_fut.value()));
                         j = incr(j);
@@ -418,75 +442,115 @@ namespace fdapde{
                 }
                 return;
             } 
+            template<typename F> 
+            requires std::is_same_v<std::invoke_result_t<F,int>, void>
+            void parallel_for(int start, int end, F&& f, std::function<int(int)> incr){
+                using return_type = void; 
+                std::vector<std::future<return_type>> ret_fut;
+                ret_fut.reserve(end-start);
+                for (int j = start; j<end; j = incr(j)){
+                    std::future<return_type> fut= this->send_task_round(f,j);
+                    ret_fut.push_back(std::move(fut));
+                }
+                for(std::future<void>& fut : ret_fut){
+                    fut.get(); 
+                }
+                return;
+            } 
 
            
-
-            // non piu n = numero di blocchi in cui dividere range. perche es range 80, n=35 perche 7 thread---> ogni job ha due iteraoni(80/35) ma poi ultimo con quello che avanza è unico job da 10 iterazioni :(. (possibile sistemare questa parte modificando secondo while di parallel_for_sure_n)
-            // ma n = iterazioni in singolo blocco (job) GRANULARUTY
             template<typename F> 
             requires std::is_same_v<std::invoke_result_t<F,int>, void> 
-            void parallel_for(int start, int end, F&& f,int granularity){  
-                using return_type = std::invoke_result_t<F, int>;
-                //range va da start a end-1--> end-start= dimensione range
+            void parallel_for_weak(int start, int end, F&& f,int granularity){  
+                using return_type = void;
+                //range: [start, end) --> end-start= dim range
                 int range = (end-start); 
-                int n = range / granularity; //numero job con granularity iterazioni, se poi c'è resto le ultime iterazioni messe in ultimo job
-                //deafault value 1 job per worker (circa), fa niente che non fa steal ma garantisce uso pieno di threadpool. per lo steal decidere quanti job per worker è troppo case-specific.         
+                int n_job = range / granularity;          
                 if(granularity == -1) { 
                     granularity = range/n_worker_; 
                     if(granularity < 1){//less iteration than worker, so granularity = 1 
                         granularity = 1; 
                     }
-                    n = range/granularity;    
+                    n_job = range/granularity; // last job granularity < min(n_worker,granularity) 
                 }
-                std::vector<std::future<return_type>> ret_fut; //no optinal<future> perché se nullopt non pushato quindi solo future
-                ret_fut.reserve(n+1); //per evitare riallocameto memoria, +1 per eventuale ultimo job fatto da ultime (end-start)%granularity iterazioni  
+                std::vector<std::future<return_type>> ret_fut; 
+                ret_fut.reserve(n_job+1); //+1 for eventualy last job
                 int j = 0;
-                while(j< n){
-                    std::optional<std::future<return_type>> opt_fut = this->send_task_round([granularity,j,start,fun = f]()mutable{ 
+                while(j< n_job){
+                    std::optional<std::future<return_type>> opt_fut = this->send_task_round_weak([granularity,j,start,fun = f]()mutable{ 
                         int stop = (j+1)*granularity+start;
                         for(int k=j*granularity+start; k<stop; k++ ){
                             fun(k);
                         }
                     });
                     if(opt_fut){
-                        //se send andato a buon push di fut in ret_fut e incrementa j
-                        ret_fut.push_back(std::move(opt_fut.value())); //move perche future non copiabili
+                        ret_fut.push_back(std::move(opt_fut.value()));
                         j++;
                     }
-                }
-                //?= possibile evitare questo if mettendo sopra while(j<n+1) e poi ultimo se range % granularity == 0 ultimo job mandato sara for(k=end, k<end){f()} cioè job "vuoto"
-                //risposta: no perchè poi bisognerebbe mettere controllo se (j+1)*granularity+start > end, perchè in ultimo job di avanzi k<end non k<(j+1)*granularity+start 
-                if(range % granularity > 0){ //inviamo ultimo job con iterazioni rimanenti 
+                } 
+                if(range % granularity > 0){// send last job  
                     j=0;
                     while(j<1){
-                        std::optional<std::future<return_type>> opt_fut = this->send_task_round([granularity,n,start,end,j,fun = f]()mutable{ //j gia catturata in & credo non serve
-                        for(int k=n*granularity+start; k<end; k++ ){
+                        std::optional<std::future<return_type>> opt_fut = this->send_task_round_weak([granularity,n_job,start,end,j,fun = f]()mutable{ 
+                        for(int k=n_job*granularity+start; k<end; k++ ){
                             fun(k);
                         }
                     });
                     if(opt_fut){
-                        //se send andato a buon push di fut in ret_fut e incrementa j
-                        ret_fut.push_back(std::move(opt_fut.value())); //move perche future non copiabili
+                        ret_fut.push_back(std::move(opt_fut.value()));
                         j++;
                     }
                     }
                 }
-                //get dei future void per assicurarsi che tutti i job siano stati eseguiti dopo uso parallel_for in main
+                //get futures
                 for(std::future<void>& fut : ret_fut){
                     fut.get();
                 }
                 return;
-        
+            } 
+            template<typename F> 
+            requires std::is_same_v<std::invoke_result_t<F,int>, void> 
+            void parallel_for(int start, int end, F&& f,int granularity){  
+                using return_type = void;
+                //range: [start, end) --> end-start= dim range
+                int range = (end-start); 
+                int n_job = range / granularity;          
+                if(granularity == -1) { 
+                    granularity = range/n_worker_; 
+                    if(granularity < 1){//less iteration than worker, so granularity = 1 
+                        granularity = 1; 
+                    }
+                    n_job = range/granularity; // to ensure: last_job_granularity < min(n_worker,granularity) 
+                }
+                std::vector<std::future<return_type>> ret_fut; 
+                ret_fut.reserve(n_job+1); //+1 for eventualy remaining job
+                for (int j= 0; j<n_job; j++){
+                    std::future<return_type> fut = this->send_task_round([granularity,j,start,fun = f]()mutable{ 
+                        int stop = (j+1)*granularity+start;
+                        for(int k=j*granularity+start; k<stop; k++ ){
+                            fun(k);
+                        }
+                    });
+                    ret_fut.push_back(std::move(fut));
+                }
+                if(range % granularity > 0){// send last job  
+                    std::future<return_type> fut = this->send_task_round([granularity,n_job,start,end,fun = f]()mutable{ 
+                        for(int k=n_job*granularity+start; k<end; k++ ){
+                            fun(k);
+                        }
+                    });
+                    ret_fut.push_back(std::move(fut));
+                }
+                //get futures
+                for(std::future<void>& fut : ret_fut){fut.get();}
+                return;
             } 
 
-            //riceve vettore per far scegliere a utente come suddividere le iterazioni 
-            // es vect=[1,5,5,4] for(0,15)  lo divide in 4 blocchi primo 1 it, secondo 5 it ecc...
-            //utile se si conosce gia sbilanciamento in iterazioni di for
+            /*probabilmente da togliere*/
             template<typename F> 
             requires std::is_same_v<std::invoke_result_t<F,int>, void>
             void parallel_for(int start, int end, F&& f,std::vector<int>& vect){
-                using return_type = std::invoke_result_t<F, int>;
-                //range va da start a end-1--> end-start= dimensione range
+                using return_type = void;
                 if(std::reduce(vect.cbegin(),vect.cend(),0) != (end-start)){
                     std::cerr<<"somma di elem in vect deve essere uguale a range (end-start)"<<std::endl;
                     return;
@@ -502,7 +566,7 @@ namespace fdapde{
                 ret_fut.reserve(vect_size);
                 size_t j = 0;
                 while(j< vect_size){
-                    std::optional<std::future<return_type>> opt_fut = this->send_task_round([&,j,fun = f]()mutable{ //j gia catturata in & credo non serve
+                    std::optional<std::future<return_type>> opt_fut = this->send_task_round_weak([&,j,fun = f]()mutable{ //j gia catturata in & credo non serve
                         for(int k=seq[j]; k<seq[j+1]; k++ ){
                             fun(k);
                         }
@@ -528,13 +592,13 @@ namespace fdapde{
             //1
             template<typename F,typename It> 
             requires std::is_same_v<std::invoke_result_t<F,It>, void>
-            void parallel_for_iterator(It start, It end, F&& f){
+            void parallel_for_iterator_weak(It start, It end, F&& f){
                 using return_type = void; 
                 std::vector<std::future<return_type>> ret_fut;
                 //ret_fut.reserve(end-start); //commentata perchè iterator non hanno operator -
                 It j = start;
                 while(j != end){
-                    std::optional<std::future<return_type>> opt_fut= this->send_task_round(f,j); //j è iterator 
+                    std::optional<std::future<return_type>> opt_fut= this->send_task_round_weak(f,j); //j è iterator 
                     if(opt_fut){
                         ret_fut.push_back(std::move(opt_fut.value()));
                         ++j;
@@ -546,59 +610,98 @@ namespace fdapde{
                 }
                 return;
             } 
+            template<typename F,typename It> 
+            requires std::is_same_v<std::invoke_result_t<F,It>, void>
+            void parallel_for_iterator(It start, It end, F&& f){
+                using return_type = void; 
+                std::vector<std::future<return_type>> ret_fut;
+                for (It j = start; j!=end; ++j){
+                    std::future<return_type> fut= this->send_task_round(f,j);
+                    ret_fut.push_back(std::move(fut));
+                }
+                for(std::future<void>& fut : ret_fut){
+                    fut.get();
+                }
+                return;
+            } 
 
             //2 (it+n ok)
             template<typename F,typename It> 
             requires std::is_same_v<std::invoke_result_t<F,It>, void> && std::random_access_iterator<It>
-            void parallel_for_iterator(It start, It end, F&& f,int granularity){
+            void parallel_for_iterator_weak(It start, It end, F&& f,int granularity){
                 using return_type = void;
-                //range va da start a end-1--> end-start= dimensione range
                 int range = (end-start); 
-                int n = range / granularity; //numero job con granularity iterazioni, se poi c'è resto le ultime iterazioni messe in ultimo job
-                std::vector<std::future<return_type>> ret_fut; //no optinal<future> perché se nullopt non pushato quindi solo future
-                ret_fut.reserve(n+1); //per evitare riallocameto memoria, +1 per eventuale ultimo job fatto da ultime (end-start)%granularity iterazioni  
+                int n = range / granularity;
+                std::vector<std::future<return_type>> ret_fut;
+                ret_fut.reserve(n+1); 
                 int j = 0;
                 while(j< n){
-                    std::optional<std::future<return_type>> opt_fut = this->send_task_round([granularity,fun = f](auto it)mutable{ //j catturato come copia perchè modificato detro job (j+1) quidi se catturi come reference si sballa tutto !!!
+                    std::optional<std::future<return_type>> opt_fut = this->send_task_round_weak([granularity,fun = f](auto it)mutable{
                         for(int k=0; k<granularity; k++ ){
                             fun(it+k);
                         }
-                    },j*granularity+start); //passa funzione e iterator_start_subfor e lo incrementa granularity volte
+                    },j*granularity+start);
                     if(opt_fut){
-                        //se send andato a buon push di fut in ret_fut e incrementa j
-                        ret_fut.push_back(std::move(opt_fut.value())); //move perche future non copiabili
+                        ret_fut.push_back(std::move(opt_fut.value())); 
                         j++;
                     }
                 }
                 int resto = range % granularity;
-                if(resto > 0){ //inviamo ultimo job con iterazioni rimanenti 
+                if(resto > 0){  
                     j=0;
                     while(j<1){
-                        std::optional<std::future<return_type>> opt_fut = this->send_task_round([resto,fun = f](auto it)mutable{ //j gia catturata in & credo non serve
+                        std::optional<std::future<return_type>> opt_fut = this->send_task_round_weak([resto,fun = f](auto it)mutable{ 
                         for(int k=0; k<resto; k++ ){
                             fun(it+k);
                         }
                     }, n*granularity+start );
                     if(opt_fut){
-                        //se send andato a buon push di fut in ret_fut e incrementa j
-                        ret_fut.push_back(std::move(opt_fut.value())); //move perche future non copiabili
+                        ret_fut.push_back(std::move(opt_fut.value()));
                         j++;
                     }
                     }
                 }
-                //get dei future void per assicurarsi che tutti i job siano stati eseguiti dopo uso parallel_for in main
                 for(std::future<void>& fut : ret_fut){
                     fut.get();
                 }
                 return;
         
-            } 
+            }
+
+            template<typename F,typename It> 
+            requires std::is_same_v<std::invoke_result_t<F,It>, void> && std::random_access_iterator<It>
+            void parallel_for_iterator(It start, It end, F&& f,int granularity){
+                using return_type = void;
+                int range = (end-start); 
+                int n_job = range / granularity;
+                std::vector<std::future<return_type>> ret_fut;
+                ret_fut.reserve(n_job+1); 
+                for (int j = 0; j<n_job; j++){
+                    std::future<return_type> fut = this->send_task_round([granularity,fun = f](auto it)mutable{ 
+                        for(int k=0; k<granularity; k++ ){
+                            fun(it+k);
+                        }
+                    },j*granularity+start);
+                    ret_fut.push_back(std::move(fut)); 
+                }
+                int granularity_last_job = range % granularity;
+                if(granularity_last_job > 0){
+                    std::future<return_type> fut = this->send_task_round([granularity_last_job,fun = f](auto it)mutable{ 
+                        for(int k=0; k<granularity_last_job; k++ ){
+                            fun(it+k);
+                        }
+                    }, n_job*granularity+start );
+                    ret_fut.push_back(std::move(fut));
+                }
+                for(std::future<void>& fut : ret_fut){fut.get();}
+                return;
+            }
 
 
             //3 (it+n NONok)
             template<typename F,typename It> 
             requires std::is_same_v<std::invoke_result_t<F,It>, void> && (!std::random_access_iterator<It>)
-            void parallel_for_iterator(It start, It end, F&& f,int granularity){
+            void parallel_for_iterator_weak(It start, It end, F&& f,int granularity){
                 using return_type = void;
                 //scorriamo prima tutto range cosi da copiare iteratori ogni start+k*granularity in vector its
                 int range = 0;
@@ -615,7 +718,7 @@ namespace fdapde{
                 ret_fut.reserve(n+1); //per evitare riallocameto memoria, +1 per eventuale ultimo job fatto da ultime (end-start)%granularity iterazioni  
                 int j = 0;
                 while(j< n){
-                    std::optional<std::future<return_type>> opt_fut = this->send_task_round([granularity,fun = f](auto it)mutable{ 
+                    std::optional<std::future<return_type>> opt_fut = this->send_task_round_weak([granularity,fun = f](auto it)mutable{ 
                         for(int k=0; k<granularity; k++ ){
                             fun(it);
                             ++it;
@@ -631,7 +734,7 @@ namespace fdapde{
                 if(resto > 0){ //inviamo ultimo job con iterazioni rimanenti 
                     j=0;
                     while(j<1){
-                        std::optional<std::future<return_type>> opt_fut = this->send_task_round([resto,fun = f](auto it)mutable{ //j gia catturata in & credo non serve
+                        std::optional<std::future<return_type>> opt_fut = this->send_task_round_weak([resto,fun = f](auto it)mutable{ //j gia catturata in & credo non serve
                         for(int k=0; k<resto; k++ ){
                             fun(it);
                             ++it;
@@ -651,6 +754,49 @@ namespace fdapde{
                 return;
         
             } 
+            template<typename F,typename It> 
+            requires std::is_same_v<std::invoke_result_t<F,It>, void> && (!std::random_access_iterator<It>)
+            void parallel_for_iterator(It start, It end, F&& f,int granularity){
+                using return_type = void;
+                //Let's first scroll through the entire range so that we can copy iterators at each start + k * granularity into the vector its
+                int range = 0;
+                std::vector<It> its; 
+                its.push_back(start);
+                for (It it= start; it!= end; ++it){
+                    range ++;
+                    if(range % granularity == 0){
+                        its.push_back(it);
+                    }
+                } 
+                int n_job = range / granularity; 
+                std::vector<std::future<return_type>> ret_fut;
+                ret_fut.reserve(n_job+1);
+                for(int j = 0; j<n_job; j++){
+                    std::future<return_type> fut = this->send_task_round([granularity,fun = f](auto it)mutable{ 
+                        for(int k=0; k<granularity; k++ ){
+                            fun(it);
+                            ++it;
+                        }
+                    },its[j]);
+                    ret_fut.push_back(std::move(fut)); 
+                }
+                int granularity_last_job = range % granularity;
+                if(granularity_last_job > 0){
+                    std::future<return_type> fut = this->send_task_round([granularity_last_job,fun = f](auto it)mutable{ 
+                        for(int k=0; k<granularity_last_job; k++ ){
+                            fun(it);
+                            ++it;
+                        }
+                    }, its[n_job]);
+                    ret_fut.push_back(std::move(fut)); 
+                }
+                for(std::future<void>& fut : ret_fut){fut.get();}
+                return;
+        
+            }
+
+
+            //SE LASCIATI MODIFICA CON STRONG SEND 
 
 
             //PARALLEL_FOR_REDUCE
