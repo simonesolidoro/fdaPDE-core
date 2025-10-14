@@ -375,6 +375,8 @@ namespace fdapde{
                     while(not_empty){//wait untile count_pop == 0
                         std::unique_lock<std::mutex> loc_el(queue_[tail_].m_el_);
                         not_empty = (queue_[tail_].count_pop_ != 0);
+                        loc_el.unlock();
+                        std::this_thread::yield(); 
                     };
                     return true;
                 }
@@ -697,6 +699,8 @@ namespace fdapde{
                     while(not_empty){
                         std::unique_lock<std::mutex> loc_el(queue_[tail_].m_el_);
                         not_empty = (queue_[tail_].count_pop_ != 0);
+                        loc_el.unlock();
+                        std::this_thread::yield(); 
                     };
                     return true;
                 }
