@@ -1013,6 +1013,79 @@ std::cout<<duration.count()<<",";
     }
 
 
+/*
+    class sparse_matrix{// alloca per ogni riga colonne_non_nulle_per_riga, dato che dipende dalla mash: in triangoli strutturati es è 7. per questo non serve outerStarts di eigen sparse matrix perché sarebbe [0,7,14,21,28...]
+                        // cosi che poi con colouring della mesh ogni worker scrive in riga senza sincornizzazione in parallelo durante il loop delle celle di ogni colore
+        std::vector<double> value;   [r1 r1 r1 r1 r1 r1 r1 |r2 r2 r2 r2 r2 r2 |r3 r3 r3 r3 r3 r3 r3| ...] 7colonne per riga max in triangoli strutturati 
+    std::vector<int> innerIndices;   [indici colonne riga1,| indx_col_riga2   | indx_col_riga2     | ...] indici di colonne
+        std::vector<int> nnz; //per poi mettere in compress e togliere spazi
+
+    };
+*/
+    //divide celle in gruppi t.c. ogni cella non condivide DOF con nessen altra cella di stesso gruppo,
+    //e quindi in parallelo scorrendo un gruppo ogni worker puo scrivere senza sincronizzazione in matrice sparsa con elementi gia allocati (es: 7*numero_righe)
+    auto colouring()const{ //ritorna: std::vector<std::vector<iterator>>
+        using iterator = typename Base::fe_traits::dof_iterator;
+        iterator begin(Base::begin_.index(), test_dof_handler(), Base::begin_.marker());
+        iterator end  (Base::end_.index(),   test_dof_handler(), Base::end_.marker()  );
+        Eigen::Matrix<int, Dynamic, 1> test_active_dofs;
+        int nodes_per_cella = this->Base::dof_handler_->triangulation()->n_nodes_per_cell;
+        int colori = 0; //numero di colori usati 
+        std::vector<std::vector<iterator>> colore_di_cella;//indice di vettore esterno è colore, elementi di vettore interno sono iterator a celle di quel colore 
+        std::map<int,std::set<int>> colori_vicino_nodo; //per ogni nodo int il set dei colori delle celle che lo condividono
+        std::set<int> colori_vicini; //tmp per segnare colori vicini per ogni cella durante scorrimento dei nodi
+        for(auto it = begin; it!= end; ++it){
+            test_active_dofs = it->dofs(); // numero di nodi globale dei nodi di it
+            std::set<int> colori_vicini;
+            for(int i = 0; i<nodes_per_cella; i++){
+                //inserisco nodo nella mappa nodi-colorivicini se non c'è
+                auto it_nodo = colori_vicino_nodo.find(test_active_dofs[i]);
+                if(it_nodo != colori_vicino_nodo.end()){
+                    colori_vicini.insert(it_nodo->second.begin(),it_nodo->second.end()); //aggiungi colori vicini a nodo in colori vicino a cella 
+                }else{//prima volta che incontro nodo
+                    colori_vicino_nodo[test_active_dofs[i]]; //add nodo con set vuoto
+                }
+            }
+            
+            bool colorato = false;
+            int col = 0;
+            while(!colorato && col<colori){
+                if(colori_vicini.find(col) == colori_vicini.end()){
+                    //se colore non in colori_vicini diventa colore di cella
+                    colore_di_cella[col].push_back(it);
+                    //add colore di cella ai colori vicini dei suoi nodi 
+                    for(int i = 0; i<nodes_per_cella; i++){
+                        colori_vicino_nodo[test_active_dofs[i]].insert(col);
+                    }
+                    colorato = true;
+                }
+                col++;
+            }
+            if(!colorato){
+                //aggiungere nuovo colore 
+                colori ++;
+                colore_di_cella.push_back({});
+                //colorare cella
+                colore_di_cella[colori-1].push_back(it);//colori è numero colori totali e valore di ultimo colore aggiunto
+                //add colore di cella ai colori vicini dei suoi nodi 
+                for(int i = 0; i<nodes_per_cella; i++){
+                    colori_vicino_nodo[test_active_dofs[i]].insert(colori-1);
+                }
+            }
+        }
+/*
+        //print per vedere 
+        for(int cols= 0; cols<colore_di_cella.size(); cols++){
+            std::cout<<"colore: "<<cols<<" comprende celle: ";
+            for(auto& cella : colore_di_cella[cols]){
+                std::cout<<" , "<<cella->id();
+            }
+            std::cout<<std::endl;
+        }
+*/
+        return colore_di_cella;
+    }
+
     constexpr int n_dofs() const { return trial_dof_handler()->n_dofs(); }
     constexpr int rows() const { return test_dof_handler()->n_dofs(); }
     constexpr int cols() const { return trial_dof_handler()->n_dofs(); }
