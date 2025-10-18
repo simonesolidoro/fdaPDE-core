@@ -13,7 +13,7 @@ type="$2"
 executable="test_${type}_${tag}_multi"
 
 # Crea (o sovrascrive) il file di output
-output_file="${executable}_numthread${th}.txt"
+output_file="${executable}_numthread"$5".txt"
 #rm -f "$output_file"
 touch "$output_file"
 

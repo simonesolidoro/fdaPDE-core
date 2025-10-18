@@ -13,7 +13,7 @@ int main(int argc, char** argv){
     TestFunction  v(Vh);
     auto a = integral(unit_square)(dot(grad(u), grad(v))); // laplacian weak form
 
-    Eigen::SparseMatrix<double> A = a.assemble();
+    Eigen::SparseMatrix<double> A = a.assemble_tempotriple();
 
 
     return 0;

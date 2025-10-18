@@ -50,10 +50,10 @@ void random_op_di_n_elem(Q& q,int n){
 
 int main(int argc, char** argv){
     int n_thread= std::stoi(argv[1]);
-    int runs = 10;
+    int runs = 20;
 
 {//============== Test deque vs synchro_queue =====================
-    int tot_elem = 64000;
+    int tot_elem = 320000;
     int elem_per_thread = tot_elem / n_thread;
     //tempi single
     std::vector<std::vector<std::chrono::microseconds>> d_single(4); //per ogni operazione {1,2,3,4} un vettore di tempi
@@ -423,7 +423,7 @@ if(n_thread == 2){
 
 }
 {//================= Test threadpool send-steal ==============================
-    runs = 10;
+    runs = 30;
     auto start = std::chrono::high_resolution_clock::now();
     auto end = std::chrono::high_resolution_clock::now();
     std::vector<std::vector<std::chrono::microseconds>> tempi_send_steal(6); // 2x3 mostfree-mostbusy, mostfree-rando, mostfree-ranhalf,...
