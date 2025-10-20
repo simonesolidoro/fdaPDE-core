@@ -51,8 +51,184 @@ void random_op_di_n_elem(Q& q,int n){
 int main(int argc, char** argv){
     int n_thread= std::stoi(argv[1]);
     int runs = 20;
+    
+{//================= Test threadpool send-steal ==============================
+    runs = 30;
+    auto start = std::chrono::high_resolution_clock::now();
+    auto end = std::chrono::high_resolution_clock::now();
+    std::vector<std::vector<std::chrono::microseconds>> tempi_send_steal(6); // 2x3 mostfree-mostbusy, mostfree-rando, mostfree-ranhalf,...
+    int n_job = 4096; //evitiamo di riempire
+    int n_op_per_job = 5000;
+    std::vector<std::future<void>> futs;
+    for(int run= 0; run<runs; run ++){
+        {// mostFree-mostBusy 0 
+            fdapde::Threadpool<fdapde::steal::most_busy> tp(4096,n_thread);
+            start = std::chrono::high_resolution_clock::now();
+            for( int i =0; i<n_job; i++){
+                futs.push_back(std::move(tp.send_task_mostfree([=](int i)mutable{
+                    if(i%2 == 0){ //job pari sono il doppio
+                        n_op_per_job *= 4;
+                    }
+                    int a= 0;
+                    for (int j = 0; j<n_op_per_job; j++){a++;}},i)));}
+            for(int i= 0; i<n_job; i++){futs[i].get();}
+            auto end = std::chrono::high_resolution_clock::now();
+            tempi_send_steal[0].push_back(std::chrono::duration_cast<std::chrono::microseconds>(end - start));     
+            futs.clear();
+        } 
+        {// mostFree-random 1 
+            fdapde::Threadpool<fdapde::steal::random> tp(4096,n_thread);
+            start = std::chrono::high_resolution_clock::now();
+            for( int i =0; i<n_job; i++){
+                futs.push_back(std::move(tp.send_task_mostfree([=](int i)mutable{
+                    if(i%2 == 0){ //job pari sono il doppio
+                        n_op_per_job *= 4;
+                    }
+                    int a= 0;
+                    for (int j = 0; j<n_op_per_job; j++){a++;}},i)));}
+            for(int i= 0; i<n_job; i++){futs[i].get();}
+            auto end = std::chrono::high_resolution_clock::now();
+            tempi_send_steal[1].push_back(std::chrono::duration_cast<std::chrono::microseconds>(end - start));     
+            futs.clear();
+        }
+        {// mostFree-randomHalf 2 
+            fdapde::Threadpool<fdapde::steal::random_half_most_busy> tp(4096,n_thread);
+            start = std::chrono::high_resolution_clock::now();
+            for( int i =0; i<n_job; i++){
+                futs.push_back(std::move(tp.send_task_mostfree([=](int i)mutable{
+                    if(i%2 == 0){ //job pari sono il doppio
+                        n_op_per_job *= 4;
+                    }
+                    int a= 0;
+                    for (int j = 0; j<n_op_per_job; j++){a++;}},i)));}
+            for(int i= 0; i<n_job; i++){futs[i].get();}
+            auto end = std::chrono::high_resolution_clock::now();
+            tempi_send_steal[2].push_back(std::chrono::duration_cast<std::chrono::microseconds>(end - start));     
+            futs.clear();
+        }
+        {// round-mostbusy 3 
+            fdapde::Threadpool<fdapde::steal::most_busy> tp(4096,n_thread);
+            start = std::chrono::high_resolution_clock::now();
+            for( int i =0; i<n_job; i++){
+                futs.push_back(std::move(tp.send_task_mostfree([=](int i)mutable{
+                    if(i%2 == 0){ //job pari sono il doppio
+                        n_op_per_job *= 4;
+                    }
+                    int a= 0;
+                    for (int j = 0; j<n_op_per_job; j++){a++;}},i)));}
+            for(int i= 0; i<n_job; i++){futs[i].get();}
+            auto end = std::chrono::high_resolution_clock::now();
+            tempi_send_steal[3].push_back(std::chrono::duration_cast<std::chrono::microseconds>(end - start));     
+            futs.clear();
+        }
+        {// round-random 4 
+            fdapde::Threadpool<fdapde::steal::random> tp(4096,n_thread);
+            start = std::chrono::high_resolution_clock::now();
+            for( int i =0; i<n_job; i++){
+                futs.push_back(std::move(tp.send_task_mostfree([=](int i)mutable{
+                    if(i%2 == 0){ //job pari sono il doppio
+                        n_op_per_job *= 4;
+                    }
+                    int a= 0;
+                    for (int j = 0; j<n_op_per_job; j++){a++;}},i)));}
+            for(int i= 0; i<n_job; i++){futs[i].get();}
+            auto end = std::chrono::high_resolution_clock::now();
+            tempi_send_steal[4].push_back(std::chrono::duration_cast<std::chrono::microseconds>(end - start));     
+            futs.clear();
+        }
+        {// round-randomHalf 5 
+            fdapde::Threadpool<fdapde::steal::random_half_most_busy> tp(4096,n_thread);
+            start = std::chrono::high_resolution_clock::now();
+            for( int i =0; i<n_job; i++){
+                futs.push_back(std::move(tp.send_task_mostfree([=](int i)mutable{
+                    if(i%2 == 0){ //job pari sono il doppio
+                        n_op_per_job *= 4;
+                    }
+                    int a= 0;
+                    for (int j = 0; j<n_op_per_job; j++){a++;}},i)));}
+            for(int i= 0; i<n_job; i++){futs[i].get();}
+            auto end = std::chrono::high_resolution_clock::now();
+            tempi_send_steal[5].push_back(std::chrono::duration_cast<std::chrono::microseconds>(end - start));     
+            futs.clear();
+        }
+    }
+    std::cout<<std::endl;
+    std::cout<<"===========TEST THREADPOOL SEND_STEAL======================================================================================================================================================================================"<<std::endl;
+    std::cout<<"======= send-steal test con job sbilanciati (1/2 hanno n_op_per_job, 1/2 hanno n_op_per_job*4) ================================================================================================================================================================================="<<std::endl;
+    std::cout<<"===== n_job: "<<n_job<<", n_op_per_job: "<<n_op_per_job<<", Threadpool: sizequeue(1024),n_thread("<<n_thread<<") ==========================================================================================================="<<std::endl;
+    std::vector<std::string> tag_coppie_send_steal = {"mostfree-mostbusy","mostfree-random","mostfree-randomHalf","round-mostbusy","round-random","round-randomHalf"};
+    for (int i = 0; i<6; i++){
+        std::cout<<tag_coppie_send_steal[i]<<": ";
+        for(auto& t: tempi_send_steal[i]){std::cout<<t.count()<<" ,";}
+        std::cout<<std::endl;
+        std::cout<<std::endl;
+    }
+}
+
+{//============= TEST PARALLE FOR SUM MATRIX===============================================================
+    runs = 30;
+    auto start = std::chrono::high_resolution_clock::now();
+    auto end = std::chrono::high_resolution_clock::now();
+    std::vector<std::vector<std::chrono::microseconds>> tempi_for(3); // 0 for, 1 parallel_for, 2 openMP
+    std::vector<std::string> tag_tipi_for = {"For","Parallel_for","OpenMp"};
+    int size = 6000;
+    std::vector<std::vector<int>> A;
+    std::vector<std::vector<int>> B;
+    std::vector<std::vector<int>> C;
+    for (int i = 0; i<size; i++){
+        A.emplace_back(size,1);
+        B.emplace_back(size,1);
+        C.emplace_back(size,0);
+    }
+    fdapde::Threadpool<fdapde::steal::random> tp(1024,n_thread);
+    if(n_thread == 2){
+        //for
+        for(int run = 0; run <runs; run ++){
+            start = std::chrono::high_resolution_clock::now();
+            for(int i = 0; i<size; i++){
+                for(int j=0; j<size; j++){C[i][j] = A[i][j] + B[i][j];}}
+            end = std::chrono::high_resolution_clock::now();
+            tempi_for[0].push_back(std::chrono::duration_cast<std::chrono::microseconds>(end - start)); 
+        }
+    }
+    //parallel_for, gran default -1
+    for(int run = 0; run <runs; run ++){
+        start = std::chrono::high_resolution_clock::now();
+        tp.parallel_for(0,size,[&](int i){
+            for(int j=0; j<size; j++){
+                C[i][j] = A[i][j] + B[i][j];
+            }
+        },-1);
+        end = std::chrono::high_resolution_clock::now();
+        tempi_for[1].push_back(std::chrono::duration_cast<std::chrono::microseconds>(end - start)); 
+    }
+    // 2 openMp
+    for(int run = 0; run <runs; run ++){
+        start = std::chrono::high_resolution_clock::now();
+        #pragma omp parallel for num_threads(n_thread) shared(A,B,C)
+        for(int i = 0; i<size; i++){
+            for(int j=0; j<size; j++){
+                C[i][j] = A[i][j] + B[i][j];}}
+        end = std::chrono::high_resolution_clock::now();
+        tempi_for[2].push_back(std::chrono::duration_cast<std::chrono::microseconds>(end - start)); 
+    }
+    std::cout<<std::endl;
+    std::cout<<std::endl;
+    std::cout<<"========================================================================================================================================================================================"<<std::endl;
+    std::cout<<"===========TEST PARALLEL_FOR SUM MATRIX ELEMENT-WISE======================================================================================================================================================================================"<<std::endl;
+    std::cout<<"========================================================================================================================================================================================"<<std::endl;
+    std::cout<<"===== size matrix: NxN con N = "<<size<<", Threadpool: sizequeue(1024),n_thread("<<n_thread<<"), "<<"Granularity di parallel_for di default: -1"<<" ==========================================================================================================="<<std::endl;
+    int inizio = (n_thread == 2)? 0:1; //stampa for solo se n_thread ==2 
+    for (int i = inizio; i<3; i++){
+        std::cout<<tag_tipi_for[i]<<": ";
+        for(auto& t: tempi_for[i]){std::cout<<t.count()<<" ,";}
+        std::cout<<std::endl;
+        std::cout<<std::endl;
+    }
+}
 
 {//============== Test deque vs synchro_queue =====================
+    runs = (n_thread<16)? 20:10;
     int tot_elem = 320000;
     int elem_per_thread = tot_elem / n_thread;
     //tempi single
@@ -422,126 +598,6 @@ if(n_thread == 2){
     }
 
 }
-{//================= Test threadpool send-steal ==============================
-    runs = 30;
-    auto start = std::chrono::high_resolution_clock::now();
-    auto end = std::chrono::high_resolution_clock::now();
-    std::vector<std::vector<std::chrono::microseconds>> tempi_send_steal(6); // 2x3 mostfree-mostbusy, mostfree-rando, mostfree-ranhalf,...
-    int n_job = 4096; //evitiamo di riempire
-    int n_op_per_job = 5000;
-    std::vector<std::future<void>> futs;
-    for(int run= 0; run<runs; run ++){
-        {// mostFree-mostBusy 0 
-            fdapde::Threadpool<fdapde::steal::most_busy> tp(4096,n_thread);
-            start = std::chrono::high_resolution_clock::now();
-            for( int i =0; i<n_job; i++){
-                futs.push_back(std::move(tp.send_task_mostfree([=](int i)mutable{
-                    if(i%2 == 0){ //job pari sono il doppio
-                        n_op_per_job *= 4;
-                    }
-                    int a= 0;
-                    for (int j = 0; j<n_op_per_job; j++){a++;}},i)));}
-            for(int i= 0; i<n_job; i++){futs[i].get();}
-            auto end = std::chrono::high_resolution_clock::now();
-            tempi_send_steal[0].push_back(std::chrono::duration_cast<std::chrono::microseconds>(end - start));     
-            futs.clear();
-        } 
-        {// mostFree-random 1 
-            fdapde::Threadpool<fdapde::steal::random> tp(4096,n_thread);
-            start = std::chrono::high_resolution_clock::now();
-            for( int i =0; i<n_job; i++){
-                futs.push_back(std::move(tp.send_task_mostfree([=](int i)mutable{
-                    if(i%2 == 0){ //job pari sono il doppio
-                        n_op_per_job *= 4;
-                    }
-                    int a= 0;
-                    for (int j = 0; j<n_op_per_job; j++){a++;}},i)));}
-            for(int i= 0; i<n_job; i++){futs[i].get();}
-            auto end = std::chrono::high_resolution_clock::now();
-            tempi_send_steal[1].push_back(std::chrono::duration_cast<std::chrono::microseconds>(end - start));     
-            futs.clear();
-        }
-        {// mostFree-randomHalf 2 
-            fdapde::Threadpool<fdapde::steal::random_half_most_busy> tp(4096,n_thread);
-            start = std::chrono::high_resolution_clock::now();
-            for( int i =0; i<n_job; i++){
-                futs.push_back(std::move(tp.send_task_mostfree([=](int i)mutable{
-                    if(i%2 == 0){ //job pari sono il doppio
-                        n_op_per_job *= 4;
-                    }
-                    int a= 0;
-                    for (int j = 0; j<n_op_per_job; j++){a++;}},i)));}
-            for(int i= 0; i<n_job; i++){futs[i].get();}
-            auto end = std::chrono::high_resolution_clock::now();
-            tempi_send_steal[2].push_back(std::chrono::duration_cast<std::chrono::microseconds>(end - start));     
-            futs.clear();
-        }
-        {// round-mostbusy 3 
-            fdapde::Threadpool<fdapde::steal::most_busy> tp(4096,n_thread);
-            start = std::chrono::high_resolution_clock::now();
-            for( int i =0; i<n_job; i++){
-                futs.push_back(std::move(tp.send_task_mostfree([=](int i)mutable{
-                    if(i%2 == 0){ //job pari sono il doppio
-                        n_op_per_job *= 4;
-                    }
-                    int a= 0;
-                    for (int j = 0; j<n_op_per_job; j++){a++;}},i)));}
-            for(int i= 0; i<n_job; i++){futs[i].get();}
-            auto end = std::chrono::high_resolution_clock::now();
-            tempi_send_steal[3].push_back(std::chrono::duration_cast<std::chrono::microseconds>(end - start));     
-            futs.clear();
-        }
-        {// round-random 4 
-            fdapde::Threadpool<fdapde::steal::random> tp(4096,n_thread);
-            start = std::chrono::high_resolution_clock::now();
-            for( int i =0; i<n_job; i++){
-                futs.push_back(std::move(tp.send_task_mostfree([=](int i)mutable{
-                    if(i%2 == 0){ //job pari sono il doppio
-                        n_op_per_job *= 4;
-                    }
-                    int a= 0;
-                    for (int j = 0; j<n_op_per_job; j++){a++;}},i)));}
-            for(int i= 0; i<n_job; i++){futs[i].get();}
-            auto end = std::chrono::high_resolution_clock::now();
-            tempi_send_steal[4].push_back(std::chrono::duration_cast<std::chrono::microseconds>(end - start));     
-            futs.clear();
-        }
-        {// round-randomHalf 5 
-            fdapde::Threadpool<fdapde::steal::random_half_most_busy> tp(4096,n_thread);
-            start = std::chrono::high_resolution_clock::now();
-            for( int i =0; i<n_job; i++){
-                futs.push_back(std::move(tp.send_task_mostfree([=](int i)mutable{
-                    if(i%2 == 0){ //job pari sono il doppio
-                        n_op_per_job *= 4;
-                    }
-                    int a= 0;
-                    for (int j = 0; j<n_op_per_job; j++){a++;}},i)));}
-            for(int i= 0; i<n_job; i++){futs[i].get();}
-            auto end = std::chrono::high_resolution_clock::now();
-            tempi_send_steal[5].push_back(std::chrono::duration_cast<std::chrono::microseconds>(end - start));     
-            futs.clear();
-        }
-    }
-    std::cout<<std::endl;
-    std::cout<<"===========TEST THREADPOOL SEND_STEAL======================================================================================================================================================================================"<<std::endl;
-    std::cout<<"======= send-steal test con job sbilanciati (1/2 hanno n_op_per_job, 1/2 hanno n_op_per_job*4) ================================================================================================================================================================================="<<std::endl;
-    std::cout<<"===== n_job: "<<n_job<<", n_op_per_job: "<<n_op_per_job<<", Threadpool: sizequeue(1024),n_thread("<<n_thread<<") ==========================================================================================================="<<std::endl;
-    std::vector<std::string> tag_coppie_send_steal = {"mostfree-mostbusy","mostfree-random","mostfree-randomHalf","round-mostbusy","round-random","round-randomHalf"};
-    for (int i = 0; i<6; i++){
-        std::cout<<tag_coppie_send_steal[i]<<": ";
-        for(auto& t: tempi_send_steal[i]){std::cout<<t.count()<<" ,";}
-        std::cout<<std::endl;
-        std::cout<<std::endl;
-    }
-}
-{// test treadpool steal co jo sbilanciati non so se vale la pena farlo
-
-}
-{//============= TEST PARALLE FOR SUM MATRIX===============================================================
-  //non so se farlo tanto poi test assemble e grid search, per test matrix poi confronto con open mp mi piace sul mio pc
-    
-}
-
 
 return 0;
 }

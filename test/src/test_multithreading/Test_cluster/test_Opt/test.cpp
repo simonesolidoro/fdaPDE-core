@@ -109,7 +109,7 @@ int main(int argc, char** argv){
     auto start = std::chrono::high_resolution_clock::now();
     auto end = std::chrono::high_resolution_clock::now();
     std::vector<int> nodes = {250,500,1000}; // cosi da avere anche scalabilità debole con 8 16 32 oppure 16 32 64
-    std::vector<int> runs_vett = {50,50,20};//{1,1,1};
+    std::vector<int> runs_vett = {50,40,20};//{1,1,1};
     int run_effetto_triple = 10; //1;
     std::vector<std::vector<std::chrono::microseconds>> tempo_seq_assemble(nodes.size()); //per ogni nodi vettore di tempi di assemblaggio completo. (vediamo se overhead in setfromtriple rimane in cluster (speriamo di no perchè il vttore di triple è uguale in seq e in par))
     std::vector<std::vector<std::chrono::microseconds>> tempo_par_assemble(nodes.size());
