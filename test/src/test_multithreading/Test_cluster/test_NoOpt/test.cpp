@@ -53,7 +53,7 @@ int main(int argc, char** argv){
     int runs = 20;
     
 {//================= Test threadpool send-steal ==============================
-    runs = 30;
+    runs = 1; //30;
     auto start = std::chrono::high_resolution_clock::now();
     auto end = std::chrono::high_resolution_clock::now();
     std::vector<std::vector<std::chrono::microseconds>> tempi_send_steal(6); // 2x3 mostfree-mostbusy, mostfree-rando, mostfree-ranhalf,...
@@ -166,7 +166,7 @@ int main(int argc, char** argv){
 }
 
 {//============= TEST PARALLE FOR SUM MATRIX===============================================================
-    runs = 30;
+    runs = 1; //30;
     auto start = std::chrono::high_resolution_clock::now();
     auto end = std::chrono::high_resolution_clock::now();
     std::vector<std::vector<std::chrono::microseconds>> tempi_for(3); // 0 for, 1 parallel_for, 2 openMP
@@ -212,6 +212,7 @@ int main(int argc, char** argv){
         end = std::chrono::high_resolution_clock::now();
         tempi_for[2].push_back(std::chrono::duration_cast<std::chrono::microseconds>(end - start)); 
     }
+
     std::cout<<std::endl;
     std::cout<<std::endl;
     std::cout<<"========================================================================================================================================================================================"<<std::endl;
@@ -228,7 +229,7 @@ int main(int argc, char** argv){
 }
 
 {//============== Test deque vs synchro_queue =====================
-    runs = (n_thread<16)? 20:10;
+    runs = 1;//(n_thread<16)? 20:10;
     int tot_elem = 320000;
     int elem_per_thread = tot_elem / n_thread;
     //tempi single
