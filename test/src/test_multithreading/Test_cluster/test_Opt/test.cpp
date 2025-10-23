@@ -15,6 +15,7 @@ int main(int argc, char** argv){
     std::vector<int> runs_vett = {1,1,1,1,1,1,1};//{30,30,30,30,20,20,20};//{1,1,1,1,1,1,1}; // 5 rus di 10alla8 che sono 4 sec l'una
     std::vector<std::vector<std::chrono::microseconds>> tempi_seq(grid_sizes.size()); // vect esterno un elemento per ogni grid_size, quelli interni sono tempi di runs
     std::vector<std::vector<std::chrono::microseconds>> tempi_par(grid_sizes.size());
+    std::vector<bool> samesame;
     double lower = -5;
     double upper = 5;
     std::uniform_real_distribution<double> unif(lower,upper);
@@ -50,25 +51,45 @@ int main(int argc, char** argv){
         }
     }
     }
-    /*==== effetto granularity =======================================*/
-        int size_grid_eg = grid_sizes[5]; //test effetto gran solo su 6400000
-        std::vector<int> grans = {size_grid_eg/(n_thread*10), size_grid_eg/(n_thread*100), size_grid_eg/(n_thread*200)};
-        std::vector<std::vector<std::chrono::microseconds>> tempi_par_gran(grans.size()); //tempi in diverse gran
-    if(n_thread < 16){
+    {//verifica ottimo trovato da seq e par sia lo stesso in size_grid 6400000
         Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic> grid;
-        grid.resize(size_grid_eg,2);
+        grid.resize(grid_sizes[5],2);
         for(int i =0; i<grid.rows();++i){
             grid(i,0) = unif(re);
             grid(i,1) = unif(re);
-        } 
-        for(int gran = 0; gran< grans.size(); gran++){
-            for (int run = 0; run<runs_vett[5]; run ++){
-                fdapde::Threadpool<fdapde::steal::random> Tp(1024, n_thread);
-                fdapde::GridSearch<2> opt;
-                start = std::chrono::high_resolution_clock::now();
-                opt.optimize(rastrigin, grid, execution::par,Tp,grans[gran]);
-                end = std::chrono::high_resolution_clock::now();
-                tempi_par_gran[gran].push_back(std::chrono::duration_cast<std::chrono::microseconds>(end - start));
+        }
+        for (int run = 0; run<runs_vett[5]; run ++){
+            fdapde::Threadpool<fdapde::steal::random> Tp(1024, n_thread);
+            fdapde::GridSearch<2> opt;
+            fdapde::GridSearch<2> opt2;
+            opt.optimize(rastrigin, grid);
+            opt2.optimize(rastrigin, grid, execution::par,Tp,-1);
+            samesame.push_back((opt.value() == opt2.value() && opt.optimum() == opt2.optimum()));
+        }
+
+    }
+    
+        //==== effetto granularity =======================================
+            int size_grid_eg = grid_sizes[5]; //test effetto gran solo su 6400000
+            std::vector<int> grans = {size_grid_eg/(n_thread*10), size_grid_eg/(n_thread*100), size_grid_eg/(n_thread*200)};
+            std::vector<std::vector<std::chrono::microseconds>> tempi_par_gran(grans.size()); //tempi in diverse gran
+    {
+        if(n_thread < 16){
+            Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic> grid;
+            grid.resize(size_grid_eg,2);
+            for(int i =0; i<grid.rows();++i){
+                grid(i,0) = unif(re);
+                grid(i,1) = unif(re);
+            } 
+            for(int gran = 0; gran< grans.size(); gran++){
+                for (int run = 0; run<runs_vett[5]; run ++){
+                    fdapde::Threadpool<fdapde::steal::random> Tp(1024, n_thread);
+                    fdapde::GridSearch<2> opt;
+                    start = std::chrono::high_resolution_clock::now();
+                    opt.optimize(rastrigin, grid, execution::par,Tp,grans[gran]);
+                    end = std::chrono::high_resolution_clock::now();
+                    tempi_par_gran[gran].push_back(std::chrono::duration_cast<std::chrono::microseconds>(end - start));
+                }
             }
         }
     }
@@ -99,7 +120,25 @@ int main(int argc, char** argv){
             std::cout<<std::endl;
         }
     }
+    //verifica ottimi uguali
+    std::cout<<"====== verifica stesso ottimo e value trovato da seq e par ================================================================================================================================================================================================="<<std::endl;
+    std::cout<<"size_grid: "<<grid_sizes[5]<<"n_thread: "<<n_thread<<"runs: "<<runs_vett[5]<<std::endl;
+    bool sempresame = true;
+    for (bool x : samesame){
+        if(!x){
+            sempresame = false;
+        }
+    }
+    if(sempresame){
+        std::cout<<"parallelo e sequenziale sempre stesso risultato"<<std::endl;
+    }else{
+        std::cout<<"ERRRRRRRRRROOOOOOOORRRRREEEEEEEEEEEEEEEEEEEEEE"<<std::endl;
+    }
+    std::cout<<std::endl;
+    std::cout<<std::endl;
+    
 }
+
 {// ============================= ASSEMBLE =============================================
     std::cout<<"================================================================================================================================================================================================================="<<std::endl;
     std::cout<<"==========TEST ASSEMBLE MATRICE FORMA BILINEARE======================================================================================================================================================================================================="<<std::endl;
@@ -110,9 +149,10 @@ int main(int argc, char** argv){
     auto end = std::chrono::high_resolution_clock::now();
     std::vector<int> nodes = {250,500,1000}; // cosi da avere anche scalabilità debole con 8 16 32 oppure 16 32 64
     std::vector<int> runs_vett = {1,1,1}; //{50,40,20};//{1,1,1};
-    int run_effetto_triple = 10; //1;
+    int run_effetto_triple = 1; //10; //1;
     std::vector<std::vector<std::chrono::microseconds>> tempo_seq_assemble(nodes.size()); //per ogni nodi vettore di tempi di assemblaggio completo. (vediamo se overhead in setfromtriple rimane in cluster (speriamo di no perchè il vttore di triple è uguale in seq e in par))
     std::vector<std::vector<std::chrono::microseconds>> tempo_par_assemble(nodes.size());
+    std::vector<bool> samesame;
     if(n_thread == 2){
         std::cout<<"=====Tempi SEQUENZIALE========================================================================================================================================================================================================================================================="<<std::endl; 
         for(int nodi = 0; nodi<nodes.size(); nodi++){
@@ -184,6 +224,19 @@ int main(int argc, char** argv){
             
         }
     }
+    {//verifica matrici uguali in parallelo e seq
+        Triangulation<2, 2> unit_square = Triangulation<2, 2>::UnitSquare(500);
+        FeSpace Vh(unit_square, P1<1>);
+        TrialFunction u(Vh);
+        TestFunction  v(Vh);
+        auto a = integral(unit_square)(dot(grad(u), grad(v))); // laplacian weak form
+        for(int run = 0; run <10; run ++){
+            fdapde::Threadpool<fdapde::steal::random> Tp(1024,n_thread);
+            Eigen::SparseMatrix<double> A2 = a.assemble();
+            Eigen::SparseMatrix<double> A = a.assemble(execution::par,Tp,-1);
+            samesame.push_back(A.isApprox(A2, 0.000000000000001));
+        }
+    }
     {//cout di tempi assemble completi
         std::cout<<std::endl;
         std::cout<<"===============ASSEMBLE COMPLETO, granularity default -1 nodi:250,500,1000 ====================================================================================================================================================================================================================================================="<<std::endl; 
@@ -198,7 +251,25 @@ int main(int argc, char** argv){
         for(auto& t : tempo_par_assemble[nodi]){std::cout<<t.count()<<" ,";}
         std::cout<<std::endl;
         std::cout<<std::endl;
+        }
     }
+    {
+            //verifica ottimi uguali
+    std::cout<<"====== verifica stessa matrice assemblata da seq e par ================================================================================================================================================================================================="<<std::endl;
+    std::cout<<"Nodi: "<<500<<"n_thread: "<<n_thread<<"runs: "<<10<<std::endl; //nodi e runs hardcoded 
+    bool sempresame = true;
+    for (bool x : samesame){
+        if(!x){
+            sempresame = false;
+        }
+    }
+    if(sempresame){
+        std::cout<<"parallelo e sequenziale sempre stesso risultato"<<std::endl;
+    }else{
+        std::cout<<"ERRRRRRRRRROOOOOOOORRRRREEEEEEEEEEEEEEEEEEEEEE"<<std::endl;
+    }
+    std::cout<<std::endl;
+    std::cout<<std::endl;
     }
 }   
 
