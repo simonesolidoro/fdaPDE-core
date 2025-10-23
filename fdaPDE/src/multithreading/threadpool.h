@@ -248,7 +248,7 @@ namespace fdapde{
             auto send_task_mostfree_weak(F&& f,Args&&... args) -> std::optional<std::future<decltype(f(args...))>>{
                 //wrap 
                 using return_type = decltype(f(args...));
-                std::shared_ptr<std::packaged_task<return_type()>> ptr_task = std::make_shared<std::packaged_task<return_type()>> ([fun = std::forward<F>(f), ...args_catturati = std::forward<Args>(args) ]()mutable{return fun(args_catturati...);});
+                std::shared_ptr<std::packaged_task<return_type()>> ptr_task = std::make_shared<std::packaged_task<return_type()>> ([fun = f, ...args_catturati = args ]()mutable{return fun(args_catturati...);});
                 std::future<return_type> fut = ptr_task->get_future();
                 job j = [ptr_task](){(*ptr_task)();};
 
@@ -269,7 +269,7 @@ namespace fdapde{
             auto send_task_mostfree(F&& f,Args&&... args) -> std::future<decltype(f(args...))>{
                 //wrap 
                 using return_type = decltype(f(args...));
-                std::shared_ptr<std::packaged_task<return_type()>> ptr_task = std::make_shared<std::packaged_task<return_type()>> ([fun = std::forward<F>(f), ...args_catturati = std::forward<Args>(args) ]()mutable{return fun(args_catturati...);});
+                std::shared_ptr<std::packaged_task<return_type()>> ptr_task = std::make_shared<std::packaged_task<return_type()>> ([fun = f, ...args_catturati = args ]()mutable{return fun(args_catturati...);});
                 std::future<return_type> fut = ptr_task->get_future();
                 job j = [ptr_task](){(*ptr_task)();};
 
@@ -288,7 +288,7 @@ namespace fdapde{
             auto send_task_round_weak(F&& f,Args&&... args) -> std::optional<std::future<decltype(f(args...))>>{
                 //wrap 
                 using return_type = decltype(f(args...));
-                std::shared_ptr<std::packaged_task<return_type()>> ptr_task = std::make_shared<std::packaged_task<return_type()>> ([fun = std::forward<F>(f), ...args_catturati = std::forward<Args>(args) ]()mutable{return fun(args_catturati...);});
+                std::shared_ptr<std::packaged_task<return_type()>> ptr_task = std::make_shared<std::packaged_task<return_type()>> ([fun = f, ...args_catturati = args ]()mutable{return fun(args_catturati...);});
                 std::future<return_type> fut = ptr_task->get_future();
                 job j = [ptr_task](){(*ptr_task)();};
             
@@ -310,12 +310,12 @@ namespace fdapde{
             auto send_task_round(F&& f,Args&&... args) -> std::future<decltype(f(args...))>{
                 //wrap 
                 using return_type = decltype(f(args...));
-                std::shared_ptr<std::packaged_task<return_type()>> ptr_task = std::make_shared<std::packaged_task<return_type()>> ([fun = std::forward<F>(f), ...args_catturati = std::forward<Args>(args) ]()mutable{return fun(args_catturati...);});
+                std::shared_ptr<std::packaged_task<return_type()>> ptr_task = std::make_shared<std::packaged_task<return_type()>> ([fun = f, ...args_catturati = args ]()mutable{return fun(args_catturati...);});
                 std::future<return_type> fut = ptr_task->get_future();
                 job j = [ptr_task](){(*ptr_task)();};
             
                 std::unique_lock<std::mutex> lock(workers_[indxw_.indx_]->get_loc());
-                bool flag = workers_[indxw_.indx_]->push_back(j);;
+                bool flag = workers_[indxw_.indx_]->push_back(j);
                 while(!flag){flag = workers_[indxw_.indx_]->push_back(j);}
                 count_job_[indxw_.indx_].fetch_add(1,std::memory_order_release);
                 lock.unlock();
