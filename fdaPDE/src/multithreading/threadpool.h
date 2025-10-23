@@ -64,7 +64,7 @@ namespace fdapde{
             int n_worker_ ;
             int queue_size_; 
             indx_worker indxw_; 
-            mutable std::shared_mutex m_threadpool_; //mutable per tenere const get_indx_from_worker()
+            mutable std::mutex m_threadpool_; //mutable per tenere const get_indx_from_worker()
             std::condition_variable_any cv_threadpool_;
             bool active_ = false;
             mutable std::mt19937 gen;
@@ -73,7 +73,7 @@ namespace fdapde{
             friend class Worker; 
             //n = size_synchro_queue, k = number of workers
             Threadpool(int n,int k):n_worker_(k),queue_size_(n),gen(std::random_device{}()){
-                std::unique_lock<std::shared_mutex> loc(m_threadpool_);
+                std::unique_lock<std::mutex> loc(m_threadpool_);
                 workers_.reserve(k);
                 for(int i=0; i<k; i++){
                     workers_.emplace_back(std::make_shared<Worker> (n,&Threadpool::worker_loop,this,i));
@@ -111,7 +111,7 @@ namespace fdapde{
             //getter
             int get_n_worker()const{return n_worker_;};
             int get_index_worker_from_thread()const{
-                std::unique_lock<std::shared_mutex> loc(m_threadpool_); //aggiunto lock perché non saprei che altro possa causare errore out of range in cluster  
+                std::unique_lock<std::mutex> loc(m_threadpool_); //aggiunto lock perché non saprei che altro possa causare errore out of range in cluster  
                 return map_thread_worker_.at(std::this_thread::get_id());
             }
 
@@ -127,14 +127,11 @@ namespace fdapde{
 
             void worker_loop(int i){// i = index of worker in workers_
 
-                std::shared_lock<std::shared_mutex> lock_shared(m_threadpool_);
-                cv_threadpool_.wait(lock_shared,[this](){return active_;}); 
-                lock_shared.unlock();
-
+                std::unique_lock<std::mutex> lock_(m_threadpool_);
+                cv_threadpool_.wait(lock_,[this](){return active_;}); 
                 //upload map_thread_worker thread-safe
-                std::unique_lock<std::shared_mutex> loc_map(m_threadpool_);
                 map_thread_worker_[std::this_thread::get_id()] = i;
-                loc_map.unlock(); 
+                lock_.unlock(); 
 
                 bool done_own_job = true; 
                 int indx_steal = -1; //index to steal from
