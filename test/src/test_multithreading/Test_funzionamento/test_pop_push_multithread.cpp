@@ -19,7 +19,7 @@
 void pushbackconc(std::vector<int> V, fdapde::Synchro_queue<int,fdapde::relax> & q){
     for (auto x: V){
         q.push_back(x);
-        std::this_thread::sleep_for(std::chrono::microseconds(1));//cosi che ci sia tempo per far si che si alternino i thread a inserire
+        //std::this_thread::sleep_for(std::chrono::microseconds(1));//cosi che ci sia tempo per far si che si alternino i thread a inserire
     }
     if (q.empty()){std::cout<<"vuoto";}
 }

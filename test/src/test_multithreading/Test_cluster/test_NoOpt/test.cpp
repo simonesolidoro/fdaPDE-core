@@ -50,7 +50,7 @@ int main(int argc, char** argv){
     int runs = 20;
     
 {//================= Test threadpool send-steal ==============================
-    runs = 1; //30;
+    runs = 30;
     auto start = std::chrono::high_resolution_clock::now();
     auto end = std::chrono::high_resolution_clock::now();
     std::vector<std::vector<std::chrono::microseconds>> tempi_send_steal(6); // 2x3 mostfree-mostbusy, mostfree-rando, mostfree-ranhalf,...
@@ -163,7 +163,7 @@ int main(int argc, char** argv){
 }
 
 {//============= TEST PARALLE FOR SUM MATRIX===============================================================
-    runs = 1; //30;
+    runs = 30;
     auto start = std::chrono::high_resolution_clock::now();
     auto end = std::chrono::high_resolution_clock::now();
     std::vector<std::vector<std::chrono::microseconds>> tempi_for(3); // 0 for, 1 parallel_for, 2 openMP
@@ -226,8 +226,8 @@ int main(int argc, char** argv){
 }
 
 {//============== Test deque vs synchro_queue =====================
-    runs = 1;//(n_thread<16)? 200:100;
-    int tot_elem = 32000;
+    runs = (n_thread<16)? 100:50;
+    int tot_elem = 64000;
     int elem_per_thread = tot_elem / n_thread;
     //tempi single
     std::vector<std::vector<std::chrono::microseconds>> d_single(4); //per ogni operazione {1,2,3,4} un vettore di tempi
@@ -375,39 +375,6 @@ int main(int argc, char** argv){
             d_multi[3].push_back(std::chrono::duration_cast<std::chrono::microseconds>(end - start));
             thread_pool.clear();
         }
-        {// multi-relax
-            using queue = fdapde::Synchro_queue<std::string,fdapde::relax>;
-            queue q(tot_elem);
-            std::vector<std::thread> thread_pool;
-            //push front 0
-            start = std::chrono::high_resolution_clock::now(); 
-            for (int j=0; j<n_thread; j++){thread_pool.emplace_back(op_di_n_elem<queue,0>,std::ref(q),elem_per_thread);}
-            for (int j= 0; j<n_thread; j++){thread_pool[j].join();}
-            end = std::chrono::high_resolution_clock::now();
-            s_r_multi[0].push_back(std::chrono::duration_cast<std::chrono::microseconds>(end - start));
-            thread_pool.clear();
-            //pop front 2
-            start = std::chrono::high_resolution_clock::now(); 
-            for (int j=0; j<n_thread; j++){thread_pool.emplace_back(op_di_n_elem<queue,2>,std::ref(q),elem_per_thread);}
-            for (int j= 0; j<n_thread; j++){thread_pool[j].join();}
-            end = std::chrono::high_resolution_clock::now();
-            s_r_multi[2].push_back(std::chrono::duration_cast<std::chrono::microseconds>(end - start));
-            thread_pool.clear();
-            //push back 1
-            start = std::chrono::high_resolution_clock::now(); 
-            for (int j=0; j<n_thread; j++){thread_pool.emplace_back(op_di_n_elem<queue,1>,std::ref(q),elem_per_thread);}
-            for (int j= 0; j<n_thread; j++){thread_pool[j].join();}
-            end = std::chrono::high_resolution_clock::now();
-            s_r_multi[1].push_back(std::chrono::duration_cast<std::chrono::microseconds>(end - start));
-            thread_pool.clear();
-            //pop back 3
-            start = std::chrono::high_resolution_clock::now(); 
-            for (int j=0; j<n_thread; j++){thread_pool.emplace_back(op_di_n_elem<queue,3>,std::ref(q),elem_per_thread);}
-            for (int j= 0; j<n_thread; j++){thread_pool[j].join();}
-            end = std::chrono::high_resolution_clock::now();
-            s_r_multi[3].push_back(std::chrono::duration_cast<std::chrono::microseconds>(end - start));
-            thread_pool.clear();
-        }
         {// multi-hold_npwait
             using queue = fdapde::Synchro_queue<std::string,fdapde::hold_nowait>;
             queue q(tot_elem);
@@ -439,6 +406,39 @@ int main(int argc, char** argv){
             for (int j= 0; j<n_thread; j++){thread_pool[j].join();}
             end = std::chrono::high_resolution_clock::now();
             s_h_multi[3].push_back(std::chrono::duration_cast<std::chrono::microseconds>(end - start));
+            thread_pool.clear();
+        }
+        {// multi-relax
+            using queue = fdapde::Synchro_queue<std::string,fdapde::relax>;
+            queue q(tot_elem);
+            std::vector<std::thread> thread_pool;
+            //push front 0
+            start = std::chrono::high_resolution_clock::now(); 
+            for (int j=0; j<n_thread; j++){thread_pool.emplace_back(op_di_n_elem<queue,0>,std::ref(q),elem_per_thread);}
+            for (int j= 0; j<n_thread; j++){thread_pool[j].join();}
+            end = std::chrono::high_resolution_clock::now();
+            s_r_multi[0].push_back(std::chrono::duration_cast<std::chrono::microseconds>(end - start));
+            thread_pool.clear();
+            //pop front 2
+            start = std::chrono::high_resolution_clock::now(); 
+            for (int j=0; j<n_thread; j++){thread_pool.emplace_back(op_di_n_elem<queue,2>,std::ref(q),elem_per_thread);}
+            for (int j= 0; j<n_thread; j++){thread_pool[j].join();}
+            end = std::chrono::high_resolution_clock::now();
+            s_r_multi[2].push_back(std::chrono::duration_cast<std::chrono::microseconds>(end - start));
+            thread_pool.clear();
+            //push back 1
+            start = std::chrono::high_resolution_clock::now(); 
+            for (int j=0; j<n_thread; j++){thread_pool.emplace_back(op_di_n_elem<queue,1>,std::ref(q),elem_per_thread);}
+            for (int j= 0; j<n_thread; j++){thread_pool[j].join();}
+            end = std::chrono::high_resolution_clock::now();
+            s_r_multi[1].push_back(std::chrono::duration_cast<std::chrono::microseconds>(end - start));
+            thread_pool.clear();
+            //pop back 3
+            start = std::chrono::high_resolution_clock::now(); 
+            for (int j=0; j<n_thread; j++){thread_pool.emplace_back(op_di_n_elem<queue,3>,std::ref(q),elem_per_thread);}
+            for (int j= 0; j<n_thread; j++){thread_pool[j].join();}
+            end = std::chrono::high_resolution_clock::now();
+            s_r_multi[3].push_back(std::chrono::duration_cast<std::chrono::microseconds>(end - start));
             thread_pool.clear();
         }
         {// multi-hold_wait

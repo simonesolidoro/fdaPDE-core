@@ -12,7 +12,7 @@ int main(int argc, char** argv){
     auto start = std::chrono::high_resolution_clock::now();
     auto end = std::chrono::high_resolution_clock::now();
     std::vector<int> grid_sizes = {200000,400000,800000,1600000,3200000,6400000,12800000}; //10^8 per cluster 
-    std::vector<int> runs_vett = {1,1,1,1,1,1,1};//{30,30,30,30,20,20,20};//{1,1,1,1,1,1,1}; // 5 rus di 10alla8 che sono 4 sec l'una
+    std::vector<int> runs_vett = {30,30,30,30,20,20,20};//{1,1,1,1,1,1,1}; // 5 rus di 10alla8 che sono 4 sec l'una
     std::vector<std::vector<std::chrono::microseconds>> tempi_seq(grid_sizes.size()); // vect esterno un elemento per ogni grid_size, quelli interni sono tempi di runs
     std::vector<std::vector<std::chrono::microseconds>> tempi_par(grid_sizes.size());
     std::vector<bool> samesame;
@@ -74,7 +74,7 @@ int main(int argc, char** argv){
             std::vector<int> grans = {size_grid_eg/(n_thread*10), size_grid_eg/(n_thread*100), size_grid_eg/(n_thread*200)};
             std::vector<std::vector<std::chrono::microseconds>> tempi_par_gran(grans.size()); //tempi in diverse gran
     {
-        if(n_thread < 16){
+        if(n_thread <= 32){
             Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic> grid;
             grid.resize(size_grid_eg,2);
             for(int i =0; i<grid.rows();++i){
@@ -110,7 +110,7 @@ int main(int argc, char** argv){
         std::cout<<std::endl;
         std::cout<<std::endl;
     }
-    if(n_thread < 16){
+    if(n_thread <= 32){
         std::cout<<"== size grid fissa: "<<grid_sizes[5]<<" , n_thread: "<<n_thread<< ", varia granularity==================================================================================================================================================================="<<std::endl;
         for(int gr = 0; gr< grans.size(); gr++){
             std::cout<<"Granularity: "<<grans[gr]<<std::endl;
@@ -148,8 +148,8 @@ int main(int argc, char** argv){
     auto start = std::chrono::high_resolution_clock::now();
     auto end = std::chrono::high_resolution_clock::now();
     std::vector<int> nodes = {250,500,1000}; // cosi da avere anche scalabilità debole con 8 16 32 oppure 16 32 64
-    std::vector<int> runs_vett = {1,1,1}; //{50,40,20};//{1,1,1};
-    int run_effetto_triple = 1; //10; //1;
+    std::vector<int> runs_vett = {50,40,20};//{1,1,1};
+    int run_effetto_triple = 10; //1;
     std::vector<std::vector<std::chrono::microseconds>> tempo_seq_assemble(nodes.size()); //per ogni nodi vettore di tempi di assemblaggio completo. (vediamo se overhead in setfromtriple rimane in cluster (speriamo di no perchè il vttore di triple è uguale in seq e in par))
     std::vector<std::vector<std::chrono::microseconds>> tempo_par_assemble(nodes.size());
     std::vector<bool> samesame;
@@ -271,8 +271,51 @@ int main(int argc, char** argv){
     std::cout<<std::endl;
     std::cout<<std::endl;
     }
-}   
+}  
 
+if(n_thread == 2)
+{// test per vedere se differenza tra seq e th1 in assemble è data da reserve spazio+emlace vs costruzione elem vuoti+move 
+    auto start = std::chrono::high_resolution_clock::now();
+    auto end = std::chrono::high_resolution_clock::now();
+    std::vector<std::chrono::microseconds> tempi_reserve_emplace;
+    std::vector<std::chrono::microseconds> tempi_size_move;
+    int nodi = 500;
+    volatile double noopt = 0; //per evitare che ottimizzazione elimini popolamento di triplet_list
+    for(int i = 0; i<5; i++){
+        {
+            start = std::chrono::high_resolution_clock::now();
+            std::vector<Eigen::Triplet<double>> triplet_list;
+            triplet_list.reserve(nodi*nodi*9);
+            for(int c = 0; c<nodi*nodi*9; c++){
+                triplet_list.emplace_back(1,1,c);
+            }
+            end = std::chrono::high_resolution_clock::now();
+            tempi_reserve_emplace.push_back(std::chrono::duration_cast<std::chrono::microseconds>(end - start));
+            noopt = triplet_list[4].value();
+        }
+        {
+            start = std::chrono::high_resolution_clock::now();
+            std::vector<Eigen::Triplet<double>> triplet_list(nodi*nodi*9);
+            for(int c = 0; c<nodi*nodi*9; c++){
+                Eigen::Triplet<double> tripla(1,1,c);
+                triplet_list[c] = std::move(tripla);
+            }
+            end = std::chrono::high_resolution_clock::now();
+            tempi_size_move.push_back(std::chrono::duration_cast<std::chrono::microseconds>(end - start));
+            noopt = triplet_list[4].value();
+        }
+    }
+    std::cout<<std::endl;
+    std::cout<<"=========================================================================================================================================================================="<<std::endl;
+    std::cout<<"======Reserve+emplace vs size+move===================================================================================================================================="<<std::endl;
+    std::cout<<"== Nodi 500,  (triplet_list di 500*500*9 elementi),  runs: 5===================================================================================================================="<<std::endl;
+    std::cout<<"reserve + emplace: ";
+    for (auto& t : tempi_reserve_emplace){std::cout<<t.count()<<" ,";}
+    std::cout<<std::endl;
+    std::cout<<"size + move: ";
+    for (auto& t : tempi_size_move){std::cout<<t.count()<<" ,";}
+    
+}
 
 
 return 0;
