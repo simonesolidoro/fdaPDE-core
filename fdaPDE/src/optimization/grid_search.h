@@ -82,14 +82,14 @@ template <int N> class GridSearch {
         for (std::size_t i = 1; i < grid_.rows() && !stop; ++i) {
             grid_.row(i).assign_to(x_curr.transpose());
             obj_curr = objective(x_curr);
-/*commentato per test fair*/            //stop |= internals::exec_eval_hooks(*this, objective, callbacks_);
-/*commentato per test fair*/            //values_.push_back(obj_curr);
+/*commentato per test fair*///stop |= internals::exec_eval_hooks(*this, objective, callbacks_);
+/*commentato per test fair*///values_.push_back(obj_curr);
             // update minimum if better optimum found
             if (obj_curr < value_) {
                 value_ = obj_curr;
                 optimum_ = x_curr;
             }
-            stop |= internals::exec_stop_if(*this, objective);
+/*commentato per test fair*///stop |= internals::exec_stop_if(*this, objective);
 
         }
 
