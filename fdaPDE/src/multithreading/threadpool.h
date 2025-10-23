@@ -64,7 +64,7 @@ namespace fdapde{
             int n_worker_ ;
             int queue_size_; 
             indx_worker indxw_; 
-            std::shared_mutex m_threadpool_; 
+            mutable std::shared_mutex m_threadpool_; //mutable per tenere const get_indx_from_worker()
             std::condition_variable_any cv_threadpool_;
             bool active_ = false;
             mutable std::mt19937 gen;
@@ -110,7 +110,10 @@ namespace fdapde{
 
             //getter
             int get_n_worker()const{return n_worker_;};
-            int get_index_worker_from_thread()const{return map_thread_worker_.at(std::this_thread::get_id());}
+            int get_index_worker_from_thread()const{
+                std::unique_lock<std::shared_mutex> loc(m_threadpool_); //aggiunto lock perché non saprei che altro possa causare errore out of range in cluster  
+                return map_thread_worker_.at(std::this_thread::get_id());
+            }
 
             // indx = index of the worker from whom the job j was taken
             bool try_do(std::optional<job> j, int indx){ 
