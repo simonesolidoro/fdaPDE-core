@@ -163,12 +163,12 @@ int main(int argc, char** argv){
 }
 
 {//============= TEST PARALLE FOR SUM MATRIX===============================================================
-    runs = 30;
+    runs = 20;
     auto start = std::chrono::high_resolution_clock::now();
     auto end = std::chrono::high_resolution_clock::now();
     std::vector<std::vector<std::chrono::microseconds>> tempi_for(3); // 0 for, 1 parallel_for, 2 openMP
     std::vector<std::string> tag_tipi_for = {"For","Parallel_for","OpenMp"};
-    int size = 6000;
+    int size = 8000;
     std::vector<std::vector<int>> A;
     std::vector<std::vector<int>> B;
     std::vector<std::vector<int>> C;

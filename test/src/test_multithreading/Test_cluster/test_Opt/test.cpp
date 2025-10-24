@@ -281,7 +281,7 @@ if(n_thread == 2)
     std::vector<std::chrono::microseconds> tempi_size_move;
     int nodi = 500;
     volatile double noopt = 0; //per evitare che ottimizzazione elimini popolamento di triplet_list
-    for(int i = 0; i<5; i++){
+    for(int i = 0; i<10; i++){
         {
             start = std::chrono::high_resolution_clock::now();
             std::vector<Eigen::Triplet<double>> triplet_list;

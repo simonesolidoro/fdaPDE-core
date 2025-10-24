@@ -124,7 +124,7 @@ namespace fdapde{
                     } 
                     std::terminate(); // termina tutto immediatamente 
                     }
-                return map_thread_worker_.at(std::this_thread::get_id());
+                //return map_thread_worker_.at(std::this_thread::get_id());
             }
 
             // indx = index of the worker from whom the job j was taken
