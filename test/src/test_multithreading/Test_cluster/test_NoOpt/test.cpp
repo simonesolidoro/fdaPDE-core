@@ -177,7 +177,7 @@ int main(int argc, char** argv){
         B.emplace_back(size,1);
         C.emplace_back(size,0);
     }
-    fdapde::Threadpool<fdapde::steal::random> tp(1024,n_thread);
+    fdapde::Threadpool<fdapde::steal::most_busy> tp(1024,n_thread);
     if(n_thread == 2){
         //for
         for(int run = 0; run <runs; run ++){
