@@ -472,7 +472,8 @@ namespace fdapde{
             void parallel_for_last_spalmata(int start, int end, F&& f,int granularity){  
                 using return_type = void;
                 //range: [start, end) --> end-start= dim range
-                int range = (end-start); 
+                int range = (end-start);
+                if(granularity > range){granularity = range;}////oss: se granularity > range allora tutto range fatto da unico worker, messo granularity=range per evitare errori poi. magari mettere un warning ??? 
                 int n_job = range / std::max(1,granularity); //se gran non valida (= 0) non da errore
                 //default gran se mandato valore non valido, non più solo -1. cosi evitiamo controllo se granularity valida          
                 if(granularity <= 0) {// 1 job per worker max (quindi resto spalmato), se range<n_worker allora n_job = range 
@@ -486,7 +487,7 @@ namespace fdapde{
                 }
                 int gran_last = granularity;
                 int plus_one = 0;
-                int resto = range%granularity; //oss: se granularity > range allora tutto range fatto da unico worker (resto = range, n_job = 0 --> si entra nel secondo if che manda ultime iterazioni in unico job). magari mettere un warning ???
+                int resto = range%granularity; 
                 if((n_job%n_worker_) == 0 && resto >0){ // spalma perché fare un ultimo job con iterazioni di resto sbilancia
                     plus_one = resto;
                 }
