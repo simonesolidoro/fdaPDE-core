@@ -19,7 +19,7 @@
 int main(int argc,char** argv)
 {   
     int n = 10000;
-    fdapde::Threadpool<fdapde::steal::random> tp(64,6);
+    fdapde::Threadpool<fdapde::steal::random> tp(64,3);
     std::atomic<int> a=0;
 
 // parallel_for   granularity
@@ -27,16 +27,16 @@ int main(int argc,char** argv)
     int n_it = std::stoi(argv[1]); //granularity
     auto start3 = std::chrono::high_resolution_clock::now();
 
-    tp.parallel_for(0,120001,[&](int i){a++;
-        //std::cout<<i<<" da thread: "<<std::this_thread::get_id()<<std::endl;
-        //std::this_thread::sleep_for(std::chrono::milliseconds(100));
-        for (int j =0; j<10000; j++){
+    tp.parallel_for_last_spalmata(0,9,[&](int i){a++;
+        std::cout<<i<<" da thread: "<<std::this_thread::get_id()<<std::endl;
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        for (int j =0; j<100; j++){
             int b = 6;
             b++;
         }
     },n_it);
     
-    auto end3 = std::chrono::high_resolution_clock::now();
+    auto end3 = std::chrono::high_resolution_clock::now(); 
     auto duration3 = std::chrono::duration_cast<std::chrono::microseconds>(end3 - start3);  
     std::cout<<"par_for- incrementata a da 0 ad: "<<a.load()<<"  impiegato:"<<duration3.count()<< " microsecondi con granularity: "<<n_it<<std::endl;
 
