@@ -429,6 +429,8 @@ namespace fdapde{
                 return;
             } 
 
+/* //vecchio parallel_for con granularity che se c'era resto metteva in ultimo job con iterazioni < granularity,
+                // e default di gran t.c. circa 1 job per worker
             template<typename F> 
             requires std::is_same_v<std::invoke_result_t<F,int>, void> 
             void parallel_for(int start, int end, F&& f,int granularity){  
@@ -466,10 +468,10 @@ namespace fdapde{
                 for(std::future<void>& fut : ret_fut){fut.get();}
                 return;
             } 
-
+*/
             template<typename F> 
             requires std::is_same_v<std::invoke_result_t<F,int>, void> 
-            void parallel_for_last_spalmata(int start, int end, F&& f,int granularity){  
+            void parallel_for(int start, int end, F&& f,int granularity){  
                 using return_type = void;
                 //range: [start, end) --> end-start= dim range
                 int range = (end-start);
