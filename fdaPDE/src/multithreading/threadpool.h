@@ -469,6 +469,7 @@ namespace fdapde{
                 return;
             } 
 */
+//migliorato schedule ma non credo varianza dipenda da questo.
             template<typename F> 
             requires std::is_same_v<std::invoke_result_t<F,int>, void> 
             void parallel_for(int start, int end, F&& f,int granularity){  
