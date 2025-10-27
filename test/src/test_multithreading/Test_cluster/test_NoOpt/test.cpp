@@ -48,7 +48,7 @@ void random_op_di_n_elem(Q& q,int n, std::vector<int>& opr, int j){
 int main(int argc, char** argv){
     int n_thread= std::stoi(argv[1]);
     int runs = 20;
-    
+/*  
 {//================= Test threadpool send-steal ==============================
     runs = 30;
     auto start = std::chrono::high_resolution_clock::now();
@@ -161,7 +161,7 @@ int main(int argc, char** argv){
         std::cout<<std::endl;
     }
 }
-
+*/
 {//============= TEST PARALLE FOR SUM MATRIX===============================================================
     runs = 20;
     auto start = std::chrono::high_resolution_clock::now();
@@ -195,7 +195,7 @@ int main(int argc, char** argv){
             for(int j=0; j<size; j++){
                 C[i][j] = A[i][j] + B[i][j];
             }
-        },-1);
+        },25);
         end = std::chrono::high_resolution_clock::now();
         tempi_for[1].push_back(std::chrono::duration_cast<std::chrono::microseconds>(end - start)); 
     }
@@ -224,7 +224,7 @@ int main(int argc, char** argv){
         std::cout<<std::endl;
     }
 }
-
+/*
 {//============== Test deque vs synchro_queue =====================
     runs = (n_thread<16)? 100:50;
     int tot_elem = 64000;
@@ -603,6 +603,6 @@ if(n_thread == 2){
     }
 
 }
-
+*/
 return 0;
 }
