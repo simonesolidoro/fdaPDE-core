@@ -12,7 +12,7 @@ int main(int argc, char** argv){
     auto start = std::chrono::high_resolution_clock::now();
     auto end = std::chrono::high_resolution_clock::now();
     std::vector<int> grid_sizes = {200000,400000,800000,1600000,3200000,6400000,12800000}; //10^8 per cluster 
-    std::vector<int> runs_vett = {30,30,30,30,20,20,20};//{1,1,1,1,1,1,1}; // 5 rus di 10alla8 che sono 4 sec l'una
+    std::vector<int> runs_vett = {20,20,20,10,10,10,10};//{20,20,20,10,10,10,10};//{1,1,1,1,1,1,1}; // 5 rus di 10alla8 che sono 4 sec l'una
     std::vector<std::vector<std::chrono::microseconds>> tempi_seq(grid_sizes.size()); // vect esterno un elemento per ogni grid_size, quelli interni sono tempi di runs
     std::vector<std::vector<std::chrono::microseconds>> tempi_par(grid_sizes.size());
     std::vector<bool> samesame;
@@ -51,6 +51,7 @@ int main(int argc, char** argv){
         }
     }
     }
+    /*
     {//verifica ottimo trovato da seq e par sia lo stesso in size_grid 6400000
         Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic> grid;
         grid.resize(grid_sizes[5],2);
@@ -68,7 +69,8 @@ int main(int argc, char** argv){
         }
 
     }
-    
+        */
+    /*
         //==== effetto granularity =======================================
             int size_grid_eg = grid_sizes[5]; //test effetto gran solo su 6400000
             std::vector<int> grans = {size_grid_eg/(n_thread*10), size_grid_eg/(n_thread*100), size_grid_eg/(n_thread*200)};
@@ -93,6 +95,7 @@ int main(int argc, char** argv){
             }
         }
     }
+        */
     std::cout<<std::endl;
     std::cout<<"================================================================================================================================================================================================================="<<std::endl;
     std::cout<<"===========TEST GRID_SEARCH======================================================================================================================================================================================"<<std::endl;
@@ -110,6 +113,7 @@ int main(int argc, char** argv){
         std::cout<<std::endl;
         std::cout<<std::endl;
     }
+    /*
     if(n_thread <= 32){
         std::cout<<"== size grid fissa: "<<grid_sizes[5]<<" , n_thread: "<<n_thread<< ", varia granularity==================================================================================================================================================================="<<std::endl;
         for(int gr = 0; gr< grans.size(); gr++){
@@ -119,7 +123,10 @@ int main(int argc, char** argv){
             std::cout<<std::endl;
             std::cout<<std::endl;
         }
+            
     }
+        */
+    /*
     //verifica ottimi uguali
     std::cout<<"====== verifica stesso ottimo e value trovato da seq e par ================================================================================================================================================================================================="<<std::endl;
     std::cout<<"size_grid: "<<grid_sizes[5]<<"n_thread: "<<n_thread<<"runs: "<<runs_vett[5]<<std::endl;
@@ -134,6 +141,7 @@ int main(int argc, char** argv){
     }else{
         std::cout<<"ERRRRRRRRRROOOOOOOORRRRREEEEEEEEEEEEEEEEEEEEEE"<<std::endl;
     }
+        */
     std::cout<<std::endl;
     std::cout<<std::endl;
     
@@ -148,7 +156,7 @@ int main(int argc, char** argv){
     auto start = std::chrono::high_resolution_clock::now();
     auto end = std::chrono::high_resolution_clock::now();
     std::vector<int> nodes = {250,500,1000}; // cosi da avere anche scalabilità debole con 8 16 32 oppure 16 32 64
-    std::vector<int> runs_vett = {50,40,20};//{1,1,1};
+    std::vector<int> runs_vett = {20,20,20};//{20,20,20};//{1,1,1};
     int run_effetto_triple = 10; //1;
     std::vector<std::vector<std::chrono::microseconds>> tempo_seq_assemble(nodes.size()); //per ogni nodi vettore di tempi di assemblaggio completo. (vediamo se overhead in setfromtriple rimane in cluster (speriamo di no perchè il vttore di triple è uguale in seq e in par))
     std::vector<std::vector<std::chrono::microseconds>> tempo_par_assemble(nodes.size());
@@ -201,6 +209,7 @@ int main(int argc, char** argv){
         }
     }
     std::cout<<std::endl;
+    /*
     if(n_thread < 16){// con 200*n_thread job per worker magari impiega troppo, quasi sicuro basta fare con 8
         std::cout<<"===============CALCOLO TRIPLE, granularity varia nodi:1000*1000 ====================================================================================================================================================================================================================================================="<<std::endl; 
         {
@@ -224,6 +233,8 @@ int main(int argc, char** argv){
             
         }
     }
+        */
+    /*
     {//verifica matrici uguali in parallelo e seq
         Triangulation<2, 2> unit_square = Triangulation<2, 2>::UnitSquare(500);
         FeSpace Vh(unit_square, P1<1>);
@@ -237,6 +248,7 @@ int main(int argc, char** argv){
             samesame.push_back(A.isApprox(A2, 0.000000000000001));
         }
     }
+        */
     {//cout di tempi assemble completi
         std::cout<<std::endl;
         std::cout<<"===============ASSEMBLE COMPLETO, granularity default -1 nodi:250,500,1000 ====================================================================================================================================================================================================================================================="<<std::endl; 
@@ -253,6 +265,7 @@ int main(int argc, char** argv){
         std::cout<<std::endl;
         }
     }
+    /*
     {
             //verifica ottimi uguali
     std::cout<<"====== verifica stessa matrice assemblata da seq e par ================================================================================================================================================================================================="<<std::endl;
@@ -268,11 +281,11 @@ int main(int argc, char** argv){
     }else{
         std::cout<<"ERRRRRRRRRROOOOOOOORRRRREEEEEEEEEEEEEEEEEEEEEE"<<std::endl;
     }
+    */
     std::cout<<std::endl;
     std::cout<<std::endl;
-    }
-}  
-
+    }  
+/*
 if(n_thread == 2)
 {// test per vedere se differenza tra seq e th1 in assemble è data da reserve spazio+emlace vs costruzione elem vuoti+move 
     auto start = std::chrono::high_resolution_clock::now();
@@ -315,7 +328,7 @@ if(n_thread == 2)
     std::cout<<"size + move: ";
     for (auto& t : tempi_size_move){std::cout<<t.count()<<" ,";}
     
-}
+}*/
 
 
 return 0;
