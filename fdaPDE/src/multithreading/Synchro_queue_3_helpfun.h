@@ -26,14 +26,14 @@ namespace fdapde{
             if (S.head_ == S.tail_ && !S.empty_queue_ ){return -1;}
             S.empty_queue_ = false; //maybe already false, so redundant, but avoids if(empty_queue_) {empty_queue_ = false;} 
         }
-        int h = S.tail_; //index to return
+        int t = S.tail_; //index to return
         if constexpr(std::is_same_v<M,relax>){
-            if(S.queue_[h].state_.load(std::memory_order_acquire) != Synchro_queue<T,relax>::Empty)
+            if(S.queue_[t].state_.load(std::memory_order_acquire) != Synchro_queue<T,relax>::Empty)
                 return -1;
-            S.queue_[h].state_.store(Synchro_queue<T,relax>::Busy, std::memory_order_relaxed); 
+            S.queue_[t].state_.store(Synchro_queue<T,relax>::Busy, std::memory_order_relaxed); 
         }
         S.tail_ = (S.tail_ == S.size_-1)? (0) : (S.tail_ + 1); //tail_++
-        return h;
+        return t;
     };
 
     template<typename T,typename M> 
