@@ -38,24 +38,24 @@ namespace fdapde{
 
 
     //forward declaration of helper function: index
-    template<typename value_type,typename M> 
-    int push_f_indx(synchro_queue<value_type,M> & S);
+    template<typename value_type,typename access_model> 
+    int push_f_indx(synchro_queue<value_type,access_model> & S);
 
-    template<typename value_type,typename M> 
-    int pop_f_indx(synchro_queue<value_type,M> & S);
+    template<typename value_type,typename access_model> 
+    int pop_f_indx(synchro_queue<value_type,access_model> & S);
 
-    template<typename value_type, typename M>
-    int push_b_indx(synchro_queue<value_type,M> & S);
+    template<typename value_type, typename access_model>
+    int push_b_indx(synchro_queue<value_type,access_model> & S);
 
-    template<typename value_type,typename M> 
-    int pop_b_indx(synchro_queue<value_type,M> & S);
+    template<typename value_type,typename access_model> 
+    int pop_b_indx(synchro_queue<value_type,access_model> & S);
 
     //forward declaration of helper function: push/pop 
-    template<typename value_type,typename M> 
-    void push_fb_push(typename synchro_queue<value_type,M>::elem & E,value_type& new_value);
+    template<typename value_type,typename access_model> 
+    void push_fb_push(typename synchro_queue<value_type,access_model>::elem & E,value_type& new_value);
 
-    template<typename value_type,typename M> 
-    value_type pop_fb_pop(typename synchro_queue<value_type,M>::elem & E);
+    template<typename value_type,typename access_model> 
+    value_type pop_fb_pop(typename synchro_queue<value_type,access_model>::elem & E);
 
     template<typename value_type>
     class synchro_queue<value_type,relax>{
