@@ -99,7 +99,6 @@ namespace fdapde{
                 size_ = n;
             }
             //construct from vector, array, list
-            //TODO: valori di head e tail da impostare mancano !!!!!!!!!!!
             template <typename Iterator>
             requires internals::vector_array_list<Iterator,T>
             Synchro_queue(Iterator begin, Iterator end){
@@ -237,7 +236,6 @@ namespace fdapde{
                 size_ = n;
             }
             // constructor from list array vector
-            //TODO: head e tail da impostare !!!!!!!!!!!!!!!
             template <typename Iterator>
             requires internals::vector_array_list<Iterator,T>
             Synchro_queue(Iterator begin, Iterator end){
@@ -411,7 +409,6 @@ namespace fdapde{
                 size_ = n;
             }
             // constructor from list array vector
-            //TODO: head e tail !!!!!!!!!!!!!!!!!!!!!!!!!!!!!
             template <typename Iterator>
             requires internals::vector_array_list<Iterator,T>
             Synchro_queue(Iterator begin, Iterator end){
