@@ -104,7 +104,7 @@ namespace fdapde{
             E.state_.store(synchro_queue<T,relax>::Full, std::memory_order_release); 
         }
         if constexpr(std::is_same_v<M,hold_nowait> || std::is_same_v<M,hold_wait>){
-            E.state_ = false; //(false == Full)
+            E.state_ = synchro_queue<T,hold_nowait>::Full; 
         }
     };
 
@@ -116,7 +116,7 @@ namespace fdapde{
             E.state_.store(synchro_queue<T,relax>::Empty, std::memory_order_release);
         }
         if constexpr(std::is_same_v<M,hold_nowait> || std::is_same_v<M,hold_wait>){
-            E.state_ = true;
+            E.state_ = synchro_queue<T,hold_nowait>::Empty;
             E.count_pop_ --;
         }
         return ret; 
