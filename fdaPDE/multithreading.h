@@ -40,13 +40,8 @@
 
 
 #include "src/multithreading/deque.h"
-//#include "src/multithreading/synchro_queue_2.h"
-//#include "src/multithreading/Synchro_queue_wait_2.h"
-#include "src/multithreading/Synchro_queue_3.h"
-
-//#include "src/multithreading/threadpool_ref_bodyfun_paralle_for.h"
+#include "src/multithreading/synchro_queue_3.h"
 #include "src/multithreading/threadpool.h"
-
 #include "src/multithreading/Execution_type.h"
 // clang-format on
 

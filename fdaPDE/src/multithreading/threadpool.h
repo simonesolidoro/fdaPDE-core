@@ -36,7 +36,7 @@ namespace fdapde{
             class Worker{
                 private:
                     int indx_; 
-                    fdapde::Synchro_queue<job,fdapde::relax> sync_queue_;
+                    fdapde::synchro_queue<job,fdapde::relax> sync_queue_;
                     std::thread t_;
                     bool stop_ = false;
                     mutable std::mutex m_;
@@ -53,7 +53,7 @@ namespace fdapde{
                     void notifica()const{cv_.notify_one();}
                     void set_stop(bool s){stop_ = s;}
                     void join_thread(){t_.join();} 
-                    bool push_front(job& fun){return sync_queue_.push_front(fun);};//reference in input because is only a wrap-function (intermediate step), than Synchro_queue store a copy 
+                    bool push_front(job& fun){return sync_queue_.push_front(fun);};//reference in input because is only a wrap-function (intermediate step), than synchro_queue store a copy 
                     bool push_back(job& fun){return sync_queue_.push_back(fun);};
                     std::optional<job> pop_front(){return sync_queue_.pop_front();};
                     std::optional<job> pop_back(){return sync_queue_.pop_back();};

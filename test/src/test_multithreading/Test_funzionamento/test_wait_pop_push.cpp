@@ -23,19 +23,19 @@ int main(){
 // hold_wait
 {
     std::cout<<"---------------------------------test push back/front wait_for con hold_wait---------------------------------"<<std::endl;
-    fdapde::Synchro_queue<int,fdapde::hold_wait> q1(5);
+    fdapde::synchro_queue<int,fdapde::hold_wait> q1(5);
     //popolo
     for(int j=0; j<5; j++){
         q1.push_front(j);
     }
     //push
-    std::thread d(&fdapde::Synchro_queue<int,fdapde::hold_wait>::push_back_or_wait_for,std::ref(q1),9,5); //prova a fare push ma coda piena quindi aspetta finche non viene fatto pop
+    std::thread d(&fdapde::synchro_queue<int,fdapde::hold_wait>::push_back_or_wait_for,std::ref(q1),9,5); //prova a fare push ma coda piena quindi aspetta finche non viene fatto pop
     q1.pop_back();
     q1.print(); 
     q1.print();
     d.join();
 
-    std::thread d2(&fdapde::Synchro_queue<int,fdapde::hold_wait>::push_front_or_wait_for,std::ref(q1),9,5); //prova a fare pop ma coda vuota quindi aspetta finche non viene fatto push
+    std::thread d2(&fdapde::synchro_queue<int,fdapde::hold_wait>::push_front_or_wait_for,std::ref(q1),9,5); //prova a fare pop ma coda vuota quindi aspetta finche non viene fatto push
     q1.pop_front();
     q1.print(); 
     d2.join();
@@ -44,16 +44,16 @@ int main(){
 }
 {
     std::cout<<"---------------------------------test pop bback/front wait_for con hold_wait---------------------------------"<<std::endl;
-    fdapde::Synchro_queue<int,fdapde::hold_wait> q1(5);
+    fdapde::synchro_queue<int,fdapde::hold_wait> q1(5);
 
     //pop
-    std::thread d(&fdapde::Synchro_queue<int,fdapde::hold_wait>::pop_back_or_wait_for,std::ref(q1),5); //prova a fare push ma coda piena quindi aspetta finche non viene fatto pop
+    std::thread d(&fdapde::synchro_queue<int,fdapde::hold_wait>::pop_back_or_wait_for,std::ref(q1),5); //prova a fare push ma coda piena quindi aspetta finche non viene fatto pop
     q1.push_back(9);
     q1.print(); 
     q1.print();
     d.join();
 
-    std::thread d2(&fdapde::Synchro_queue<int,fdapde::hold_wait>::pop_front_or_wait_for,std::ref(q1),5); //prova a fare pop ma coda vuota quindi aspetta finche non viene fatto push
+    std::thread d2(&fdapde::synchro_queue<int,fdapde::hold_wait>::pop_front_or_wait_for,std::ref(q1),5); //prova a fare pop ma coda vuota quindi aspetta finche non viene fatto push
     q1.push_front(9);
     q1.print(); 
     d2.join();
@@ -62,19 +62,19 @@ int main(){
 }
 {
     std::cout<<"---------------------------------test push back/front wait con hold_wait---------------------------------"<<std::endl;
-    fdapde::Synchro_queue<int,fdapde::hold_wait> q1(5);
+    fdapde::synchro_queue<int,fdapde::hold_wait> q1(5);
     //popolo
     for(int j=0; j<5; j++){
         q1.push_front(j);
     }
     //push
-    std::thread d(&fdapde::Synchro_queue<int,fdapde::hold_wait>::push_back_or_wait,std::ref(q1),9); //prova a fare push ma coda piena quindi aspetta finche non viene fatto pop
+    std::thread d(&fdapde::synchro_queue<int,fdapde::hold_wait>::push_back_or_wait,std::ref(q1),9); //prova a fare push ma coda piena quindi aspetta finche non viene fatto pop
     q1.pop_back();
     q1.print(); 
     q1.print();
     d.join();
 
-    std::thread d2(&fdapde::Synchro_queue<int,fdapde::hold_wait>::push_front_or_wait,std::ref(q1),9); //prova a fare pop ma coda vuota quindi aspetta finche non viene fatto push
+    std::thread d2(&fdapde::synchro_queue<int,fdapde::hold_wait>::push_front_or_wait,std::ref(q1),9); //prova a fare pop ma coda vuota quindi aspetta finche non viene fatto push
     q1.pop_front();
     q1.print(); 
     d2.join();
@@ -83,16 +83,16 @@ int main(){
 }
 {
     std::cout<<"---------------------------------test pop bback/front wait con hold_wait---------------------------------"<<std::endl;
-    fdapde::Synchro_queue<int,fdapde::hold_wait> q1(5);
+    fdapde::synchro_queue<int,fdapde::hold_wait> q1(5);
 
     //pop
-    std::thread d(&fdapde::Synchro_queue<int,fdapde::hold_wait>::pop_back_or_wait,std::ref(q1)); //prova a fare push ma coda piena quindi aspetta finche non viene fatto pop
+    std::thread d(&fdapde::synchro_queue<int,fdapde::hold_wait>::pop_back_or_wait,std::ref(q1)); //prova a fare push ma coda piena quindi aspetta finche non viene fatto pop
     q1.push_back(9);
     q1.print(); 
     q1.print();
     d.join();
 
-    std::thread d2(&fdapde::Synchro_queue<int,fdapde::hold_wait>::pop_front_or_wait,std::ref(q1)); //prova a fare pop ma coda vuota quindi aspetta finche non viene fatto push
+    std::thread d2(&fdapde::synchro_queue<int,fdapde::hold_wait>::pop_front_or_wait,std::ref(q1)); //prova a fare pop ma coda vuota quindi aspetta finche non viene fatto push
     q1.push_front(9);
     q1.print(); 
     d2.join();

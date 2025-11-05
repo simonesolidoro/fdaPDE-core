@@ -16,21 +16,21 @@
  
  #include<fdaPDE/multithreading.h>
  
- void vuoto(fdapde::Synchro_queue<int,fdapde::relax> & q){
+ void vuoto(fdapde::synchro_queue<int,fdapde::relax> & q){
    std::cout<<std::this_thread::get_id()<<"dice che è: "<<q.empty()<<std::endl;
  }
 
  int main(){
 { std::cout<<"--------------------------------RELAX_NOWAIT--------------------------------"<<std::endl;
-    fdapde::Synchro_queue<int,fdapde::relax> q(10);
+    fdapde::synchro_queue<int,fdapde::relax> q(10);
  
     std::vector<std::thread> pool;
     int k=0;
     for(int i=0; i<10; i++){
       if((k % 2) == 0)
-         pool.emplace_back(&fdapde::Synchro_queue<int,fdapde::relax>::push_front,std::ref(q),k);
+         pool.emplace_back(&fdapde::synchro_queue<int,fdapde::relax>::push_front,std::ref(q),k);
       else
-         pool.emplace_back(&fdapde::Synchro_queue<int,fdapde::relax>::pop_front,std::ref(q));
+         pool.emplace_back(&fdapde::synchro_queue<int,fdapde::relax>::pop_front,std::ref(q));
       k++;
     }
     q.print();
@@ -46,15 +46,15 @@
 
 {/// Hold_nowait
   std::cout<<"--------------------------------HOLD_NOWAIT--------------------------------"<<std::endl;
-  fdapde::Synchro_queue<int,fdapde::hold_nowait> q(10);
+  fdapde::synchro_queue<int,fdapde::hold_nowait> q(10);
  
   std::vector<std::thread> pool;
   int k=0;
   for(int i=0; i<10; i++){
     if((k % 2) == 0)
-       pool.emplace_back(&fdapde::Synchro_queue<int,fdapde::hold_nowait>::push_front,std::ref(q),k);
+       pool.emplace_back(&fdapde::synchro_queue<int,fdapde::hold_nowait>::push_front,std::ref(q),k);
     else
-       pool.emplace_back(&fdapde::Synchro_queue<int,fdapde::hold_nowait>::pop_front,std::ref(q));
+       pool.emplace_back(&fdapde::synchro_queue<int,fdapde::hold_nowait>::pop_front,std::ref(q));
     k++;
   }
   q.print();
@@ -69,15 +69,15 @@
 }
 {/// Hold_wait
   std::cout<<"--------------------------------HOLD_WAIT--------------------------------"<<std::endl;
-  fdapde::Synchro_queue<int,fdapde::hold_wait> q(10);
+  fdapde::synchro_queue<int,fdapde::hold_wait> q(10);
  
   std::vector<std::thread> pool;
   int k=0;
   for(int i=0; i<10; i++){
     if((k % 2) == 0)
-       pool.emplace_back(&fdapde::Synchro_queue<int,fdapde::hold_wait>::push_front,std::ref(q),k);
+       pool.emplace_back(&fdapde::synchro_queue<int,fdapde::hold_wait>::push_front,std::ref(q),k);
     else
-       pool.emplace_back(&fdapde::Synchro_queue<int,fdapde::hold_wait>::pop_front,std::ref(q));
+       pool.emplace_back(&fdapde::synchro_queue<int,fdapde::hold_wait>::pop_front,std::ref(q));
     k++;
   }
   q.print();

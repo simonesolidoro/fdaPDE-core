@@ -24,15 +24,15 @@ int main(){
     value el = 1;
     std::list<value> v ={el,el,el};
 
-    fdapde::Synchro_queue<int,fdapde::relax> q(v.begin(),v.end());
+    fdapde::synchro_queue<int,fdapde::relax> q(v.begin(),v.end());
     q.print();
     std::vector<value> v1 ={el,el,el};
 
-    fdapde::Synchro_queue<int,fdapde::relax> q1(v1.begin(),v1.end());
+    fdapde::synchro_queue<int,fdapde::relax> q1(v1.begin(),v1.end());
     q1.print();
     std::array<value,3> v2 ={el,el,el};
 
-    fdapde::Synchro_queue<int,fdapde::relax>q2(v2.begin(),v2.end());
+    fdapde::synchro_queue<int,fdapde::relax>q2(v2.begin(),v2.end());
     q2.print();
 }
 {// hold nowait
@@ -41,15 +41,15 @@ int main(){
     value el = 1;
     std::list<value> v ={el,el,el};
 
-    fdapde::Synchro_queue<int,fdapde::hold_nowait> q(v.begin(),v.end());
+    fdapde::synchro_queue<int,fdapde::hold_nowait> q(v.begin(),v.end());
     q.print();
     std::vector<value> v1 ={el,el,el};
 
-    fdapde::Synchro_queue<int,fdapde::hold_nowait> q1(v1.begin(),v1.end());
+    fdapde::synchro_queue<int,fdapde::hold_nowait> q1(v1.begin(),v1.end());
     q1.print();
     std::array<value,3> v2 ={el,el,el};
 
-    fdapde::Synchro_queue<int,fdapde::hold_nowait>q2(v2.begin(),v2.end());
+    fdapde::synchro_queue<int,fdapde::hold_nowait>q2(v2.begin(),v2.end());
     q2.print();
 }
 {//hold wait
@@ -58,15 +58,15 @@ int main(){
     value el = 1;
     std::list<value> v ={el,el,el};
 
-    fdapde::Synchro_queue<int,fdapde::hold_wait> q(v.begin(),v.end());
+    fdapde::synchro_queue<int,fdapde::hold_wait> q(v.begin(),v.end());
     q.print();
     std::vector<value> v1 ={el,el,el};
 
-    fdapde::Synchro_queue<int,fdapde::hold_wait> q1(v1.begin(),v1.end());
+    fdapde::synchro_queue<int,fdapde::hold_wait> q1(v1.begin(),v1.end());
     q1.print();
     std::array<value,3> v2 ={el,el,el};
 
-    fdapde::Synchro_queue<int,fdapde::hold_wait>q2(v2.begin(),v2.end());
+    fdapde::synchro_queue<int,fdapde::hold_wait>q2(v2.begin(),v2.end());
     q2.print();
 }
 

@@ -32,12 +32,12 @@ namespace fdapde{
     struct hold_nowait{};
     struct hold_wait{};
     //forward declaration
-    template<typename T, typename E> class Synchro_queue;
+    template<typename T, typename E> class synchro_queue;
     template<typename T,typename M> struct elem;
 
     template<typename T>
     struct elem<T,relax>{
-        std::atomic<char> state_ = Synchro_queue<T,relax>::Empty; 
+        std::atomic<char> state_ = synchro_queue<T,relax>::Empty; 
         std::optional<T> v_;
     };
 
@@ -57,16 +57,16 @@ namespace fdapde{
 
     //forward declaration of helper function: index
     template<typename T,typename M> 
-    int push_f_indx(Synchro_queue<T,M> & S);
+    int push_f_indx(synchro_queue<T,M> & S);
 
     template<typename T,typename M> 
-    int pop_f_indx(Synchro_queue<T,M> & S);
+    int pop_f_indx(synchro_queue<T,M> & S);
 
     template<typename T, typename M>
-    int push_b_indx(Synchro_queue<T,M> & S);
+    int push_b_indx(synchro_queue<T,M> & S);
 
     template<typename T,typename M> 
-    int pop_b_indx(Synchro_queue<T,M> & S);
+    int pop_b_indx(synchro_queue<T,M> & S);
 
     //forward declaration of helper function: push/pop 
     template<typename T,typename M> 
@@ -76,7 +76,7 @@ namespace fdapde{
     T pop_fb_pop(elem<T,M>& E);
 
     template<typename T>
-    class Synchro_queue<T,relax>{
+    class synchro_queue<T,relax>{
         using value_type = T;
         
         typedef std::vector<elem<value_type,relax>> container;
@@ -93,15 +93,15 @@ namespace fdapde{
             static constexpr int Busy = 2;
             static constexpr int Full = 0; //false 0
             // default constructor 
-            Synchro_queue() = default;
+            synchro_queue() = default;
             // construct whit size of queue_=n;
-            Synchro_queue(int n): queue_(n){
+            synchro_queue(int n): queue_(n){
                 size_ = n;
             }
             //construct from vector, array, list
             template <typename Iterator>
             requires internals::vector_array_list<Iterator,T>
-            Synchro_queue(Iterator begin, Iterator end){
+            synchro_queue(Iterator begin, Iterator end){
                 int n = std::distance(begin, end); //itertor of list doesn't support "end-begin"
                 std::vector<elem<T,relax>> temp_queue(n);
                 for(int i =0; i<n;i++){
@@ -113,8 +113,8 @@ namespace fdapde{
                 size_ = queue_.size();
             }
         
-            Synchro_queue(const Synchro_queue&) = delete;
-            void operator=(const Synchro_queue&) = delete;
+            synchro_queue(const synchro_queue&) = delete;
+            void operator=(const synchro_queue&) = delete;
         
             void resize(int n){
                 std::lock_guard<std::mutex> loc(m_);
@@ -149,10 +149,10 @@ namespace fdapde{
             }
 
             //friendship declarations
-            friend int push_f_indx<T,relax>(Synchro_queue<T,relax> & S);
-            friend int pop_f_indx<T,relax>(Synchro_queue<T,relax> & S);
-            friend int push_b_indx<T,relax>(Synchro_queue<T,relax> & S);
-            friend int pop_b_indx<T,relax>(Synchro_queue<T,relax> & S);
+            friend int push_f_indx<T,relax>(synchro_queue<T,relax> & S);
+            friend int pop_f_indx<T,relax>(synchro_queue<T,relax> & S);
+            friend int push_b_indx<T,relax>(synchro_queue<T,relax> & S);
+            friend int pop_b_indx<T,relax>(synchro_queue<T,relax> & S);
 
 
             bool push_front(value_type val){
@@ -216,7 +216,7 @@ namespace fdapde{
 
 
     template <typename T>  
-    class Synchro_queue<T,hold_nowait>{
+    class synchro_queue<T,hold_nowait>{
         using value_type = T;
 
         typedef std::vector<elem<value_type,hold_nowait>> container;
@@ -230,15 +230,15 @@ namespace fdapde{
             bool active_ = true;
         public:
             // default constructor
-            Synchro_queue() = default;
+            synchro_queue() = default;
             // construct whit size of queue_=n;
-            Synchro_queue(int n): queue_(n){
+            synchro_queue(int n): queue_(n){
                 size_ = n;
             }
             // constructor from list array vector
             template <typename Iterator>
             requires internals::vector_array_list<Iterator,T>
-            Synchro_queue(Iterator begin, Iterator end){
+            synchro_queue(Iterator begin, Iterator end){
                 int n = std::distance(begin, end); 
                 std::vector<elem<value_type,hold_nowait>> temp_queue(n);
                 for(int i =0; i<n;i++){
@@ -251,7 +251,7 @@ namespace fdapde{
                 empty_queue_ = false;
             }
 
-            ~Synchro_queue(){
+            ~synchro_queue(){
                 for(elem<T,hold_nowait> & e : queue_){
                     std::lock_guard<std::mutex> loc(e.m_el_); 
                     //modify active during mutex lock to ensure correct visibility (https://cppreference.net/cpp/thread/condition_variable :"Even if the shared variable is atomic, it must be modified while owning the mutex to correctly publish the modification to the waiting thread")
@@ -262,8 +262,8 @@ namespace fdapde{
             };
 
 
-            Synchro_queue(const Synchro_queue&) = delete;
-            void operator=(const Synchro_queue&) = delete;
+            synchro_queue(const synchro_queue&) = delete;
+            void operator=(const synchro_queue&) = delete;
 
             void resize(int n){
                 std::lock_guard<std::mutex> loc(m_);
@@ -300,10 +300,10 @@ namespace fdapde{
             }
 
             //friendship declaration
-            friend int push_f_indx<T,hold_nowait>(Synchro_queue<T,hold_nowait> & S);
-            friend int pop_f_indx<T,hold_nowait>(Synchro_queue<T,hold_nowait> & S);
-            friend int push_b_indx<T,hold_nowait>(Synchro_queue<T,hold_nowait> & S);
-            friend int pop_b_indx<T,hold_nowait>(Synchro_queue<T,hold_nowait> & S);
+            friend int push_f_indx<T,hold_nowait>(synchro_queue<T,hold_nowait> & S);
+            friend int pop_f_indx<T,hold_nowait>(synchro_queue<T,hold_nowait> & S);
+            friend int push_b_indx<T,hold_nowait>(synchro_queue<T,hold_nowait> & S);
+            friend int pop_b_indx<T,hold_nowait>(synchro_queue<T,hold_nowait> & S);
 
             bool push_front(value_type val){
                 std::unique_lock<std::mutex> loc(m_);
@@ -387,7 +387,7 @@ namespace fdapde{
 
     
     template <typename T>  
-    class Synchro_queue<T, hold_wait>{
+    class synchro_queue<T, hold_wait>{
         using value_type = T;
 
         typedef std::vector<elem<value_type,hold_wait>> container;
@@ -403,15 +403,15 @@ namespace fdapde{
             bool active_ = true; 
         public:
             // default constructor 
-            Synchro_queue() = default;
+            synchro_queue() = default;
             // construct whit size of queue_=n;
-            Synchro_queue(int n): queue_(n){
+            synchro_queue(int n): queue_(n){
                 size_ = n;
             }
             // constructor from list array vector
             template <typename Iterator>
             requires internals::vector_array_list<Iterator,T>
-            Synchro_queue(Iterator begin, Iterator end){
+            synchro_queue(Iterator begin, Iterator end){
                 int n = std::distance(begin, end); 
                 std::vector<elem<value_type,hold_wait>> temp_queue(n);
                 for(int i =0; i<n;i++){
@@ -423,7 +423,7 @@ namespace fdapde{
                 size_ = queue_.size();
                 empty_queue_ = false;
             }
-            ~Synchro_queue(){ 
+            ~synchro_queue(){ 
                 std::lock_guard<std::mutex> loc(m_);
                 active_ = false;
                 cv_can_pop_.notify_all();
@@ -436,8 +436,8 @@ namespace fdapde{
                 } 
             }
 
-            Synchro_queue(const Synchro_queue&) = delete;
-            void operator=(const Synchro_queue&) = delete;
+            synchro_queue(const synchro_queue&) = delete;
+            void operator=(const synchro_queue&) = delete;
 
             void resize(int n){
                 std::lock_guard<std::mutex> loc(m_);
@@ -474,10 +474,10 @@ namespace fdapde{
             }
 
             //friendship declaration
-            friend int push_f_indx<T,hold_wait>(Synchro_queue<T,hold_wait> & S);
-            friend int pop_f_indx<T,hold_wait>(Synchro_queue<T,hold_wait> & S);
-            friend int push_b_indx<T,hold_wait>(Synchro_queue<T,hold_wait> & S);
-            friend int pop_b_indx<T,hold_wait>(Synchro_queue<T,hold_wait> & S);
+            friend int push_f_indx<T,hold_wait>(synchro_queue<T,hold_wait> & S);
+            friend int pop_f_indx<T,hold_wait>(synchro_queue<T,hold_wait> & S);
+            friend int push_b_indx<T,hold_wait>(synchro_queue<T,hold_wait> & S);
+            friend int pop_b_indx<T,hold_wait>(synchro_queue<T,hold_wait> & S);
 
             bool push_front(value_type val){
                 std::unique_lock<std::mutex> loc(m_);
@@ -709,6 +709,6 @@ namespace fdapde{
             }
     };
 }
-#include"Synchro_queue_3_helpfun.h"
+#include"synchro_queue_3_helpfun.h"
 #endif
 

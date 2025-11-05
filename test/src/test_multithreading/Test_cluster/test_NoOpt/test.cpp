@@ -270,7 +270,7 @@ int main(int argc, char** argv){
             d_single[3].push_back(std::chrono::duration_cast<std::chrono::microseconds>(end - start));  
         }
         {//single-synchro Relax
-            using queue = fdapde::Synchro_queue<std::string,fdapde::relax>;
+            using queue = fdapde::synchro_queue<std::string,fdapde::relax>;
             queue q(tot_elem);
             //push_front 0
             start = std::chrono::high_resolution_clock::now();
@@ -294,7 +294,7 @@ int main(int argc, char** argv){
             s_r_single[3].push_back(std::chrono::duration_cast<std::chrono::microseconds>(end - start));  
         }
         {//single-synchro Hold no wait
-            using queue = fdapde::Synchro_queue<std::string,fdapde::hold_nowait>;
+            using queue = fdapde::synchro_queue<std::string,fdapde::hold_nowait>;
             queue q(tot_elem);
             //push_front 0
             start = std::chrono::high_resolution_clock::now();
@@ -318,7 +318,7 @@ int main(int argc, char** argv){
             s_h_single[3].push_back(std::chrono::duration_cast<std::chrono::microseconds>(end - start));  
         }
         {//single-synchro Hold wait
-            using queue = fdapde::Synchro_queue<std::string,fdapde::hold_wait>;
+            using queue = fdapde::synchro_queue<std::string,fdapde::hold_wait>;
             queue q(tot_elem);
             //push_front 0
             start = std::chrono::high_resolution_clock::now();
@@ -376,7 +376,7 @@ int main(int argc, char** argv){
             thread_pool.clear();
         }
         {// multi-hold_npwait
-            using queue = fdapde::Synchro_queue<std::string,fdapde::hold_nowait>;
+            using queue = fdapde::synchro_queue<std::string,fdapde::hold_nowait>;
             queue q(tot_elem);
             std::vector<std::thread> thread_pool;
             //push front 0
@@ -409,7 +409,7 @@ int main(int argc, char** argv){
             thread_pool.clear();
         }
         {// multi-relax
-            using queue = fdapde::Synchro_queue<std::string,fdapde::relax>;
+            using queue = fdapde::synchro_queue<std::string,fdapde::relax>;
             queue q(tot_elem);
             std::vector<std::thread> thread_pool;
             //push front 0
@@ -442,7 +442,7 @@ int main(int argc, char** argv){
             thread_pool.clear();
         }
         {// multi-hold_wait
-            using queue = fdapde::Synchro_queue<std::string,fdapde::hold_wait>;
+            using queue = fdapde::synchro_queue<std::string,fdapde::hold_wait>;
             queue q(tot_elem);
             std::vector<std::thread> thread_pool;
             //push front 0
@@ -476,9 +476,9 @@ int main(int argc, char** argv){
         }
         {// multi-RANDOM
             using d = Worker_queue_deque<std::string>;
-            using q_r = fdapde::Synchro_queue<std::string,fdapde::relax>;
-            using q_h = fdapde::Synchro_queue<std::string,fdapde::hold_nowait>;
-            using q_hw = fdapde::Synchro_queue<std::string,fdapde::hold_wait>;
+            using q_r = fdapde::synchro_queue<std::string,fdapde::relax>;
+            using q_h = fdapde::synchro_queue<std::string,fdapde::hold_nowait>;
+            using q_hw = fdapde::synchro_queue<std::string,fdapde::hold_wait>;
             d d_;
             q_r q_r_(2*tot_elem);
             q_h q_h_(2*tot_elem);
@@ -529,7 +529,7 @@ int main(int argc, char** argv){
             thread_pool.clear();        
         }
     }
-    std::cout<<"===========TEST DEQUE VS SYNCHRO_QUEUE======================================================================================================================================================================================"<<std::endl;
+    std::cout<<"===========TEST DEQUE VS sYNCHRO_QUEUE======================================================================================================================================================================================"<<std::endl;
     std::cout<<"=============== tot_elem: "<<tot_elem<<"===================================================================================================="<<std::endl;
     std::vector<std::string> names = {"Push_Front:","Push_Back:","Pop_Front:","Pop_Back:"};
 if(n_thread == 2){

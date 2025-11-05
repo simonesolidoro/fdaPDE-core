@@ -28,7 +28,7 @@ void push_front_di_n_elem_d(Worker_queue_deque<value> & q,int n, value el){
     }
 };
 
-void push_front_di_n_elem_s(fdapde::Synchro_queue<value,fdapde::relax> & q,int n, value el){
+void push_front_di_n_elem_s(fdapde::synchro_queue<value,fdapde::relax> & q,int n, value el){
     for (int j=0; j<n; j++){
         std::this_thread::sleep_for(std::chrono::microseconds(1));
         q.push_front(el);
@@ -42,7 +42,7 @@ int main(int argc, char** argv){
     int n_singolo= size_coda / n_thread;
 
     Worker_queue_deque<value> q1;
-    fdapde::Synchro_queue<value,fdapde::relax> q2(size_coda);
+    fdapde::synchro_queue<value,fdapde::relax> q2(size_coda);
 
     std::vector<std::thread> thread_pool;
     std::vector<std::thread> thread_pool2;
