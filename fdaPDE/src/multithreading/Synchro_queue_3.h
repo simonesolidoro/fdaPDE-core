@@ -43,7 +43,7 @@ namespace fdapde{
 
     template<typename T>
     struct elem<T,hold_nowait>{
-        int state_ = true; //1 == true == empty, 0 == false == full
+        int state_ = true; //1 == true == empty, 0 == false == full. relying on the implicit int-to-bool conversion
         std::optional<T> v_;
         mutable std::mutex m_el_;
         std::condition_variable cv_ready_to_push_;
