@@ -21,58 +21,58 @@
 namespace fdapde{
     //definition of friend function to move index
     template<typename T,typename M> 
-    int push_f_indx(Synchro_queue<T,M> & S){
+    int push_b_indx(Synchro_queue<T,M> & S){
         if constexpr(std::is_same_v<M,hold_nowait> || std::is_same_v<M,hold_wait>){ //
             if (S.head_ == S.tail_ && !S.empty_queue_ ){return -1;}
             S.empty_queue_ = false; //maybe already false, so redundant, but avoids if(empty_queue_) {empty_queue_ = false;} 
         }
-        int h = S.head_; //index to return
+        int h = S.tail_; //index to return
         if constexpr(std::is_same_v<M,relax>){
             if(S.queue_[h].state_.load(std::memory_order_acquire) != Synchro_queue<T,relax>::Empty)
                 return -1;
             S.queue_[h].state_.store(Synchro_queue<T,relax>::Busy, std::memory_order_relaxed); 
         }
-        S.head_ = (S.head_ == S.size_-1)? (0) : (S.head_ + 1); //head_++
+        S.tail_ = (S.tail_ == S.size_-1)? (0) : (S.tail_ + 1); //tail_++
         return h;
     };
 
     template<typename T,typename M> 
-    int pop_f_indx(Synchro_queue<T,M> & S){
+    int pop_b_indx(Synchro_queue<T,M> & S){
         if constexpr(std::is_same_v<M,hold_nowait> || std::is_same_v<M,hold_wait> ){
             if (S.empty_queue_){
                 return -1;
             }
         }
-        int new_head = (S.head_== 0)? (S.size_-1) : (S.head_-1);
+        int new_tail = (S.tail_== 0)? (S.size_-1) : (S.tail_-1);
         if constexpr(std::is_same_v<M,relax>){
-            if(S.queue_[new_head].state_.load(std::memory_order_acquire) != Synchro_queue<T,relax>::Full)
+            if(S.queue_[new_tail].state_.load(std::memory_order_acquire) != Synchro_queue<T,relax>::Full)
                 return -1;
-            S.queue_[new_head].state_.store(Synchro_queue<T,relax>::Busy, std::memory_order_relaxed);
+            S.queue_[new_tail].state_.store(Synchro_queue<T,relax>::Busy, std::memory_order_relaxed);
         }
-        S.head_ = new_head; 
+        S.tail_ = new_tail; 
         if constexpr(std::is_same_v<M,hold_nowait> || std::is_same_v<M,hold_wait>){
             if(S.head_==S.tail_) {S.empty_queue_ = true;} 
-            S.queue_[new_head].count_pop_ ++;
+            S.queue_[new_tail].count_pop_ ++;
         }
         return new_head;
     };
 
     template<typename T, typename M>
-    int push_b_indx(Synchro_queue<T,M> & S){
+    int push_f_indx(Synchro_queue<T,M> & S){
         if constexpr(std::is_same_v<M,hold_nowait> || std::is_same_v<M,hold_wait>){
             if (S.head_ == S.tail_ && !S.empty_queue_ ){
                 return -1;
             }
             S.empty_queue_ = false;
         }
-        int new_tail = (S.tail_ == 0)? (S.size_-1) : (S.tail_ -1);
+        int new_head = (S.head_ == 0)? (S.size_-1) : (S.head_ -1);
         if constexpr(std::is_same_v<M,relax>){
-            if(S.queue_[new_tail].state_.load(std::memory_order_acquire) != Synchro_queue<T,relax>::Empty)
+            if(S.queue_[new_head].state_.load(std::memory_order_acquire) != Synchro_queue<T,relax>::Empty)
                 return -1;
-            S.queue_[new_tail].state_.store(Synchro_queue<T,relax>::Busy, std::memory_order_relaxed);
+            S.queue_[new_head].state_.store(Synchro_queue<T,relax>::Busy, std::memory_order_relaxed);
         }
-        S.tail_ = new_tail;                         
-        return new_tail;
+        S.head_ = new_head;                         
+        return new_head;
     };
 
     template<typename T,typename M>
@@ -82,18 +82,18 @@ namespace fdapde{
                 return -1;
             }
         }
-        int t = S.tail_; 
+        int h = S.head_; 
         if constexpr(std::is_same_v<M,relax>){
-            if(S.queue_[t].state_.load(std::memory_order_acquire) != Synchro_queue<T,relax>::Full)
+            if(S.queue_[h].state_.load(std::memory_order_acquire) != Synchro_queue<T,relax>::Full)
                 return -1;
-            S.queue_[t].state_.store(Synchro_queue<T,relax>::Busy, std::memory_order_relaxed);
+            S.queue_[h].state_.store(Synchro_queue<T,relax>::Busy, std::memory_order_relaxed);
         }
-        S.tail_ = (S.tail_ == S.size_-1)? (0):(S.tail_+1);
+        S.head_ = (S.head_ == S.size_-1)? (0):(S.head_+1);
         if constexpr(std::is_same_v<M,hold_nowait> || std::is_same_v<M,hold_wait>){
             if(S.head_==S.tail_) {S.empty_queue_ = true;}
-            S.queue_[t].count_pop_ ++;
+            S.queue_[h].count_pop_ ++;
         }   
-        return t;
+        return h;
     };
 
     // helper function to push/pop
