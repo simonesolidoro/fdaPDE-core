@@ -43,7 +43,7 @@ namespace fdapde{
 
     template<typename T>
     struct elem<T,hold_nowait>{
-        bool state_ = true; //true = empty, false = full
+        int state_ = true; //1 == true == empty, 0 == false == full
         std::optional<T> v_;
         mutable std::mutex m_el_;
         std::condition_variable cv_ready_to_push_;
@@ -82,16 +82,16 @@ namespace fdapde{
         typedef std::vector<elem<value_type,relax>> container;
         private:
             container queue_;
-            int head_ = 0; //indx of 1 over "first" element
-            int tail_ = 0; //indx of "last" element
+            int head_ = 0; //indx of first element
+            int tail_ = 0; //indx of 1 over last element
             int size_ = 0;
             mutable std::mutex m_;
 
         public:
             //enumerator state of elem.  
-            static constexpr char Empty = 'e';
-            static constexpr char Busy = 'b';
-            static constexpr char Full = 'f';
+            static constexpr int Empty = 1; //true 1
+            static constexpr int Busy = 2;
+            static constexpr int Full = 0; //false 0
             // default constructor 
             Synchro_queue() = default;
             // construct whit size of queue_=n;
@@ -99,10 +99,11 @@ namespace fdapde{
                 size_ = n;
             }
             //construct from vector, array, list
+            //TODO: valori di head e tail da impostare mancano !!!!!!!!!!!
             template <typename Iterator>
             requires internals::vector_array_list<Iterator,T>
             Synchro_queue(Iterator begin, Iterator end){
-                int n = std::distance(begin, end); //itertor di list doesn't support "end-begin"
+                int n = std::distance(begin, end); //itertor of list doesn't support "end-begin"
                 std::vector<elem<T,relax>> temp_queue(n);
                 for(int i =0; i<n;i++){
                     temp_queue[i].state_.store(Full);
@@ -155,33 +156,33 @@ namespace fdapde{
             friend int pop_b_indx<T,relax>(Synchro_queue<T,relax> & S);
 
 
-            bool push_front(value_type t){
+            bool push_front(value_type val){
                 std::unique_lock<std::mutex> loc(m_);
                 int h = push_f_indx<T,relax>(*this);//h = index where to perform push 
                 loc.unlock();
                 if(h<0) return false; //extra-check due to refactorig
                 //push 
-                push_fb_push<T,relax>(queue_[h], t);
+                push_fb_push<T,relax>(queue_[h], val);
                 return true; 
             }
 
             std::optional<value_type> pop_front(){
                 std::unique_lock<std::mutex> loc(m_);
-                int new_head = pop_f_indx<T,relax>(*this);
+                int h = pop_f_indx<T,relax>(*this);//h = index where to perform pop 
                 loc.unlock();
-                if(new_head<0) return std::nullopt;
+                if(h<0) return std::nullopt; //extra-check due to refactorig
                 // pop 
-                value_type ret = pop_fb_pop<T,relax>(queue_[new_head]);
+                value_type ret = pop_fb_pop<T,relax>(queue_[h]);
                 return ret;
             }
 
-            bool push_back(value_type t){
+            bool push_back(value_type val){
                 std::unique_lock<std::mutex> loc(m_);
-                int new_tail = push_b_indx<T,relax>(*this);
+                int t = push_b_indx<T,relax>(*this);
                 loc.unlock();
-                if(new_tail<0) return false;
+                if(t<0) return false;
 
-                push_fb_push<T,relax>(queue_[new_tail], t);                
+                push_fb_push<T,relax>(queue_[t], val);                
                 return true;
             }
 
@@ -222,8 +223,8 @@ namespace fdapde{
         typedef std::vector<elem<value_type,hold_nowait>> container;
         private:
             container queue_;
-            int head_ = 0; //indx of 1 over "first" element
-            int tail_ = 0; //indx of "last" element
+            int head_ = 0;//indx of first element 
+            int tail_ = 0;//indx of 1 over last element
             int size_ = 0;
             bool empty_queue_ = true; 
             mutable std::mutex m_;
@@ -236,6 +237,7 @@ namespace fdapde{
                 size_ = n;
             }
             // constructor from list array vector
+            //TODO: head e tail da impostare !!!!!!!!!!!!!!!
             template <typename Iterator>
             requires internals::vector_array_list<Iterator,T>
             Synchro_queue(Iterator begin, Iterator end){
@@ -305,16 +307,16 @@ namespace fdapde{
             friend int push_b_indx<T,hold_nowait>(Synchro_queue<T,hold_nowait> & S);
             friend int pop_b_indx<T,hold_nowait>(Synchro_queue<T,hold_nowait> & S);
 
-            bool push_front(value_type t){
+            bool push_front(value_type val){
                 std::unique_lock<std::mutex> loc(m_);
                 int h = push_f_indx<T,hold_nowait>(*this);
                 loc.unlock();
                 if(h<0) return false;
 
                 std::unique_lock<std::mutex> loc_el(queue_[h].m_el_);
-                queue_[h].cv_ready_to_push_.wait(loc_el,[this,h](){return queue_[h].state_ || !active_;}); // to be sure state_ = true (empty)
+                queue_[h].cv_ready_to_push_.wait(loc_el,[this,h](){return queue_[h].state_ || !active_;}); // to be sure state_ == true == 1 (empty)
                 if(!active_){return false;}
-                push_fb_push<T,hold_nowait>(queue_[h],t);
+                push_fb_push<T,hold_nowait>(queue_[h],val);
                 loc_el.unlock();
                 queue_[h].cv_ready_to_pop_.notify_one(); // notification of any waiting pop on the same element
                 return true; 
@@ -322,32 +324,32 @@ namespace fdapde{
 
             std::optional<value_type> pop_front(){
                 std::unique_lock<std::mutex> loc(m_);
-                int new_head = pop_f_indx<T,hold_nowait>(*this);
+                int h = pop_f_indx<T,hold_nowait>(*this);
                 loc.unlock();
-                if(new_head<0) return std::nullopt;
+                if(h<0) return std::nullopt;
 
-                std::unique_lock<std::mutex> loc_el(queue_[new_head].m_el_);
-                queue_[new_head].cv_ready_to_pop_.wait(loc_el,[this,new_head](){return !queue_[new_head].state_ || !active_;});
+                std::unique_lock<std::mutex> loc_el(queue_[h].m_el_);
+                queue_[h].cv_ready_to_pop_.wait(loc_el,[this,h](){return !queue_[h].state_ || !active_;});
                 if(!active_) return std::nullopt;
                 // pop 
-                value_type ret = pop_fb_pop<T,hold_nowait>(queue_[new_head]);
+                value_type ret = pop_fb_pop<T,hold_nowait>(queue_[h]);
                 loc_el.unlock();  
-                queue_[new_head].cv_ready_to_push_.notify_one();              
+                queue_[h].cv_ready_to_push_.notify_one();              
                 return ret;                  
             }
 
-            bool push_back(value_type t){
+            bool push_back(value_type val){
                 std::unique_lock<std::mutex> loc(m_);
-                int new_tail = push_b_indx<T,hold_nowait>(*this);
+                int t = push_b_indx<T,hold_nowait>(*this);
                 loc.unlock();
-                if(new_tail<0) return false;
+                if(t<0) return false;
 
-                std::unique_lock<std::mutex> loc_el(queue_[new_tail].m_el_);
-                queue_[new_tail].cv_ready_to_push_.wait(loc_el,[this,new_tail](){return queue_[new_tail].state_ || !active_;});
+                std::unique_lock<std::mutex> loc_el(queue_[t].m_el_);
+                queue_[t].cv_ready_to_push_.wait(loc_el,[this,t](){return queue_[t].state_ || !active_;});
                 if(!active_){return false;}
-                push_fb_push<T,hold_nowait>(queue_[new_tail],t);
+                push_fb_push<T,hold_nowait>(queue_[t],val);
                 loc_el.unlock();
-                queue_[new_tail].cv_ready_to_pop_.notify_one();
+                queue_[t].cv_ready_to_pop_.notify_one();
 
                 return true;
             }
@@ -393,8 +395,8 @@ namespace fdapde{
         typedef std::vector<elem<value_type,hold_wait>> container;
         private:
             container queue_;
-            int head_ = 0; //indx of 1 over "first" element
-            int tail_ = 0; //indx of "last" element
+            int head_ = 0; //indx of first element
+            int tail_ = 0; //indx of 1 over last element
             int size_ = 0;
             bool empty_queue_ = true; 
             mutable std::mutex m_;
@@ -409,6 +411,7 @@ namespace fdapde{
                 size_ = n;
             }
             // constructor from list array vector
+            //TODO: head e tail !!!!!!!!!!!!!!!!!!!!!!!!!!!!!
             template <typename Iterator>
             requires internals::vector_array_list<Iterator,T>
             Synchro_queue(Iterator begin, Iterator end){
@@ -479,7 +482,7 @@ namespace fdapde{
             friend int push_b_indx<T,hold_wait>(Synchro_queue<T,hold_wait> & S);
             friend int pop_b_indx<T,hold_wait>(Synchro_queue<T,hold_wait> & S);
 
-            bool push_front(value_type t){
+            bool push_front(value_type val){
                 std::unique_lock<std::mutex> loc(m_);
                 int h = push_f_indx<T,hold_wait>(*this);
                 loc.unlock();
@@ -489,16 +492,16 @@ namespace fdapde{
                 std::unique_lock<std::mutex> loc_el(queue_[h].m_el_);
                 queue_[h].cv_ready_to_push_.wait(loc_el,[this,h](){return queue_[h].state_ || !active_;});
                 if(!active_){return false;}
-                push_fb_push<T,hold_wait>(queue_[h],t);
+                push_fb_push<T,hold_wait>(queue_[h],val);
                 loc_el.unlock();
                 queue_[h].cv_ready_to_pop_.notify_one();
             
                 return true; 
             }
 
-            bool push_front_or_wait_for(value_type t, int s){
+            bool push_front_or_wait_for(value_type val, int s){
                 std::unique_lock<std::mutex> loc(m_);
-                bool flag  = cv_can_push_.wait_for(loc,std::chrono::seconds(s),[this](){return !this->active_ ||  this->head_ != this->tail_ || this->empty_queue_;});
+                bool flag  = cv_can_push_.wait_for(loc,std::chrono::seconds(s),[this](){return !this->active_ ||  this->head_ != this->tail_ || this->empty_queue_;}); // head != tail implica sicuro non pieno, poi empty_queue perche head==tail magari per vuoto
                 if(!active_){return false;}
                 if(!flag){return false;}
                 int h = push_f_indx<T,hold_wait>(*this);
@@ -508,14 +511,14 @@ namespace fdapde{
                 std::unique_lock<std::mutex> loc_el(queue_[h].m_el_);
                 queue_[h].cv_ready_to_push_.wait(loc_el,[this,h](){return queue_[h].state_ || !active_;}); 
                 if(!active_){return false;}
-                push_fb_push<T,hold_wait>(queue_[h],t);
+                push_fb_push<T,hold_wait>(queue_[h],val);
                 loc_el.unlock();
                 queue_[h].cv_ready_to_pop_.notify_one();
                 return true; 
 
             }
 
-            bool push_front_or_wait(value_type t){
+            bool push_front_or_wait(value_type val){
                 std::unique_lock<std::mutex> loc(m_);
                 cv_can_push_.wait(loc,[this](){return !this->active_ ||  this->head_ != this->tail_ || this->empty_queue_;});
                 if(!active_){return false;}
@@ -526,7 +529,7 @@ namespace fdapde{
                 std::unique_lock<std::mutex> loc_el(queue_[h].m_el_);
                 queue_[h].cv_ready_to_push_.wait(loc_el,[this,h](){return queue_[h].state_ || !this->active_;}); 
                 if(!active_){return false;}
-                push_fb_push<T,hold_wait>(queue_[h],t);
+                push_fb_push<T,hold_wait>(queue_[h],val);
                 loc_el.unlock();
                 queue_[h].cv_ready_to_pop_.notify_one();
             
@@ -536,18 +539,18 @@ namespace fdapde{
 
             std::optional<value_type> pop_front(){
                 std::unique_lock<std::mutex> loc(m_);
-                int new_head = pop_f_indx<T,hold_wait>(*this);
+                int h = pop_f_indx<T,hold_wait>(*this);
                 loc.unlock();
                 cv_can_push_.notify_one();
-                if(new_head<0) return std::nullopt;
+                if(h<0) return std::nullopt;
 
-                std::unique_lock<std::mutex> loc_el(queue_[new_head].m_el_);
-                queue_[new_head].cv_ready_to_pop_.wait(loc_el,[this,new_head](){return !queue_[new_head].state_ || !this->active_;});
+                std::unique_lock<std::mutex> loc_el(queue_[h].m_el_);
+                queue_[h].cv_ready_to_pop_.wait(loc_el,[this,h](){return !queue_[h].state_ || !this->active_;});
                 if(!active_) return std::nullopt;
                 // pop 
-                value_type ret = pop_fb_pop<T,hold_wait>(queue_[new_head]); 
+                value_type ret = pop_fb_pop<T,hold_wait>(queue_[h]); 
                 loc_el.unlock();  
-                queue_[new_head].cv_ready_to_push_.notify_one();              
+                queue_[h].cv_ready_to_push_.notify_one();              
                 return ret;
                 
             }
@@ -557,17 +560,17 @@ namespace fdapde{
                 bool flag = cv_can_pop_.wait_for(loc,std::chrono::seconds(s),[this](){return !this->active_ || !this->empty_queue_;});
                 if(!active_) return std::nullopt;
                 if(!flag){return std::nullopt;}
-                int new_head = pop_f_indx<T,hold_wait>(*this);
+                int h = pop_f_indx<T,hold_wait>(*this);
                 loc.unlock();
                 cv_can_push_.notify_one();
 
-                std::unique_lock<std::mutex> loc_el(queue_[new_head].m_el_);
-                queue_[new_head].cv_ready_to_pop_.wait(loc_el,[this,new_head](){return !queue_[new_head].state_ || !this->active_;});
+                std::unique_lock<std::mutex> loc_el(queue_[h].m_el_);
+                queue_[h].cv_ready_to_pop_.wait(loc_el,[this,h](){return !queue_[h].state_ || !this->active_;});
                 if(!active_) return std::nullopt;
                 // pop 
-                value_type ret = pop_fb_pop<T,hold_wait>(queue_[new_head]);
+                value_type ret = pop_fb_pop<T,hold_wait>(queue_[h]);
                 loc_el.unlock(); 
-                queue_[new_head].cv_ready_to_push_.notify_one();               
+                queue_[h].cv_ready_to_push_.notify_one();               
                 return ret;  
             }
 
@@ -575,68 +578,68 @@ namespace fdapde{
                 std::unique_lock<std::mutex> loc(m_);
                 cv_can_pop_.wait(loc,[this](){return !this->active_ || !this->empty_queue_;});
                 if(!active_) return std::nullopt;
-                int new_head = pop_f_indx<T,hold_wait>(*this);
+                int h = pop_f_indx<T,hold_wait>(*this);
                 loc.unlock();
                 cv_can_push_.notify_one();
 
-                std::unique_lock<std::mutex> loc_el(queue_[new_head].m_el_);
-                queue_[new_head].cv_ready_to_pop_.wait(loc_el,[this,new_head](){return !queue_[new_head].state_ || !this->active_;});
+                std::unique_lock<std::mutex> loc_el(queue_[h].m_el_);
+                queue_[h].cv_ready_to_pop_.wait(loc_el,[this,h](){return !queue_[h].state_ || !this->active_;});
                 if(!active_) return std::nullopt;
                 // pop 
-                value_type ret = pop_fb_pop<T,hold_wait>(queue_[new_head]);
+                value_type ret = pop_fb_pop<T,hold_wait>(queue_[h]);
                 loc_el.unlock();     
-                queue_[new_head].cv_ready_to_push_.notify_one();           
+                queue_[h].cv_ready_to_push_.notify_one();           
                 return ret;
             }
              
-            bool push_back(value_type t){
+            bool push_back(value_type val){
                 std::unique_lock<std::mutex> loc(m_);
-                int new_tail = push_b_indx<T,hold_wait>(*this);
+                int t = push_b_indx<T,hold_wait>(*this);
                 loc.unlock();
                 cv_can_pop_.notify_one();
-                if(new_tail<0) return false;
+                if(t<0) return false;
 
-                std::unique_lock<std::mutex> loc_el(queue_[new_tail].m_el_);
-                queue_[new_tail].cv_ready_to_push_.wait(loc_el,[this,new_tail](){return queue_[new_tail].state_ || !this->active_;});
+                std::unique_lock<std::mutex> loc_el(queue_[t].m_el_);
+                queue_[t].cv_ready_to_push_.wait(loc_el,[this,t](){return queue_[t].state_ || !this->active_;});
                 if(!active_){return false;}
-                push_fb_push<T,hold_wait>(queue_[new_tail],t);
+                push_fb_push<T,hold_wait>(queue_[t],val);
                 loc_el.unlock();
-                queue_[new_tail].cv_ready_to_pop_.notify_one();
+                queue_[t].cv_ready_to_pop_.notify_one();
                 return true;
             }
 
-            bool push_back_or_wait_for(value_type t, int s){
+            bool push_back_or_wait_for(value_type val, int s){
                 std::unique_lock<std::mutex> loc(m_);
                 bool flag = cv_can_push_.wait_for(loc,std::chrono::seconds(s),[this](){return !this->active_ || this->head_ != this->tail_ || this->empty_queue_;});
                 if(!active_){return false;}
                 if(!flag){return false;}
-                int new_tail = push_b_indx<T,hold_wait>(*this);
+                int t = push_b_indx<T,hold_wait>(*this);
                 loc.unlock();
                 cv_can_pop_.notify_one();
 
-                std::unique_lock<std::mutex> loc_el(queue_[new_tail].m_el_);
-                queue_[new_tail].cv_ready_to_push_.wait(loc_el,[this,new_tail](){return queue_[new_tail].state_ || !this->active_;});
+                std::unique_lock<std::mutex> loc_el(queue_[t].m_el_);
+                queue_[t].cv_ready_to_push_.wait(loc_el,[this,t](){return queue_[t].state_ || !this->active_;});
                 if(!active_){return false;}
-                push_fb_push<T,hold_wait>(queue_[new_tail],t);
+                push_fb_push<T,hold_wait>(queue_[t],val);
                 loc_el.unlock();
-                queue_[new_tail].cv_ready_to_pop_.notify_one();
+                queue_[t].cv_ready_to_pop_.notify_one();
                 return true;
             }
 
-            bool push_back_or_wait(value_type t){
+            bool push_back_or_wait(value_type val){
                 std::unique_lock<std::mutex> loc(m_);
                 cv_can_push_.wait(loc,[this](){return !this->active_ || this->head_ != this->tail_ || this->empty_queue_;});
                 if(!active_){return false;}
-                int new_tail = push_b_indx<T,hold_wait>(*this);
+                int t = push_b_indx<T,hold_wait>(*this);
                 loc.unlock();
                 cv_can_pop_.notify_one();
 
-                std::unique_lock<std::mutex> loc_el(queue_[new_tail].m_el_);
-                queue_[new_tail].cv_ready_to_push_.wait(loc_el,[this,new_tail](){return queue_[new_tail].state_ || !this->active_;});
+                std::unique_lock<std::mutex> loc_el(queue_[t].m_el_);
+                queue_[t].cv_ready_to_push_.wait(loc_el,[this,t](){return queue_[t].state_ || !this->active_;});
                 if(!active_){return false;};
-                push_fb_push<T,hold_wait>(queue_[new_tail],t);
+                push_fb_push<T,hold_wait>(queue_[t],val);
                 loc_el.unlock();
-                queue_[new_tail].cv_ready_to_pop_.notify_one();
+                queue_[t].cv_ready_to_pop_.notify_one();
                 return true;
             }
 

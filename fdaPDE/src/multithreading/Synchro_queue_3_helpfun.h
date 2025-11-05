@@ -54,7 +54,7 @@ namespace fdapde{
             if(S.head_==S.tail_) {S.empty_queue_ = true;} 
             S.queue_[new_tail].count_pop_ ++;
         }
-        return new_head;
+        return new_tail;
     };
 
     template<typename T, typename M>
@@ -76,7 +76,7 @@ namespace fdapde{
     };
 
     template<typename T,typename M>
-    int pop_b_indx(Synchro_queue<T,M> & S){
+    int pop_f_indx(Synchro_queue<T,M> & S){
         if constexpr(std::is_same_v<M,hold_nowait> || std::is_same_v<M,hold_wait>){
             if(S.empty_queue_ ){
                 return -1;
