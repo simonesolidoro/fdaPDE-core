@@ -98,7 +98,7 @@ namespace fdapde{
 
     // helper function to push/pop
     template<typename T,typename M> 
-    void push_fb_push(elem<T,M>& E, T& new_value){ 
+    void push_fb_push(typename synchro_queue<T,M>::elem & E, T& new_value){ 
         E.v_ = std::move(new_value);
         if constexpr(std::is_same_v<M,relax>){
             E.state_.store(synchro_queue<T,relax>::Full, std::memory_order_release); 
@@ -109,7 +109,7 @@ namespace fdapde{
     };
 
     template<typename T,typename M> 
-    T pop_fb_pop(elem<T,M>& E){
+    T pop_fb_pop(typename synchro_queue<T,M>::elem & E){
         T ret = std::move(E.v_.value());
         E.v_ = std::nullopt;
         if constexpr(std::is_same_v<M,relax>){

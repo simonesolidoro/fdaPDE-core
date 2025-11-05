@@ -28,31 +28,13 @@ namespace fdapde{
         concept vector_array_list = std::contiguous_iterator<Iterator> || std::same_as<Iterator, typename std::list<T>::iterator> ;
     }
 
+    //access_model:
     struct relax{};
     struct hold_nowait{};
     struct hold_wait{};
+
     //forward declaration
-    template<typename T, typename E> class synchro_queue;
-    template<typename T,typename M> struct elem;
-
-    template<typename T>
-    struct elem<T,relax>{
-        std::atomic<char> state_ = synchro_queue<T,relax>::Empty; 
-        std::optional<T> v_;
-    };
-
-    template<typename T>
-    struct elem<T,hold_nowait>{
-        int state_ = true; //1 == true == empty, 0 == false == full. relying on the implicit int-to-bool conversion
-        std::optional<T> v_;
-        mutable std::mutex m_el_;
-        std::condition_variable cv_ready_to_push_;
-        std::condition_variable cv_ready_to_pop_; 
-        int count_pop_ = 0; 
-    };
-
-    template<typename T>
-    struct elem<T,hold_wait> : elem<T,hold_nowait>{};
+    template<typename value_type, typename access_model> class synchro_queue;
 
 
     //forward declaration of helper function: index
@@ -70,17 +52,22 @@ namespace fdapde{
 
     //forward declaration of helper function: push/pop 
     template<typename T,typename M> 
-    void push_fb_push(elem<T,M>& E,T& new_value);
+    void push_fb_push(typename synchro_queue<T,M>::elem & E,T& new_value);
 
     template<typename T,typename M> 
-    T pop_fb_pop(elem<T,M>& E);
+    T pop_fb_pop(typename synchro_queue<T,M>::elem & E);
 
     template<typename T>
     class synchro_queue<T,relax>{
         using value_type = T;
-        
-        typedef std::vector<elem<value_type,relax>> container;
+        public:
+            // elem relax
+            struct elem{
+                std::atomic<int> state_ = synchro_queue<T,relax>::Empty; 
+                std::optional<T> v_;
+            };
         private:
+            typedef std::vector<elem> container;
             container queue_;
             int head_ = 0; //indx of first element
             int tail_ = 0; //indx of 1 over last element
@@ -103,7 +90,7 @@ namespace fdapde{
             requires internals::vector_array_list<Iterator,T>
             synchro_queue(Iterator begin, Iterator end){
                 int n = std::distance(begin, end); //itertor of list doesn't support "end-begin"
-                std::vector<elem<T,relax>> temp_queue(n);
+                std::vector<elem> temp_queue(n);
                 for(int i =0; i<n;i++){
                     temp_queue[i].state_.store(Full);
                     temp_queue[i].v_ = *(begin);
@@ -118,7 +105,7 @@ namespace fdapde{
         
             void resize(int n){
                 std::lock_guard<std::mutex> loc(m_);
-                std::vector<elem<T,relax>> temp_queue(n);
+                std::vector<elem> temp_queue(n);
                 std::swap(queue_, temp_queue);
                 size_ = n;
                 head_ = 0;
@@ -218,9 +205,18 @@ namespace fdapde{
     template <typename T>  
     class synchro_queue<T,hold_nowait>{
         using value_type = T;
-
-        typedef std::vector<elem<value_type,hold_nowait>> container;
+        public:
+            // elem hold
+            struct elem{
+                int state_ = true; //1 == true == empty, 0 == false == full. relying on the implicit int-to-bool conversion
+                std::optional<value_type> v_;
+                mutable std::mutex m_el_;
+                std::condition_variable cv_ready_to_push_;
+                std::condition_variable cv_ready_to_pop_; 
+                int count_pop_ = 0; 
+            };
         private:
+            typedef std::vector<elem> container;
             container queue_;
             int head_ = 0;//indx of first element 
             int tail_ = 0;//indx of 1 over last element
@@ -240,7 +236,7 @@ namespace fdapde{
             requires internals::vector_array_list<Iterator,T>
             synchro_queue(Iterator begin, Iterator end){
                 int n = std::distance(begin, end); 
-                std::vector<elem<value_type,hold_nowait>> temp_queue(n);
+                std::vector<elem> temp_queue(n);
                 for(int i =0; i<n;i++){
                     temp_queue[i].state_ = false;
                     temp_queue[i].v_ = *(begin);
@@ -252,7 +248,7 @@ namespace fdapde{
             }
 
             ~synchro_queue(){
-                for(elem<T,hold_nowait> & e : queue_){
+                for(elem & e : queue_){
                     std::lock_guard<std::mutex> loc(e.m_el_); 
                     //modify active during mutex lock to ensure correct visibility (https://cppreference.net/cpp/thread/condition_variable :"Even if the shared variable is atomic, it must be modified while owning the mutex to correctly publish the modification to the waiting thread")
                     active_ = false; //operation repeated to ensure correct vision for everyone
@@ -267,7 +263,7 @@ namespace fdapde{
 
             void resize(int n){
                 std::lock_guard<std::mutex> loc(m_);
-                std::vector<elem<value_type,hold_nowait>> temp_queue(n);
+                std::vector<elem> temp_queue(n);
                 std::swap(queue_, temp_queue);
                 size_ = n;
                 head_ = 0;
@@ -389,9 +385,18 @@ namespace fdapde{
     template <typename T>  
     class synchro_queue<T, hold_wait>{
         using value_type = T;
-
-        typedef std::vector<elem<value_type,hold_wait>> container;
+        public:
+            // elem hold
+            struct elem{
+                int state_ = true; //1 == true == empty, 0 == false == full. relying on the implicit int-to-bool conversion
+                std::optional<value_type> v_;
+                mutable std::mutex m_el_;
+                std::condition_variable cv_ready_to_push_;
+                std::condition_variable cv_ready_to_pop_; 
+                int count_pop_ = 0; 
+            };
         private:
+            typedef std::vector<elem> container;
             container queue_;
             int head_ = 0; //indx of first element
             int tail_ = 0; //indx of 1 over last element
@@ -413,7 +418,7 @@ namespace fdapde{
             requires internals::vector_array_list<Iterator,T>
             synchro_queue(Iterator begin, Iterator end){
                 int n = std::distance(begin, end); 
-                std::vector<elem<value_type,hold_wait>> temp_queue(n);
+                std::vector<elem> temp_queue(n);
                 for(int i =0; i<n;i++){
                     temp_queue[i].state_ = false;
                     temp_queue[i].v_ = *(begin);
@@ -428,7 +433,7 @@ namespace fdapde{
                 active_ = false;
                 cv_can_pop_.notify_all();
                 cv_can_push_.notify_all();  
-                for(elem<T,hold_wait> & e : queue_){
+                for(elem & e : queue_){
                     std::lock_guard<std::mutex> loc_el(e.m_el_);
                     active_ = false; 
                     e.cv_ready_to_pop_.notify_all();
@@ -441,7 +446,7 @@ namespace fdapde{
 
             void resize(int n){
                 std::lock_guard<std::mutex> loc(m_);
-                std::vector<elem<value_type,hold_wait>> temp_queue(n);
+                std::vector<elem> temp_queue(n);
                 std::swap(queue_, temp_queue);
                 size_ = n;
                 head_ = 0;
