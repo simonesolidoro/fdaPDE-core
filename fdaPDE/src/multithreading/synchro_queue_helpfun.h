@@ -14,9 +14,9 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-#ifndef __synchro_queue_3_helpfun_H__
-#define __synchro_queue_3_helpfun_H__   
-#include"synchro_queue_3.h"
+#ifndef __synchro_queue_helpfun_H__
+#define __synchro_queue_helpfun_H__   
+#include"synchro_queue.h"
 
 namespace fdapde{
     //definition of friend function to move index
