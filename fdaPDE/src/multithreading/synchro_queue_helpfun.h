@@ -20,24 +20,24 @@
 
 namespace fdapde{
     //definition of friend function to move index
-    template<typename T,typename M> 
-    int push_b_indx(synchro_queue<T,M> & S){
+    template<typename value_type,typename M> 
+    int push_b_indx(synchro_queue<value_type,M> & S){
         if constexpr(std::is_same_v<M,hold_nowait> || std::is_same_v<M,hold_wait>){ //
             if (S.head_ == S.tail_ && !S.empty_queue_ ){return -1;}
             S.empty_queue_ = false; //maybe already false, so redundant, but avoids if(empty_queue_) {empty_queue_ = false;} 
         }
         int t = S.tail_; //index to return
         if constexpr(std::is_same_v<M,relax>){
-            if(S.queue_[t].state_.load(std::memory_order_acquire) != synchro_queue<T,relax>::Empty)
+            if(S.queue_[t].state_.load(std::memory_order_acquire) != synchro_queue<value_type,relax>::Empty)
                 return -1;
-            S.queue_[t].state_.store(synchro_queue<T,relax>::Busy, std::memory_order_relaxed); 
+            S.queue_[t].state_.store(synchro_queue<value_type,relax>::Busy, std::memory_order_relaxed); 
         }
         S.tail_ = (S.tail_ == S.size_-1)? (0) : (S.tail_ + 1); //tail_++
         return t;
     };
 
-    template<typename T,typename M> 
-    int pop_b_indx(synchro_queue<T,M> & S){
+    template<typename value_type,typename M> 
+    int pop_b_indx(synchro_queue<value_type,M> & S){
         if constexpr(std::is_same_v<M,hold_nowait> || std::is_same_v<M,hold_wait> ){
             if (S.empty_queue_){
                 return -1;
@@ -45,9 +45,9 @@ namespace fdapde{
         }
         int new_tail = (S.tail_== 0)? (S.size_-1) : (S.tail_-1);
         if constexpr(std::is_same_v<M,relax>){
-            if(S.queue_[new_tail].state_.load(std::memory_order_acquire) != synchro_queue<T,relax>::Full)
+            if(S.queue_[new_tail].state_.load(std::memory_order_acquire) != synchro_queue<value_type,relax>::Full)
                 return -1;
-            S.queue_[new_tail].state_.store(synchro_queue<T,relax>::Busy, std::memory_order_relaxed);
+            S.queue_[new_tail].state_.store(synchro_queue<value_type,relax>::Busy, std::memory_order_relaxed);
         }
         S.tail_ = new_tail; 
         if constexpr(std::is_same_v<M,hold_nowait> || std::is_same_v<M,hold_wait>){
@@ -57,8 +57,8 @@ namespace fdapde{
         return new_tail;
     };
 
-    template<typename T, typename M>
-    int push_f_indx(synchro_queue<T,M> & S){
+    template<typename value_type, typename M>
+    int push_f_indx(synchro_queue<value_type,M> & S){
         if constexpr(std::is_same_v<M,hold_nowait> || std::is_same_v<M,hold_wait>){
             if (S.head_ == S.tail_ && !S.empty_queue_ ){
                 return -1;
@@ -67,16 +67,16 @@ namespace fdapde{
         }
         int new_head = (S.head_ == 0)? (S.size_-1) : (S.head_ -1);
         if constexpr(std::is_same_v<M,relax>){
-            if(S.queue_[new_head].state_.load(std::memory_order_acquire) != synchro_queue<T,relax>::Empty)
+            if(S.queue_[new_head].state_.load(std::memory_order_acquire) != synchro_queue<value_type,relax>::Empty)
                 return -1;
-            S.queue_[new_head].state_.store(synchro_queue<T,relax>::Busy, std::memory_order_relaxed);
+            S.queue_[new_head].state_.store(synchro_queue<value_type,relax>::Busy, std::memory_order_relaxed);
         }
         S.head_ = new_head;                         
         return new_head;
     };
 
-    template<typename T,typename M>
-    int pop_f_indx(synchro_queue<T,M> & S){
+    template<typename value_type,typename M>
+    int pop_f_indx(synchro_queue<value_type,M> & S){
         if constexpr(std::is_same_v<M,hold_nowait> || std::is_same_v<M,hold_wait>){
             if(S.empty_queue_ ){
                 return -1;
@@ -84,9 +84,9 @@ namespace fdapde{
         }
         int h = S.head_; 
         if constexpr(std::is_same_v<M,relax>){
-            if(S.queue_[h].state_.load(std::memory_order_acquire) != synchro_queue<T,relax>::Full)
+            if(S.queue_[h].state_.load(std::memory_order_acquire) != synchro_queue<value_type,relax>::Full)
                 return -1;
-            S.queue_[h].state_.store(synchro_queue<T,relax>::Busy, std::memory_order_relaxed);
+            S.queue_[h].state_.store(synchro_queue<value_type,relax>::Busy, std::memory_order_relaxed);
         }
         S.head_ = (S.head_ == S.size_-1)? (0):(S.head_+1);
         if constexpr(std::is_same_v<M,hold_nowait> || std::is_same_v<M,hold_wait>){
@@ -97,26 +97,26 @@ namespace fdapde{
     };
 
     // helper function to push/pop
-    template<typename T,typename M> 
-    void push_fb_push(typename synchro_queue<T,M>::elem & E, T& new_value){ 
+    template<typename value_type,typename M> 
+    void push_fb_push(typename synchro_queue<value_type,M>::elem & E, value_type& new_value){ 
         E.v_ = std::move(new_value);
         if constexpr(std::is_same_v<M,relax>){
-            E.state_.store(synchro_queue<T,relax>::Full, std::memory_order_release); 
+            E.state_.store(synchro_queue<value_type,relax>::Full, std::memory_order_release); 
         }
         if constexpr(std::is_same_v<M,hold_nowait> || std::is_same_v<M,hold_wait>){
-            E.state_ = synchro_queue<T,hold_nowait>::Full; 
+            E.state_ = synchro_queue<value_type,hold_nowait>::Full; 
         }
     };
 
-    template<typename T,typename M> 
-    T pop_fb_pop(typename synchro_queue<T,M>::elem & E){
-        T ret = std::move(E.v_.value());
+    template<typename value_type,typename M> 
+    value_type pop_fb_pop(typename synchro_queue<value_type,M>::elem & E){
+        value_type ret = std::move(E.v_.value());
         E.v_ = std::nullopt;
         if constexpr(std::is_same_v<M,relax>){
-            E.state_.store(synchro_queue<T,relax>::Empty, std::memory_order_release);
+            E.state_.store(synchro_queue<value_type,relax>::Empty, std::memory_order_release);
         }
         if constexpr(std::is_same_v<M,hold_nowait> || std::is_same_v<M,hold_wait>){
-            E.state_ = synchro_queue<T,hold_nowait>::Empty;
+            E.state_ = synchro_queue<value_type,hold_nowait>::Empty;
             E.count_pop_ --;
         }
         return ret; 
