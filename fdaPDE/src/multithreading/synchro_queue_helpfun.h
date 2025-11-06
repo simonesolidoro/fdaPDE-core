@@ -27,10 +27,10 @@ namespace fdapde{
             S.empty_queue_ = false; //maybe already false, so redundant, but avoids if(empty_queue_) {empty_queue_ = false;} 
         }
         int t = S.tail_; //index to return
-        if constexpr(std::is_same_v<access_model,relax>){
-            if(S.queue_[t].state_.load(std::memory_order_acquire) != synchro_queue<value_type,relax>::Empty)
+        if constexpr(std::is_same_v<access_model,relaxed>){
+            if(S.queue_[t].state_.load(std::memory_order_acquire) != synchro_queue<value_type,relaxed>::Empty)
                 return -1;
-            S.queue_[t].state_.store(synchro_queue<value_type,relax>::Busy, std::memory_order_relaxed); 
+            S.queue_[t].state_.store(synchro_queue<value_type,relaxed>::Busy, std::memory_order_relaxed); 
         }
         S.tail_ = (S.tail_ == S.size_-1)? (0) : (S.tail_ + 1); //tail_++
         return t;
@@ -44,10 +44,10 @@ namespace fdapde{
             }
         }
         int new_tail = (S.tail_== 0)? (S.size_-1) : (S.tail_-1);
-        if constexpr(std::is_same_v<access_model,relax>){
-            if(S.queue_[new_tail].state_.load(std::memory_order_acquire) != synchro_queue<value_type,relax>::Full)
+        if constexpr(std::is_same_v<access_model,relaxed>){
+            if(S.queue_[new_tail].state_.load(std::memory_order_acquire) != synchro_queue<value_type,relaxed>::Full)
                 return -1;
-            S.queue_[new_tail].state_.store(synchro_queue<value_type,relax>::Busy, std::memory_order_relaxed);
+            S.queue_[new_tail].state_.store(synchro_queue<value_type,relaxed>::Busy, std::memory_order_relaxed);
         }
         S.tail_ = new_tail; 
         if constexpr(std::is_same_v<access_model,hold_nowait> || std::is_same_v<access_model,hold_wait>){
@@ -66,10 +66,10 @@ namespace fdapde{
             S.empty_queue_ = false;
         }
         int new_head = (S.head_ == 0)? (S.size_-1) : (S.head_ -1);
-        if constexpr(std::is_same_v<access_model,relax>){
-            if(S.queue_[new_head].state_.load(std::memory_order_acquire) != synchro_queue<value_type,relax>::Empty)
+        if constexpr(std::is_same_v<access_model,relaxed>){
+            if(S.queue_[new_head].state_.load(std::memory_order_acquire) != synchro_queue<value_type,relaxed>::Empty)
                 return -1;
-            S.queue_[new_head].state_.store(synchro_queue<value_type,relax>::Busy, std::memory_order_relaxed);
+            S.queue_[new_head].state_.store(synchro_queue<value_type,relaxed>::Busy, std::memory_order_relaxed);
         }
         S.head_ = new_head;                         
         return new_head;
@@ -84,9 +84,9 @@ namespace fdapde{
         }
         int h = S.head_; 
         if constexpr(std::is_same_v<access_model,relax>){
-            if(S.queue_[h].state_.load(std::memory_order_acquire) != synchro_queue<value_type,relax>::Full)
+            if(S.queue_[h].state_.load(std::memory_order_acquire) != synchro_queue<value_type,relaxed>::Full)
                 return -1;
-            S.queue_[h].state_.store(synchro_queue<value_type,relax>::Busy, std::memory_order_relaxed);
+            S.queue_[h].state_.store(synchro_queue<value_type,relaxed>::Busy, std::memory_order_relaxed);
         }
         S.head_ = (S.head_ == S.size_-1)? (0):(S.head_+1);
         if constexpr(std::is_same_v<access_model,hold_nowait> || std::is_same_v<access_model,hold_wait>){
@@ -100,8 +100,8 @@ namespace fdapde{
     template<typename value_type,typename access_model> 
     void push_fb_push(typename synchro_queue<value_type,access_model>::elem & E, value_type& new_value){ 
         E.v_ = std::move(new_value);
-        if constexpr(std::is_same_v<access_model,relax>){
-            E.state_.store(synchro_queue<value_type,relax>::Full, std::memory_order_release); 
+        if constexpr(std::is_same_v<access_model,relaxed>){
+            E.state_.store(synchro_queue<value_type,relaxed>::Full, std::memory_order_release); 
         }
         if constexpr(std::is_same_v<access_model,hold_nowait> || std::is_same_v<access_model,hold_wait>){
             E.state_ = synchro_queue<value_type,hold_nowait>::Full; 
@@ -112,7 +112,7 @@ namespace fdapde{
     value_type pop_fb_pop(typename synchro_queue<value_type,access_model>::elem & E){
         value_type ret = std::move(E.v_.value());
         E.v_ = std::nullopt;
-        if constexpr(std::is_same_v<access_model,relax>){
+        if constexpr(std::is_same_v<access_model,relaxed>){
             E.state_.store(synchro_queue<value_type,relax>::Empty, std::memory_order_release);
         }
         if constexpr(std::is_same_v<access_model,hold_nowait> || std::is_same_v<access_model,hold_wait>){

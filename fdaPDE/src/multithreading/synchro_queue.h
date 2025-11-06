@@ -29,7 +29,7 @@ namespace fdapde{
     }
 
     //access_model:
-    struct relax{};
+    struct relaxed{};
     struct hold_nowait{};
     struct hold_wait{};
 
@@ -58,11 +58,15 @@ namespace fdapde{
     value_type pop_fb_pop(typename synchro_queue<value_type,access_model>::elem & E);
 
     template<typename value_type>
-    class synchro_queue<value_type,relax>{
+    class synchro_queue<value_type,relaxed>{
         public:
-            // elem relax
+            //enumerator state of elem.  
+            static constexpr int Empty = 1; //true 1
+            static constexpr int Busy = 2;
+            static constexpr int Full = 0; //false 0
+            // elem relax. //oss: public per poter usarlo in helper function che fa effettivo push/pop come input, alternativa rendere friend anche la helper function dei pop/push (come quelle di index) e mettere privata
             struct elem{
-                std::atomic<int> state_ = synchro_queue<value_type,relax>::Empty; 
+                std::atomic<int> state_ = Empty; //synchro_queue<value_type,relax>::Empty; 
                 std::optional<value_type> v_;
             };
         private:
@@ -74,10 +78,6 @@ namespace fdapde{
             mutable std::mutex m_;
 
         public:
-            //enumerator state of elem.  
-            static constexpr int Empty = 1; //true 1
-            static constexpr int Busy = 2;
-            static constexpr int Full = 0; //false 0
             // default constructor 
             synchro_queue() = default;
             // construct whit size of queue_=n;
@@ -135,48 +135,48 @@ namespace fdapde{
             }
 
             //friendship declarations
-            friend int push_f_indx<value_type,relax>(synchro_queue<value_type,relax> & S);
-            friend int pop_f_indx<value_type,relax>(synchro_queue<value_type,relax> & S);
-            friend int push_b_indx<value_type,relax>(synchro_queue<value_type,relax> & S);
-            friend int pop_b_indx<value_type,relax>(synchro_queue<value_type,relax> & S);
+            friend int push_f_indx<value_type,relaxed>(synchro_queue<value_type,relax> & S);
+            friend int pop_f_indx<value_type,relaxed>(synchro_queue<value_type,relax> & S);
+            friend int push_b_indx<value_type,relaxed>(synchro_queue<value_type,relax> & S);
+            friend int pop_b_indx<value_type,relaxed>(synchro_queue<value_type,relax> & S);
 
 
             bool push_front(value_type val){
                 std::unique_lock<std::mutex> loc(m_);
-                int h = push_f_indx<value_type,relax>(*this);//h = index where to perform push 
+                int h = push_f_indx<value_type,relaxed>(*this);//h = index where to perform push 
                 loc.unlock();
                 if(h<0) return false; //extra-check due to refactorig
                 //push 
-                push_fb_push<value_type,relax>(queue_[h], val);
+                push_fb_push<value_type,relaxed>(queue_[h], val);
                 return true; 
             }
 
             std::optional<value_type> pop_front(){
                 std::unique_lock<std::mutex> loc(m_);
-                int h = pop_f_indx<value_type,relax>(*this);//h = index where to perform pop 
+                int h = pop_f_indx<value_type,relaxed>(*this);//h = index where to perform pop 
                 loc.unlock();
                 if(h<0) return std::nullopt; //extra-check due to refactorig
                 // pop 
-                value_type ret = pop_fb_pop<value_type,relax>(queue_[h]);
+                value_type ret = pop_fb_pop<value_type,relaxed>(queue_[h]);
                 return ret;
             }
 
             bool push_back(value_type val){
                 std::unique_lock<std::mutex> loc(m_);
-                int t = push_b_indx<value_type,relax>(*this);
+                int t = push_b_indx<value_type,relaxed>(*this);
                 loc.unlock();
                 if(t<0) return false;
 
-                push_fb_push<value_type,relax>(queue_[t], val);                
+                push_fb_push<value_type,relaxed>(queue_[t], val);                
                 return true;
             }
 
             std::optional<value_type> pop_back(){
                 std::unique_lock<std::mutex> loc(m_);
-                int t = pop_b_indx<value_type,relax>(*this);
+                int t = pop_b_indx<value_type,relaxed>(*this);
                 loc.unlock();
                 if(t<0) return std::nullopt;
-                value_type ret = pop_fb_pop<value_type,relax>(queue_[t]);
+                value_type ret = pop_fb_pop<value_type,relaxed>(queue_[t]);
                 return ret;
             }
 
@@ -204,6 +204,9 @@ namespace fdapde{
     template <typename value_type>  
     class synchro_queue<value_type,hold_nowait>{
         public:
+            //enumerator state of elem.  
+            static constexpr int Empty = 1; //true 1
+            static constexpr int Full = 0; //false 0
             // elem hold
             struct elem{
                 int state_ = Empty; //1 == true == empty, 0 == false == full. relying on the implicit int-to-bool conversion
@@ -223,9 +226,6 @@ namespace fdapde{
             mutable std::mutex m_;
             bool active_ = true;
         public:
-            //enumerator state of elem.  
-            static constexpr int Empty = 1; //true 1
-            static constexpr int Full = 0; //false 0
             // default constructor
             synchro_queue() = default;
             // construct whit size of queue_=n;
