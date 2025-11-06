@@ -36,7 +36,7 @@ namespace fdapde{
             class Worker{
                 private:
                     int indx_; 
-                    fdapde::synchro_queue<job,fdapde::relax> sync_queue_;
+                    fdapde::synchro_queue<job,fdapde::relaxed> sync_queue_;
                     std::thread t_;
                     bool stop_ = false;
                     mutable std::mutex m_;

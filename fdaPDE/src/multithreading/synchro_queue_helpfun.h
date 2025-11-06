@@ -22,7 +22,7 @@ namespace fdapde{
     //definition of friend function to move index
     template<typename value_type,typename access_model> 
     int push_b_indx(synchro_queue<value_type,access_model> & S){
-        if constexpr(std::is_same_v<access_model,hold_nowait> || std::is_same_v<access_model,hold_wait>){ //
+        if constexpr(std::is_same_v<access_model,deferred> || std::is_same_v<access_model,blocking>){ //
             if (S.head_ == S.tail_ && !S.empty_queue_ ){return -1;}
             S.empty_queue_ = false; //maybe already false, so redundant, but avoids if(empty_queue_) {empty_queue_ = false;} 
         }
@@ -38,7 +38,7 @@ namespace fdapde{
 
     template<typename value_type,typename access_model> 
     int pop_b_indx(synchro_queue<value_type,access_model> & S){
-        if constexpr(std::is_same_v<access_model,hold_nowait> || std::is_same_v<access_model,hold_wait> ){
+        if constexpr(std::is_same_v<access_model,deferred> || std::is_same_v<access_model,blocking> ){
             if (S.empty_queue_){
                 return -1;
             }
@@ -50,7 +50,7 @@ namespace fdapde{
             S.queue_[new_tail].state_.store(synchro_queue<value_type,relaxed>::Busy, std::memory_order_relaxed);
         }
         S.tail_ = new_tail; 
-        if constexpr(std::is_same_v<access_model,hold_nowait> || std::is_same_v<access_model,hold_wait>){
+        if constexpr(std::is_same_v<access_model,deferred> || std::is_same_v<access_model,blocking>){
             if(S.head_==S.tail_) {S.empty_queue_ = true;} 
             S.queue_[new_tail].count_pop_ ++;
         }
@@ -59,7 +59,7 @@ namespace fdapde{
 
     template<typename value_type, typename access_model>
     int push_f_indx(synchro_queue<value_type,access_model> & S){
-        if constexpr(std::is_same_v<access_model,hold_nowait> || std::is_same_v<access_model,hold_wait>){
+        if constexpr(std::is_same_v<access_model,deferred> || std::is_same_v<access_model,blocking>){
             if (S.head_ == S.tail_ && !S.empty_queue_ ){
                 return -1;
             }
@@ -77,19 +77,19 @@ namespace fdapde{
 
     template<typename value_type,typename access_model>
     int pop_f_indx(synchro_queue<value_type,access_model> & S){
-        if constexpr(std::is_same_v<access_model,hold_nowait> || std::is_same_v<access_model,hold_wait>){
+        if constexpr(std::is_same_v<access_model,deferred> || std::is_same_v<access_model,blocking>){
             if(S.empty_queue_ ){
                 return -1;
             }
         }
         int h = S.head_; 
-        if constexpr(std::is_same_v<access_model,relax>){
+        if constexpr(std::is_same_v<access_model,relaxed>){
             if(S.queue_[h].state_.load(std::memory_order_acquire) != synchro_queue<value_type,relaxed>::Full)
                 return -1;
             S.queue_[h].state_.store(synchro_queue<value_type,relaxed>::Busy, std::memory_order_relaxed);
         }
         S.head_ = (S.head_ == S.size_-1)? (0):(S.head_+1);
-        if constexpr(std::is_same_v<access_model,hold_nowait> || std::is_same_v<access_model,hold_wait>){
+        if constexpr(std::is_same_v<access_model,deferred> || std::is_same_v<access_model,blocking>){
             if(S.head_==S.tail_) {S.empty_queue_ = true;}
             S.queue_[h].count_pop_ ++;
         }   
@@ -103,8 +103,8 @@ namespace fdapde{
         if constexpr(std::is_same_v<access_model,relaxed>){
             E.state_.store(synchro_queue<value_type,relaxed>::Full, std::memory_order_release); 
         }
-        if constexpr(std::is_same_v<access_model,hold_nowait> || std::is_same_v<access_model,hold_wait>){
-            E.state_ = synchro_queue<value_type,hold_nowait>::Full; 
+        if constexpr(std::is_same_v<access_model,deferred> || std::is_same_v<access_model,blocking>){
+            E.state_ = synchro_queue<value_type,deferred>::Full; 
         }
     };
 
@@ -113,10 +113,10 @@ namespace fdapde{
         value_type ret = std::move(E.v_.value());
         E.v_ = std::nullopt;
         if constexpr(std::is_same_v<access_model,relaxed>){
-            E.state_.store(synchro_queue<value_type,relax>::Empty, std::memory_order_release);
+            E.state_.store(synchro_queue<value_type,relaxed>::Empty, std::memory_order_release);
         }
-        if constexpr(std::is_same_v<access_model,hold_nowait> || std::is_same_v<access_model,hold_wait>){
-            E.state_ = synchro_queue<value_type,hold_nowait>::Empty;
+        if constexpr(std::is_same_v<access_model,deferred> || std::is_same_v<access_model,blocking>){
+            E.state_ = synchro_queue<value_type,deferred>::Empty;
             E.count_pop_ --;
         }
         return ret; 
