@@ -22,7 +22,7 @@ namespace fdapde{
     //definition of friend function to move index
     template<typename value_type,typename access_model> 
     int push_b_indx(synchro_queue<value_type,access_model> & S){
-        if constexpr(std::is_same_v<access_model,deferred> || std::is_same_v<access_model,blocking>){ //
+        if constexpr(std::is_same_v<access_model,deferred> || std::is_same_v<access_model,blocking>){ //OSS: per metodi or_wait() di blocking non serve riverificare che coda non sia piena (perche gia fatto nella CV) però bisognerebbe fare helper function apposta solo per loro e codice si allunga, non ne vale la pena
             if (S.head_ == S.tail_ && !S.empty_queue_ ){return -1;}
             S.empty_queue_ = false; //maybe already false, so redundant, but avoids if(empty_queue_) {empty_queue_ = false;} 
         }
