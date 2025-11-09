@@ -22,7 +22,7 @@ namespace fdapde{
 
     enum class steal {no_steal, random, most_busy, random_half_most_busy};
 
-    template <steal T> class Threadpool{
+    template <steal T> class threadpool{
         using job = std::function<void()>;
         
         struct indx_worker{
@@ -33,7 +33,7 @@ namespace fdapde{
             };
         };
         public:
-            class Worker{
+            class worker{
                 private:
                     int indx_; 
                     fdapde::synchro_queue<job,fdapde::relaxed> sync_queue_;
@@ -42,8 +42,8 @@ namespace fdapde{
                     mutable std::mutex m_;
                     mutable std::condition_variable cv_; 
                 public:
-                    friend class Threadpool; 
-                    Worker(int n, void (Threadpool::*worker_loop)(int),Threadpool* Th, int idx):indx_(idx),sync_queue_(n),t_(worker_loop,Th,idx){}; 
+                    friend class threadpool; 
+                    worker(int n, void (threadpool::*worker_loop)(int),threadpool* Th, int idx):indx_(idx),sync_queue_(n),t_(worker_loop,Th,idx){}; 
 
                     //avoidable wraps, but use to make code clearer
                     std::unique_lock<std::mutex> get_loc()const{
@@ -59,7 +59,7 @@ namespace fdapde{
                     std::optional<job> pop_back(){return sync_queue_.pop_back();};
             };
         private:
-            std::vector<std::shared_ptr<Worker>> workers_; //vector of pointers because Worker not movable, not copiable
+            std::vector<std::shared_ptr<worker>> workers_; //vector of pointers because worker not movable, not copiable
             std::deque<std::atomic<int>> count_job_; //deque because atomic<int> not movable 
             int n_worker_ ;
             int queue_size_; 
@@ -71,13 +71,13 @@ namespace fdapde{
             std::unordered_map<std::thread::id, int> map_thread_worker_; //map of : thread_ID of worker's thread, index of worker in workers_
             mutable std::mutex m_map_;
         public:
-            friend class Worker; 
+            friend class worker; 
             //n = size_synchro_queue, k = number of workers
-            Threadpool(int n,int k):n_worker_(k),queue_size_(n),gen(std::random_device{}()){
+            threadpool(int n,int k):n_worker_(k),queue_size_(n),gen(std::random_device{}()){
                 std::unique_lock<std::shared_mutex> loc(m_threadpool_);
                 workers_.reserve(k);
                 for(int i=0; i<k; i++){
-                    workers_.emplace_back(std::make_shared<Worker> (n,&Threadpool::worker_loop,this,i));
+                    workers_.emplace_back(std::make_shared<worker> (n,&threadpool::worker_loop,this,i));
                     count_job_.emplace_back(0);
                 }
                 active_ = true;
@@ -86,12 +86,12 @@ namespace fdapde{
             };
 
             //constructor default number of worker 
-            Threadpool(int n): Threadpool(n, std::thread::hardware_concurrency()){}
+            threadpool(int n): threadpool(n, std::thread::hardware_concurrency()){}
 
             //default constructor
-            Threadpool(): Threadpool(256){}
+            threadpool(): threadpool(256){}
 
-            ~Threadpool(){
+            ~threadpool(){
                 while(get_count_all_job()>0){
                     std::this_thread::yield(); 
                 }; 

@@ -380,7 +380,7 @@ void assemble_lambda(std::vector<Eigen::Triplet<double>>& triplet_list) const {
 /*================================================================================================================================================================================================================================*/    
     //assemble parallelo con unicco vettore
 //assemble()
-Eigen::SparseMatrix<double> assemble(execution::execution_parallel, fdapde::Threadpool<fdapde::steal::random>& Tp, int granularity = -1) const {
+Eigen::SparseMatrix<double> assemble(execution::execution_parallel, fdapde::threadpool<fdapde::steal::random>& Tp, int granularity = -1) const {
         Eigen::SparseMatrix<double> assembled_mat(test_dof_handler()->n_dofs(), trial_dof_handler()->n_dofs());
         
         int n_cell = this->Base::dof_handler_->triangulation()->n_cells();
@@ -398,7 +398,7 @@ Eigen::SparseMatrix<double> assemble(execution::execution_parallel, fdapde::Thre
     }
 
 //assemble_tempotriple()
-    Eigen::SparseMatrix<double> assemble_tempotriple(execution::execution_parallel, fdapde::Threadpool<fdapde::steal::random>& Tp, int granularity = -1) const {
+    Eigen::SparseMatrix<double> assemble_tempotriple(execution::execution_parallel, fdapde::threadpool<fdapde::steal::random>& Tp, int granularity = -1) const {
         Eigen::SparseMatrix<double> assembled_mat(test_dof_handler()->n_dofs(), trial_dof_handler()->n_dofs());
         
         int n_cell = this->Base::dof_handler_->triangulation()->n_cells();
@@ -422,12 +422,12 @@ std::cout<<duration.count()<<",";
 
     //overload che crea threadpool al posto di averla in input
     Eigen::SparseMatrix<double> assemble(execution::execution_parallel,int n_thread = std::thread::hardware_concurrency(),int size_queue = 1024, int granularity = -1) const { //int kk per il momento in input per fare test piu comodamente. OSS: per ora visto che kk=1 fino a kk=10 non c'è differenza. se troppo alto invece peggioramento evidente (es kk=100)
-        fdapde::Threadpool<fdapde::steal::random> Tp(size_queue,n_thread);
+        fdapde::threadpool<fdapde::steal::random> Tp(size_queue,n_thread);
         return assemble(execution::par,Tp,granularity);
     }
     
  //assemble(...)   
-    void assemble(std::vector<Eigen::Triplet<double>>& triplet_list,fdapde::Threadpool<fdapde::steal::random> &Tp, int granularity) const {
+    void assemble(std::vector<Eigen::Triplet<double>>& triplet_list,fdapde::threadpool<fdapde::steal::random> &Tp, int granularity) const {
         using iterator = typename Base::fe_traits::dof_iterator;
         iterator begin(Base::begin_.index(), test_dof_handler(), Base::begin_.marker());
         iterator end  (Base::end_.index(),   test_dof_handler(), Base::end_.marker()  );
@@ -556,7 +556,7 @@ std::cout<<duration.count()<<",";
     }
 
 //assmeble senza copie ma con inizializzazione di variabili temporanee e packet dentro ai job, altro modo sarebbe farne diretttamente uno per worker mettendoli dentro un vettore e ogni worker ha il suo 
-    void assemble_nocopy(std::vector<Eigen::Triplet<double>>& triplet_list,fdapde::Threadpool<fdapde::steal::random> &Tp, int granularity) const {
+    void assemble_nocopy(std::vector<Eigen::Triplet<double>>& triplet_list,fdapde::threadpool<fdapde::steal::random> &Tp, int granularity) const {
         using iterator = typename Base::fe_traits::dof_iterator;
         iterator begin(Base::begin_.index(), test_dof_handler(), Base::begin_.marker());
         iterator end  (Base::end_.index(),   test_dof_handler(), Base::end_.marker()  );
@@ -694,7 +694,7 @@ std::cout<<duration.count()<<",";
 /*================================================================================================================================================================================================================================*/    
     // in parallelo fa somma delle triple uguali e quindi calcolo matrice ma in formato diverso da eigen, quindi poi passaggio da matrice fatta da vettore<map<int,double>> a sparse matrix con prima copia di triple vector quindi risultato speedup totale metodo non buono 
 //assemble_unicamatrix()    
-    Eigen::SparseMatrix<double> assemble_unicamatrix(execution::execution_parallel, fdapde::Threadpool<fdapde::steal::random>& Tp, int kk = 1) const {
+    Eigen::SparseMatrix<double> assemble_unicamatrix(execution::execution_parallel, fdapde::threadpool<fdapde::steal::random>& Tp, int kk = 1) const {
         Eigen::SparseMatrix<double> assembled_mat(test_dof_handler()->n_dofs(), trial_dof_handler()->n_dofs());
         
         int n_nodes = this->Base::dof_handler_->triangulation()->n_nodes();
@@ -727,7 +727,7 @@ std::cout<<duration.count()<<",";
         return assembled_mat;
     }
 //assemble_unicamatrix(...)
-    void assemble_unicamatrix(std::vector<std::map<int,double>>& matrix,fdapde::Threadpool<fdapde::steal::random> &Tp,std::vector<std::mutex>& mutexs) const {
+    void assemble_unicamatrix(std::vector<std::map<int,double>>& matrix,fdapde::threadpool<fdapde::steal::random> &Tp,std::vector<std::mutex>& mutexs) const {
         using iterator = typename Base::fe_traits::dof_iterator;
         iterator begin(Base::begin_.index(), test_dof_handler(), Base::begin_.marker());
         iterator end  (Base::end_.index(),   test_dof_handler(), Base::end_.marker()  );
@@ -874,7 +874,7 @@ std::cout<<duration.count()<<",";
 // per far scirvere a tutti i worker su vettore unico di triple uniche quindi serev blocco di mutex che protegge (piu mutex meno possibilità di contesa inutile (ideale un mutex per tripla ma infattibile)).
  
 //assemble_unica_tripla()
-    Eigen::SparseMatrix<double> assemble_unica_tripla(execution::execution_parallel, fdapde::Threadpool<fdapde::steal::random>& Tp, int granularity = -1) const {
+    Eigen::SparseMatrix<double> assemble_unica_tripla(execution::execution_parallel, fdapde::threadpool<fdapde::steal::random>& Tp, int granularity = -1) const {
         Eigen::SparseMatrix<double> assembled_mat(test_dof_handler()->n_dofs(), trial_dof_handler()->n_dofs());
         int n_rows = test_dof_handler()->n_dofs();
         //std::cout<<"numero righe: "<<n_rows<<", numero nodi"<<this->Base::dof_handler_->triangulation()->n_nodes()<<std::endl;
@@ -897,7 +897,7 @@ std::cout<<duration.count()<<",";
         return assembled_mat;
     }
 //assemble_unica_tripla(...)
-    void assemble_unica_triple(std::vector<Eigen::Triplet<double>>& triplet_list,std::vector<std::mutex>& mutexs,std::vector<int>& count_columns_in_row,int column_per_row,int n_rows,fdapde::Threadpool<fdapde::steal::random> &Tp, int granularity) const {
+    void assemble_unica_triple(std::vector<Eigen::Triplet<double>>& triplet_list,std::vector<std::mutex>& mutexs,std::vector<int>& count_columns_in_row,int column_per_row,int n_rows,fdapde::threadpool<fdapde::steal::random> &Tp, int granularity) const {
         using iterator = typename Base::fe_traits::dof_iterator;
         iterator begin(Base::begin_.index(), test_dof_handler(), Base::begin_.marker());
         iterator end  (Base::end_.index(),   test_dof_handler(), Base::end_.marker()  );
