@@ -73,11 +73,11 @@ namespace fdapde{
         public:
             friend class worker; 
             //n = size_synchro_queue, k = number of workers
-            threadpool(int n,int k):n_worker_(k),queue_size_(n),gen(std::random_device{}()){
+            threadpool(int size_queue,int n_worker):n_worker_(n_worker),queue_size_(size_queue),gen(std::random_device{}()){
                 std::unique_lock<std::shared_mutex> loc(m_threadpool_);
-                workers_.reserve(k);
-                for(int i=0; i<k; i++){
-                    workers_.emplace_back(std::make_shared<worker> (n,&threadpool::worker_loop,this,i));
+                workers_.reserve(n_worker);
+                for(int i=0; i<n_worker; i++){
+                    workers_.emplace_back(std::make_shared<worker> (size_queue,&threadpool::worker_loop,this,i));
                     count_job_.emplace_back(0);
                 }
                 active_ = true;
@@ -86,7 +86,7 @@ namespace fdapde{
             };
 
             //constructor default number of worker 
-            threadpool(int n): threadpool(n, std::thread::hardware_concurrency()){}
+            threadpool(int size_queue): threadpool(size_queue, std::thread::hardware_concurrency()){}
 
             //default constructor
             threadpool(): threadpool(256){}
