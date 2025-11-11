@@ -409,10 +409,6 @@ namespace fdapde{
                 std::vector<std::future<return_type>> ret_fut;
                 ret_fut.reserve(end-start);
                 for (int j = start; j<end; j++){
-                    /*
-                    std::future<return_type> fut = this->send_task_round(f,j);
-                    ret_fut.push_back(std::move(fut)); //forse meglio direttamente emplace back ma credo indifferente
-                    */
                     ret_fut.emplace_back(this->send_task_round(f,j));
                 }
                 for(std::future<void>& fut : ret_fut){
@@ -428,8 +424,7 @@ namespace fdapde{
                 std::vector<std::future<return_type>> ret_fut;
                 ret_fut.reserve(end-start);
                 for (int j = start; j<end; j = incr(j)){
-                    std::future<return_type> fut= this->send_task_round(f,j);
-                    ret_fut.push_back(std::move(fut));
+                    ret_fut.emplace_back(this->send_task_round(f,j));
                 }
                 for(std::future<void>& fut : ret_fut){
                     fut.get(); 
@@ -510,31 +505,28 @@ namespace fdapde{
                 ret_fut.reserve(n_job); 
                 // se non ha spalmato allora plus_one == 0 e questo for lo salta
                 for (int j= 0; j<plus_one; j++){
-                    std::future<return_type> fut = this->send_task_round([granularity = granularity +1,j,start,fun = f]()mutable{ 
-                        int stop = (j+1)*granularity+start;
-                        for(int k=j*granularity+start; k<stop; k++ ){
-                            fun(k);
-                        }
-                    });
-                    ret_fut.push_back(std::move(fut));
+                    ret_fut.emplace_back(this->send_task_round([granularity = granularity +1,j,start,fun = f]()mutable{ 
+                            int stop = (j+1)*granularity+start;
+                            for(int k=j*granularity+start; k<stop; k++ ){
+                                fun(k);
+                            }
+                        }));
                 }
                 for (int j= plus_one; j<n_job-1; j++){
-                    std::future<return_type> fut = this->send_task_round([granularity,plus_one,j,start,fun = f]()mutable{ 
-                        int stop = (j+1)*granularity+plus_one+start;
-                        for(int k=j*granularity+plus_one+start; k<stop; k++ ){
-                            fun(k);
-                        }
-                    });
-                    ret_fut.push_back(std::move(fut));
+                    ret_fut.emplace_back(this->send_task_round([granularity,plus_one,j,start,fun = f]()mutable{ 
+                            int stop = (j+1)*granularity+plus_one+start;
+                            for(int k=j*granularity+plus_one+start; k<stop; k++ ){
+                                fun(k);
+                            }
+                        }));
                 }
                 //last job (puo essere o gran_last o granularity normale) inviato separatamente per non dover fare if
-                std::future<return_type> fut = this->send_task_round([gran_last,end,fun = f]()mutable{ 
+                ret_fut.emplace_back(this->send_task_round([gran_last,end,fun = f]()mutable{ 
                         for(int k=end-gran_last; k<end; k++ ){
                             fun(k);
                         }
-                    });
-                ret_fut.push_back(std::move(fut));
-
+                    }));
+                
                 //get futures
                 for(std::future<void>& fut : ret_fut){fut.get();}
                 return;
@@ -560,12 +552,11 @@ namespace fdapde{
                 std::vector<std::future<return_type>> ret_fut;
                 ret_fut.reserve(vect_size);
                 for (size_t j = 0; j<vect_size; j++){
-                    std::future<return_type> fut = this->send_task_round([&,j,fun = f]()mutable{
-                        for(int k=seq[j]; k<seq[j+1]; k++ ){
-                            fun(k);
-                        }
-                    });
-                    ret_fut.push_back(std::move(fut));
+                    ret_fut.emplace_back(this->send_task_round([&,j,fun = f]()mutable{
+                            for(int k=seq[j]; k<seq[j+1]; k++ ){
+                                fun(k);
+                            }
+                        }));
                 }            
                 for(std::future<void>& fut : ret_fut){
                     fut.get();
@@ -586,8 +577,7 @@ namespace fdapde{
                 using return_type = void; 
                 std::vector<std::future<return_type>> ret_fut;
                 for (It j = start; j!=end; ++j){
-                    std::future<return_type> fut= this->send_task_round(f,j);
-                    ret_fut.push_back(std::move(fut));
+                    ret_fut.emplace_back(this->send_task_round(f,j));
                 }
                 for(std::future<void>& fut : ret_fut){
                     fut.get();
@@ -605,21 +595,19 @@ namespace fdapde{
                 std::vector<std::future<return_type>> ret_fut;
                 ret_fut.reserve(n_job+1); 
                 for (int j = 0; j<n_job; j++){
-                    std::future<return_type> fut = this->send_task_round([granularity,fun = f](auto it)mutable{ 
-                        for(int k=0; k<granularity; k++ ){
-                            fun(it+k);
-                        }
-                    },j*granularity+start);
-                    ret_fut.push_back(std::move(fut)); 
+                    ret_fut.emplace_back(this->send_task_round([granularity,fun = f](auto it)mutable{ 
+                            for(int k=0; k<granularity; k++ ){
+                                fun(it+k);
+                            }
+                        },j*granularity+start));
                 }
                 int granularity_last_job = range % granularity;
                 if(granularity_last_job > 0){
-                    std::future<return_type> fut = this->send_task_round([granularity_last_job,fun = f](auto it)mutable{ 
+                    ret_fut.emplace_back(this->send_task_round([granularity_last_job,fun = f](auto it)mutable{ 
                         for(int k=0; k<granularity_last_job; k++ ){
                             fun(it+k);
                         }
-                    }, n_job*granularity+start );
-                    ret_fut.push_back(std::move(fut));
+                    }, n_job*granularity+start ));
                 }
                 for(std::future<void>& fut : ret_fut){fut.get();}
                 return;
@@ -645,23 +633,21 @@ namespace fdapde{
                 std::vector<std::future<return_type>> ret_fut;
                 ret_fut.reserve(n_job+1);
                 for(int j = 0; j<n_job; j++){
-                    std::future<return_type> fut = this->send_task_round([granularity,fun = f](auto it)mutable{ 
-                        for(int k=0; k<granularity; k++ ){
-                            fun(it);
-                            ++it;
-                        }
-                    },its[j]);
-                    ret_fut.push_back(std::move(fut)); 
+                    ret_fut.emplace_back(this->send_task_round([granularity,fun = f](auto it)mutable{ 
+                            for(int k=0; k<granularity; k++ ){
+                                fun(it);
+                                ++it;
+                            }
+                        },its[j])); 
                 }
                 int granularity_last_job = range % granularity;
                 if(granularity_last_job > 0){
-                    std::future<return_type> fut = this->send_task_round([granularity_last_job,fun = f](auto it)mutable{ 
+                    ret_fut.emplace_back(this->send_task_round([granularity_last_job,fun = f](auto it)mutable{ 
                         for(int k=0; k<granularity_last_job; k++ ){
                             fun(it);
                             ++it;
                         }
-                    }, its[n_job]);
-                    ret_fut.push_back(std::move(fut)); 
+                    }, its[n_job])); 
                 }
                 for(std::future<void>& fut : ret_fut){fut.get();}
                 return;        
