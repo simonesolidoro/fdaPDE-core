@@ -409,8 +409,11 @@ namespace fdapde{
                 std::vector<std::future<return_type>> ret_fut;
                 ret_fut.reserve(end-start);
                 for (int j = start; j<end; j++){
+                    /*
                     std::future<return_type> fut = this->send_task_round(f,j);
-                    ret_fut.push_back(std::move(fut));
+                    ret_fut.push_back(std::move(fut)); //forse meglio direttamente emplace back ma credo indifferente
+                    */
+                    ret_fut.emplace_back(this->send_task_round(f,j));
                 }
                 for(std::future<void>& fut : ret_fut){
                     fut.get(); 
