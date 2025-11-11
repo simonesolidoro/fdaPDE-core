@@ -67,13 +67,13 @@ namespace fdapde{
             mutable std::shared_mutex m_threadpool_; //mutable per tenere const get_indx_from_worker()
             std::condition_variable_any cv_threadpool_;
             bool active_ = false;
-            mutable std::mt19937 gen;
+            mutable std::mt19937 gen_;
             std::unordered_map<std::thread::id, int> map_thread_worker_; //map of : thread_ID of worker's thread, index of worker in workers_
             mutable std::mutex m_map_;
         public:
             friend class worker; 
             //n = size_synchro_queue, k = number of workers
-            threadpool(int size_queue,int n_worker):n_worker_(n_worker),queue_size_(size_queue),gen(std::random_device{}()){
+            threadpool(int size_queue,int n_worker):n_worker_(n_worker),queue_size_(size_queue),gen_(std::random_device{}()){
                 std::unique_lock<std::shared_mutex> loc(m_threadpool_);
                 workers_.reserve(n_worker);
                 for(int i=0; i<n_worker; i++){
@@ -204,7 +204,7 @@ namespace fdapde{
             // return random int in  [0, size-1]
             int random_int(int size)const{
                 std::uniform_int_distribution<> distrib(0,size-1);
-                return distrib(gen);
+                return distrib(gen_);
             }
 
             int indx_random_from_busy()const{
@@ -216,7 +216,7 @@ namespace fdapde{
                     }
                 }
                 int size = indxs.size();
-                switch(size){ //avoid random generation if not need it
+                switch(size){ //avoid random gen_eration if not need it
                 case 0: 
                     return -1;
                 case 1:
@@ -230,7 +230,7 @@ namespace fdapde{
                 std::vector<std::pair<int,int>> indxs; //vector of pair: (index worker busy, number of job in queue)
                 int tmp_count_job = 0;
                 for(int k = 0; k<n_worker_; k++){
-                    tmp_count_job = count_job_[k];
+                    tmp_count_job = count_job_[k].load(std::memory_order_acquire);
                     if(tmp_count_job > 0){
                         indxs.emplace_back(k,tmp_count_job);
                     }
