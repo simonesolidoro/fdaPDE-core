@@ -393,6 +393,32 @@ namespace fdapde{
                 return std::nullopt;
             };
 */
+            struct info_par{
+                int n_job;
+                int granularity;
+                int granularity_last;
+            };
+            info_par info_parallel (int range, int jpw){
+                info_par ret;
+                int tot_job = jpw * n_worker_;
+                ret.granularity = std::max(range / tot_job,1);
+                ret.granularity_last = ret.granularity; //poi aggiornata se c'è resto di divisione
+                ret.n_job = range / ret.granularity; //cosi sicuro lasta job ha granularity miniore di granularity, però non più max jpw job per worker ma circa jpw job per worker. es: range=37, n_worker=10, jpw=1--> tot_job = 10, gran = 37/10 = 3, n_job=37/3 = 12 poi +1 per resto, quindi tutti worker 1 job, tranne primi 3 che ne hanno 2
+                // if(n_job % n_worker != 0){
+                //     granularity_last = range%granularity;
+                //     n_job ++;
+                // }else{
+                //     //spalma
+                //     /* bisognerebbe dare info che primi  range%granularity  job devono avere granularity+1
+                //         non è comodo da usare come info, quindi lascerei perdere questa ottimizzazione e 
+                //         farei sempre granularity ultimo job =  range%granularity a prescindere se i worker hanno o meno già tutti lo stesso numero di job */
+                // }
+                if(range%ret.granularity != 0){
+                    ret.granularity_last = range%ret.granularity;
+                    ret.n_job++; 
+                }
+                return ret;
+            }
 
             //parallel_for //TODO: controllo start<end va aggiunto ?
             //OVERLOAD:
@@ -432,47 +458,7 @@ namespace fdapde{
                 return;
             } 
 
-/* //vecchio parallel_for con granularity che se c'era resto metteva in ultimo job con iterazioni < granularity,
-                // e default di gran t.c. circa 1 job per worker
-            template<typename F> 
-            requires std::is_same_v<std::invoke_result_t<F,int>, void> 
-            void parallel_for(int start, int end, F&& f,int granularity){  
-                using return_type = void;
-                //range: [start, end) --> end-start= dim range
-                int range = (end-start); 
-                int n_job = range / granularity;          
-                if(granularity == -1) { 
-                    granularity = range/n_worker_; 
-                    if(granularity < 1){//less iteration than worker, so granularity = 1 
-                        granularity = 1; 
-                    }
-                    n_job = range/granularity; // to ensure: last_job_granularity < min(n_worker,granularity) 
-                }
-                std::vector<std::future<return_type>> ret_fut; 
-                ret_fut.reserve(n_job+1); //+1 for eventualy remaining job
-                for (int j= 0; j<n_job; j++){
-                    std::future<return_type> fut = this->send_task_round([granularity,j,start,fun = f]()mutable{ 
-                        int stop = (j+1)*granularity+start;
-                        for(int k=j*granularity+start; k<stop; k++ ){
-                            fun(k);
-                        }
-                    });
-                    ret_fut.push_back(std::move(fut));
-                }
-                if(range % granularity > 0){// send last job  
-                    std::future<return_type> fut = this->send_task_round([granularity,n_job,start,end,fun = f]()mutable{ 
-                        for(int k=n_job*granularity+start; k<end; k++ ){
-                            fun(k);
-                        }
-                    });
-                    ret_fut.push_back(std::move(fut));
-                }
-                //get futures
-                for(std::future<void>& fut : ret_fut){fut.get();}
-                return;
-            } 
-*/
-//migliorato schedule ma non credo varianza dipenda da questo.
+
             template<typename F> 
             requires std::is_same_v<std::invoke_result_t<F,int>, void> 
             void parallel_for(int start, int end, F&& f,int granularity){  
@@ -562,6 +548,125 @@ namespace fdapde{
                     fut.get();
                 }
                 return;
+            } 
+
+
+            //prova di parallel_for cono variadic template di tmp object per ogni job, per poter usare parallel_for con granularity in input al posto di parallel_for gran=1 con divisione in job a mano
+            template<typename F, typename... Args> 
+            requires std::is_same_v<std::invoke_result_t<F,int,Args...>, void> //F in input ha sia int i sia Args args
+            void parallel_for_granularity_variadic(int start, int end, int granularity, F&& f,Args&&... args){//non credo serva universal reference per Args perché ne voglio una copia per ogni job
+                // if constexpr(sizeof...(args) == 0){//come vecchia  
+                //     using return_type = void;
+                //     //range: [start, end) --> end-start= dim range
+                //     int range = (end-start);
+                //     if(granularity > range){granularity = range;}////oss: se granularity > range allora tutto range fatto da unico worker, messo granularity=range per evitare errori poi. magari mettere un warning ??? 
+                //     int n_job = range / std::max(1,granularity); //se gran non valida (= 0) non da errore
+                //     //default gran se mandato valore non valido, non più solo -1. cosi evitiamo controllo se granularity valida          
+                //     if(granularity <= 0) {// 1 job per worker max (quindi resto spalmato), se range<n_worker allora n_job = range 
+                //         if(range<n_worker_){
+                //             granularity = 1;
+                //             n_job = range;
+                //         }else{
+                //             granularity = range / n_worker_;
+                //             n_job = n_worker_;
+                //         }
+                //     }
+                //     int gran_last = granularity;
+                //     int plus_one = 0;
+                //     int resto = range%granularity; 
+                //     if((n_job%n_worker_) == 0 && resto >0){ // spalma perché fare un ultimo job con iterazioni di resto sbilancia
+                //         plus_one = resto;
+                //     }
+                //     if((n_job%n_worker_) != 0 && resto >0){ // ultimo job contiente resto di iterazioni (non spalmate perché c'é (almeno 1) worker che ha 1 job meno di worker0, e quindi le da a lui)
+                //         gran_last = resto;
+                //         n_job ++;
+                //     }
+                //     std::vector<std::future<return_type>> ret_fut;
+                //     ret_fut.reserve(n_job); 
+                //     // se non ha spalmato allora plus_one == 0 e questo for lo salta
+                //     for (int j= 0; j<plus_one; j++){
+                //         ret_fut.emplace_back(this->send_task_round([granularity = granularity +1,j,start,fun = f]()mutable{ 
+                //                 int stop = (j+1)*granularity+start;
+                //                 for(int k=j*granularity+start; k<stop; k++ ){
+                //                     fun(k);
+                //                 }
+                //             }));
+                //     }
+                //     for (int j= plus_one; j<n_job-1; j++){
+                //         ret_fut.emplace_back(this->send_task_round([granularity,plus_one,j,start,fun = f]()mutable{ 
+                //                 int stop = (j+1)*granularity+plus_one+start;
+                //                 for(int k=j*granularity+plus_one+start; k<stop; k++ ){
+                //                     fun(k);
+                //                 }
+                //             }));
+                //     }
+                //     //last job (puo essere o gran_last o granularity normale) inviato separatamente per non dover fare if
+                //     ret_fut.emplace_back(this->send_task_round([gran_last,end,fun = f]()mutable{ 
+                //             for(int k=end-gran_last; k<end; k++ ){
+                //                 fun(k);
+                //             }
+                //         }));
+                    
+                //     //get futures
+                //     for(std::future<void>& fut : ret_fut){fut.get();}
+                //     return;
+                // }
+                // else{
+                    using return_type = void;
+                    //range: [start, end) --> end-start= dim range
+                    int range = (end-start);
+                    if(granularity > range){granularity = range;}////oss: se granularity > range allora tutto range fatto da unico worker, messo granularity=range per evitare errori poi. magari mettere un warning ??? 
+                    int n_job = range / std::max(1,granularity); //se gran non valida (= 0) non da errore
+                    //default gran se mandato valore non valido, non più solo -1. cosi evitiamo controllo se granularity valida          
+                    if(granularity <= 0) {// 1 job per worker max (quindi resto spalmato), se range<n_worker allora n_job = range 
+                        if(range<n_worker_){
+                            granularity = 1;
+                            n_job = range;
+                        }else{
+                            granularity = range / n_worker_;
+                            n_job = n_worker_;
+                        }
+                    }
+                    int gran_last = granularity;
+                    int plus_one = 0;
+                    int resto = range%granularity; 
+                    if((n_job%n_worker_) == 0 && resto >0){ // spalma perché fare un ultimo job con iterazioni di resto sbilancia
+                        plus_one = resto;
+                    }
+                    if((n_job%n_worker_) != 0 && resto >0){ // ultimo job contiente resto di iterazioni (non spalmate perché c'é (almeno 1) worker che ha 1 job meno di worker0, e quindi le da a lui)
+                        gran_last = resto;
+                        n_job ++;
+                    }
+                    std::vector<std::future<return_type>> ret_fut;
+                    ret_fut.reserve(n_job); 
+                    // se non ha spalmato allora plus_one == 0 e questo for lo salta
+                    for (int j= 0; j<plus_one; j++){
+                        ret_fut.emplace_back(this->send_task_round([granularity = granularity +1,j,start,fun = f, ... args = args]()mutable{ 
+                                int stop = (j+1)*granularity+start;
+                                for(int k=j*granularity+start; k<stop; k++ ){
+                                    fun(k,args...);//f prende in input reference a variadic template altrimenti tutto inutile
+                                }
+                            }));
+                    }
+                    for (int j= plus_one; j<n_job-1; j++){
+                        ret_fut.emplace_back(this->send_task_round([granularity,plus_one,j,start,fun = f, ... args = args]()mutable{ 
+                                int stop = (j+1)*granularity+plus_one+start;
+                                for(int k=j*granularity+plus_one+start; k<stop; k++ ){
+                                    fun(k,args...);
+                                }
+                            }));
+                    }
+                    //last job (puo essere o gran_last o granularity normale) inviato separatamente per non dover fare if
+                    ret_fut.emplace_back(this->send_task_round([gran_last,end,fun = f, ... args = args]()mutable{ 
+                            for(int k=end-gran_last; k<end; k++ ){
+                                fun(k,args...);
+                            }
+                        }));
+                    
+                    //get futures
+                    for(std::future<void>& fut : ret_fut){fut.get();}
+                    return;
+                // }
             } 
 
             //PARALLEL_FOR_ITERATOR:
@@ -655,11 +760,9 @@ namespace fdapde{
 
 
             //TODO: SE LASCIATI MODIFICA CON STRONG SEND 
-            //PARALLEL_FOR_REDUCE
+            //PARALLEL_FOR_REDUCE (versione simile a #pragma omp parallel for reduction)
             //pair<minimo,argmin> parallel_for_reduce_min/max(int start, int end, F&& f,int granularity)   F = return_type(int), ogni body function ritorna un valore e in parallelo ogni worker calcola il minimo tra tutti i job che ha eseguito. poi sequenziale calcolo minimo tra minimi di worker 
-            //TODO: parallel_reduce_sum/product
-            //TODO: reduce_min/max/sum/product (input container output min di conteiner) con la logica implementata in parallel_for_reduce che parallelizza il piu possibile il calcolo
-            //TODO: versione con iterator 
+            
 
             //reduce min con parallel for , idea: ogni worker avrà suo min, ogni job ha suo min e worker che lo esegue lo confronta con proprio e se migliore lo sostituisce, cosi poi alla fine sequenziale solo il confronto tra n_worker value per trovare min
             //F bodyfunction deve restituire valore da confrontare
@@ -682,6 +785,7 @@ namespace fdapde{
                 ret_fut.reserve(n+1); //per evitare riallocameto memoria, +1 per eventuale ultimo job fatto da ultime (end-start)%granularity iterazioni  
 
                 //min_curr,index_in_loop_associato di ogni worker (bodyFunction F(k)=value, ci salviamo min(value) e k=argmin F(j) )
+                //TODO: allineare le coppie per evitare false sharing ?
                 std::vector<std::pair<return_type,int>> min_workers(n_worker_ ,std::make_pair(std::numeric_limits<return_type>::max(),start-1)); //argmin inizializzato a start-1 e non -1 perche  se loop parte con start<0 non va bene -1
 
                 int j = 0;
