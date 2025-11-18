@@ -623,8 +623,8 @@ namespace fdapde{
 
             //1
             template<typename F,typename It> 
-            requires std::is_same_v<std::invoke_result_t<F,It>, void>
-            void parallel_for_iterator(It start, It end, F&& f){
+            requires std::is_same_v<std::invoke_result_t<F,It>, void> && (std::random_access_iterator<It> || (!std::random_access_iterator<It>)) //sicuro c'è concept per itertor type e non si fa così ma dopo ci penso
+            void parallel_for(It start, It end, F&& f){
                 using return_type = void; 
                 std::vector<std::future<return_type>> ret_fut;
                 for (It j = start; j!=end; ++j){
@@ -639,7 +639,7 @@ namespace fdapde{
             //2 (it+n ok)
             template<typename F,typename It> 
             requires std::is_same_v<std::invoke_result_t<F,It>, void> && std::random_access_iterator<It>
-            void parallel_for_iterator(It start, It end, F&& f,int granularity){
+            void parallel_for(It start, It end, F&& f,int granularity){
                 using return_type = void;
                 int range = (end-start); 
                 int n_job = range / granularity;
@@ -668,7 +668,7 @@ namespace fdapde{
             //3 (it+n NONok)
             template<typename F,typename It> 
             requires std::is_same_v<std::invoke_result_t<F,It>, void> && (!std::random_access_iterator<It>)
-            void parallel_for_iterator(It start, It end, F&& f,int granularity){
+            void parallel_for(It start, It end, F&& f,int granularity){
                 using return_type = void;
                 //Let's first scroll through the entire range so that we can copy iterators at each start + k * granularity into the vector its
                 int range = 0;
