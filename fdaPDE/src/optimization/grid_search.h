@@ -170,6 +170,7 @@ template <int N> class GridSearch {
                 value_optimum_workers[index_worker].first = obj;
                 value_optimum_workers[index_worker].second = x;
             }
+            //OSS: in realta anche diretamente value_optimum_workers al posto di obj e x, scrivere in vettore comune è peggio che in variabili in stack però da test visto che cambia poco, l'importante è evitare false-sharing. (lascia così che è più bruttino ma più efficiente il commento è solo per ricordo)
         });
 
         // reduce di value_optimum_workers[], minimo in value_ argmin in optimum_
@@ -261,87 +262,6 @@ template <int N> class GridSearch {
         return optimum_;
     }
 
-    //prova per vedere se il problema è parallel_for granularity variadic oppure la scirttura in vettore globale dei risultati ad ogni iterazione
-        template <typename ObjectiveT, typename GridT>
-        requires((internals::is_vector_like_v<GridT> || internals::is_matrix_like_v<GridT>))
-    vector_t optimize_prova(ObjectiveT&& objective, const GridT& grid, execution::execution_parallel,fdapde::threadpool<fdapde::steal::random>& Tp, int granularity = -1) { // per ora int job_per_worker in input perche piu comodo fare i test poi sostituire valore scelto
-        fdapde_static_assert(
-          std::is_same<decltype(std::declval<ObjectiveT>().operator()(vector_t())) FDAPDE_COMMA double>::value,
-          INVALID_CALL_TO_OPTIMIZE__OBJECTIVE_FUNCTOR_NOT_CALLABLE_AT_VECTOR_TYPE);
-        using layout_policy = decltype([]() {
-            if constexpr (internals::is_eigen_dense_xpr_v<GridT>) {
-                return std::conditional_t<GridT::IsRowMajor, internals::layout_right, internals::layout_left> {};
-            } else {
-                return internals::layout_right {};
-            }
-        }());
-        using grid_t = MdMap<const double, MdExtents<Dynamic, Dynamic>, layout_policy>;
-        
-        constexpr double NaN = std::numeric_limits<double>::quiet_NaN();
-        
-        grid_t grid_;
-        value_ = std::numeric_limits<double>::max();
-        if constexpr (internals::is_vector_like_v<GridT>) {
-            fdapde_assert(grid.size() % size_ == 0);
-            grid_ = grid_t(grid.data(), grid.size() / size_, size_);
-        } else {
-            fdapde_assert(grid.cols() == size_);
-            grid_ = grid_t(grid.data(), grid.rows(), size_);
-        }
-        
-        // per evitare false sharing e rendere piu veloce (il mio computer ha 64 byte in cacheline credo tutti ormai, nel caso da verificare su linux con $ cat /sys/devices/system/cpu/cpu0/cache/index0/coherency_line_size  )
-        struct alignas(64) AlignedPair {
-            double first = std::numeric_limits<double>::max();// inizializzato a massimo erch ein problema cerchiamo minimo
-            vector_t second;
-        };
-        int n_threads = Tp.get_n_worker();
-        // vettore di (value,optimum) per ogni worker, alla fine ci saranno min,argmin trovati da ogni worker e poi reduce di questo vettore darà min argmin finali
-        std::vector<AlignedPair> value_optimum_workers(n_threads); //inizializzato con n_thread elementi vuoti cosi da non riallocare ed essere threadsafe
-        
-        //se defaul (input -1) allora messa granularity s.t. 1 job per worker (+1 job di resto ma con iterazioni <n_threads quindi trascurabile)
-        if(granularity == -1){
-            granularity = (grid_.rows()/n_threads > 0) ? grid_.rows()/n_threads : 1;
-        }
-        int granularity_last_job = grid_.rows()% granularity;
-        int n_job = (granularity_last_job == 0) ? grid_.rows()/granularity : grid_.rows()/granularity +1 ;
-        
-        Tp.parallel_for(0,n_job, [&, this](int i){ //tutto tramite ref per occupare meno memoria ma piu lento
-            int index_worker = Tp.get_index_worker_from_thread(); //index di worker che esegue il job
-            vector_t x_curr;
-            double obj_curr =std::numeric_limits<double>::max();
-            
-            int start = i*granularity;
-            int end = 0;
-            //se ultimo job ha granularity diverso allora verifico se è ultimo job (i==n_job-1) e nel caso metto granularity = gran_last_job
-            if(granularity_last_job != 0){
-                end = (i != (n_job-1))? (i+1)*granularity : start+granularity_last_job;
-            }else{
-                end = (i+1)*granularity;
-            }
-
-            for(int j = start; j<end; j++){
-                grid_.row(j).assign_to(x_curr.transpose()); 
-                obj_curr = objective(x_curr);
-                // update minimum of worker if better optimum found
-                if (obj_curr < value_optimum_workers[index_worker].first) {
-                    value_optimum_workers[index_worker].first = obj_curr;
-                    value_optimum_workers[index_worker].second = x_curr;
-                }
-            }
-        });
-
-        // reduce di value_optimum_workers[], minimo in value_ argmin in optimum_
-        value_ = value_optimum_workers[0].first;
-        optimum_ = value_optimum_workers[0].second;
-        for (int i = 1; i<n_threads; i++){
-            if(value_optimum_workers[i].first < value_){
-                value_ = value_optimum_workers[i].first;
-                optimum_ = value_optimum_workers[i].second;
-            }
-        }
-
-        return optimum_;
-    }
 
     // observers
     const vector_t& optimum() const { return optimum_; }
