@@ -32,7 +32,7 @@ int main(int argc, char** argv){
 
     int n_thread = std::stoi(argv[2]);
     int n_job = 100;
-    fdapde::Threadpool<fdapde::steal::most_busy> tp(n_job,n_thread);
+    fdapde::threadpool<fdapde::steal::most_busy> tp(n_job,n_thread);
     std::atomic<int> a = 0;
 
     

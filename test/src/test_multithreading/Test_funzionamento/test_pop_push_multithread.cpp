@@ -16,17 +16,17 @@
 
 #include<fdaPDE/multithreading.h>
 
-void pushbackconc(std::vector<int> V, fdapde::synchro_queue<int,fdapde::relax> & q){
+void pushbackconc(std::vector<int> V, fdapde::synchro_queue<int,fdapde::hold_nowait> & q){
     for (auto x: V){
         q.push_back(x);
-        //std::this_thread::sleep_for(std::chrono::microseconds(1));//cosi che ci sia tempo per far si che si alternino i thread a inserire
+        std::this_thread::sleep_for(std::chrono::microseconds(1));//cosi che ci sia tempo per far si che si alternino i thread a inserire
     }
     if (q.empty()){std::cout<<"vuoto";}
 }
 
 int main(){
     int size_coda=30;
-    fdapde::synchro_queue<int,fdapde::relax> q1(size_coda);
+    fdapde::synchro_queue<int,fdapde::hold_nowait> q1(size_coda);
     
 /*
     // push_back concorrente semplice

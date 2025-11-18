@@ -25,7 +25,7 @@ void printnum(){
 
 int main(){
     using job = std::function<void()>;
-    fdapde::Threadpool<fdapde::steal::most_busy> tp(16,4);
+    fdapde::threadpool<fdapde::steal::most_busy> tp(16,4);
     std::vector<std::optional<std::future<void>>> futs;
     std::vector<job> jobs;
     int n_jobs = 64;

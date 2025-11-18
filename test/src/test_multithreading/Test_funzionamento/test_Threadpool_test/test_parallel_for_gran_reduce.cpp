@@ -18,7 +18,7 @@
 
 int main(int argc,char** argv){   
     int n = 10000;
-    fdapde::Threadpool<fdapde::steal::random> tp(64,6);
+    fdapde::threadpool<fdapde::steal::random> tp(64,6);
     std::atomic<int> a=0;
     {
     // reduce min

@@ -19,7 +19,7 @@
 int main(int argc,char** argv)
 {   
     int n = 10000;
-    fdapde::Threadpool<fdapde::steal::random> tp(2048,3);
+    fdapde::threadpool<fdapde::steal::random> tp(2048,3);
     std::atomic<int> a=0;
 
 // parallel_for   granularity

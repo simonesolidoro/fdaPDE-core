@@ -45,7 +45,7 @@ int main(){
 
 {
     using job = std::function<void()>;
-    fdapde::Threadpool<fdapde::steal::random> tp(64,16);
+    fdapde::threadpool<fdapde::steal::random> tp(64,16);
     std::vector<job> jobs;
     int push_count = 0;
     int n_jobs = 640;
