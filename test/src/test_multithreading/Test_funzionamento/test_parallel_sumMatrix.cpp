@@ -62,7 +62,7 @@ int main(int argc, char** argv){
 
     
     // solo reference (problemi scala poco da 2 a 4 worker)
-    tp.parallel_for(0,size,[&](int i, int & tmp){
+    tp.parallel_for(0,size,[&](int i,int index_w, int & tmp){
         for(int j=0; j<size; j++){
             C[i][j] = A[i][j] + B[i][j];
         }

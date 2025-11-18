@@ -553,7 +553,7 @@ namespace fdapde{
 
             //prova di parallel_for cono variadic template di tmp object per ogni job, per poter usare parallel_for con granularity in input al posto di parallel_for gran=1 con divisione in job a mano
             template<typename F, typename... Args> 
-            requires std::is_same_v<std::invoke_result_t<F,int,Args&...>, void> && (! std::is_reference_v<Args> && ...)//F in input ha sia int i sia reference a  Args, però Args non reference perché in lambda che viene inviata alla threadpool si deve copiare oggetto non reference ad oggetto
+            requires std::is_same_v<std::invoke_result_t<F,int,int,Args&...>, void> && (! std::is_reference_v<Args> && ...)//F in input ha: int i (loop index), index worker,  reference a  Args (tmp ogetti copie per ogni job), però Args non reference perché in lambda che viene inviata alla threadpool si deve copiare oggetto non reference ad oggetto
             //TODO: capire come forzare F a prende in input solo reference di Args, perché se body_function prede in input copia ricrea tmp ad ogni iterazione e siamo punto e a capo. vogliamo un solo tmp per job e body_function che prendere reference a copia tmp di job
             void parallel_for(int start, int end, F&& f, int granularity, Args... args){//n universal reference per Args perché ne voglio una copia per ogni job
                 using return_type = void;
@@ -585,25 +585,28 @@ namespace fdapde{
                 ret_fut.reserve(n_job); 
                 // se non ha spalmato allora plus_one == 0 e questo for lo salta
                 for (int j= 0; j<plus_one; j++){
-                    ret_fut.emplace_back(this->send_task_round([granularity = granularity +1,j,start,fun = f, ... args = args]()mutable{ 
+                    ret_fut.emplace_back(this->send_task_round([granularity = granularity +1,j,start,fun = f, ... args = args, this]()mutable{ 
                             int stop = (j+1)*granularity+start;
+                            int index_worker = this->get_index_worker_from_thread();
                             for(int k=j*granularity+start; k<stop; k++ ){
-                                fun(k,args...);//f prende in input reference a variadic template altrimenti tutto inutile
+                                fun(k,index_worker,args...);//f prende in input reference a variadic template altrimenti tutto inutile
                             }
                         }));
                 }
                 for (int j= plus_one; j<n_job-1; j++){
-                    ret_fut.emplace_back(this->send_task_round([granularity,plus_one,j,start,fun = f, ... args = args]()mutable{ 
+                    ret_fut.emplace_back(this->send_task_round([granularity,plus_one,j,start,fun = f, ... args = args, this]()mutable{ 
                             int stop = (j+1)*granularity+plus_one+start;
+                            int index_worker = this->get_index_worker_from_thread();
                             for(int k=j*granularity+plus_one+start; k<stop; k++ ){
-                                fun(k,args...);
+                                fun(k,index_worker,args...);
                             }
                         }));
                 }
                 //last job (puo essere o gran_last o granularity normale) inviato separatamente per non dover fare if
-                ret_fut.emplace_back(this->send_task_round([gran_last,end,fun = f, ... args = args]()mutable{ 
+                ret_fut.emplace_back(this->send_task_round([gran_last,end,fun = f, ... args = args, this]()mutable{ 
+                        int index_worker = this->get_index_worker_from_thread();
                         for(int k=end-gran_last; k<end; k++ ){
-                            fun(k,args...);
+                            fun(k,index_worker, args...);
                         }
                     }));
                 

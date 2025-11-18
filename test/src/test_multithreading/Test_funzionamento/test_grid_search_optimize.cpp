@@ -107,24 +107,9 @@ int main(int argc, char** argv){
     std::cout<<"optimum: "<<opt4.optimum()<<std::endl;
     std::cout<<std::endl;
 
-            //---------------------- parallel_variadic : optimize (parallel_for_granularity_variadic)---------------------- ---------------------- ---------------------- ---------------------- 
-    std::cout<<"========================parallel_for_ prova, gran:"<<granularity<<", threads: "<<n_threads<<"========================"<<std::endl;
-    // definizione dell'ottimizzatore 
-    fdapde::GridSearch<2> opt5;
-
-    auto start6 = std::chrono::high_resolution_clock::now();
-
-    opt5.optimize_prova(rastrigin, grid, execution::par,Tp,granularity);  
-
-    auto end6 = std::chrono::high_resolution_clock::now();
-    auto duration6 = std::chrono::duration_cast<std::chrono::microseconds>(end6 - start6);  
-    std::cout<<"tempo impiegato: "<<duration6.count()<<","<<std::endl;
-    std::cout<<"value: "<<opt5.value()<<std::endl; 
-    std::cout<<"optimum: "<<opt5.optimum()<<std::endl;
-    std::cout<<std::endl;
  }
 //   { //rastrigin
-//     std::cout<<"=========minimization of rosenbrock function (value_min: 0 in (1,1))= ================================="<<std::endl;
+//     std::cout<<"=========minimization of rosenbrock function (value_min: 0 in (1,1))= ===== ============================"<<std::endl;
 //     //creazione threadpool per versioni con Tp in input
 //     fdapde::threadpool<fdapde::steal::random> Tp(1024, n_threads);
 
