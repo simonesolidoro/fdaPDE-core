@@ -553,8 +553,9 @@ namespace fdapde{
 
             //prova di parallel_for cono variadic template di tmp object per ogni job, per poter usare parallel_for con granularity in input al posto di parallel_for gran=1 con divisione in job a mano
             template<typename F, typename... Args> 
-            requires std::is_same_v<std::invoke_result_t<F,int,Args...>, void> //F in input ha sia int i sia Args args
-            void parallel_for_granularity_variadic(int start, int end, int granularity, F&& f,Args&&... args){//non credo serva universal reference per Args perché ne voglio una copia per ogni job
+            requires std::is_same_v<std::invoke_result_t<F,int,Args&...>, void> && (! std::is_reference_v<Args> && ...)//F in input ha sia int i sia reference a  Args, però Args non reference perché in lambda che viene inviata alla threadpool si deve copiare oggetto non reference ad oggetto
+            //TODO: capire come forzare F a prende in input solo reference di Args, perché se body_function prede in input copia ricrea tmp ad ogni iterazione e siamo punto e a capo. vogliamo un solo tmp per job e body_function che prendere reference a copia tmp di job
+            void parallel_for_granularity_variadic(int start, int end, int granularity, F&& f,Args... args){//n universal reference per Args perché ne voglio una copia per ogni job
                 using return_type = void;
                 //range: [start, end) --> end-start= dim range
                 int range = (end-start);
