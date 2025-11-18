@@ -638,6 +638,7 @@ namespace fdapde{
                 return;
             } 
 
+            //TODO: granularity qui ancora solo last_job senza spalmare se n_job multiplo di worker. da aggiornare
             //2 (it+n ok)
             template<typename F,typename It, typename... Args> 
             requires std::is_same_v<std::invoke_result_t<F,It,int,Args&...>, void> && std::random_access_iterator<It> && (! std::is_reference_v<Args> && ...)
