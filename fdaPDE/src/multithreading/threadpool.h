@@ -69,7 +69,7 @@ namespace fdapde{
             bool active_ = false;
             mutable std::mt19937 gen_;
             std::unordered_map<std::thread::id, int> map_thread_worker_; //map of : thread_ID of worker's thread, index of worker in workers_
-            mutable std::mutex m_map_;
+            mutable std::shared_mutex m_map_;
         public:
             friend class worker; 
             //n = size_synchro_queue, k = number of workers
@@ -112,7 +112,7 @@ namespace fdapde{
             //getter
             int get_n_worker()const{return n_worker_;};
             int get_index_worker_from_thread()const{
-                std::unique_lock<std::mutex> loc(m_map_); //aggiunto lock perché non saprei che altro possa causare errore out of range in cluster  
+                std::shared_lock<std::shared_mutex> loc(m_map_); //aggiunto lock perché non saprei che altro possa causare errore out of range in cluster  
                 std::thread::id id = std::this_thread::get_id(); 
                 try {
                      return map_thread_worker_.at(id);
@@ -145,8 +145,8 @@ namespace fdapde{
                 lock_shared.unlock();
 
                 
-                //upload map_thread_worker thread-safe
-                std::unique_lock<std::mutex> loc_map(m_map_);
+                //upload map_thread_worker thread-safe. //shared mutex in modalità scrittura, così in metodo che deve solo leggere usato in modalità lettura tra tutti i worker che quindi una volta superata questa fase di inizializzazione della mappa hanno comportamento non-blocking (ovviamente intendo solo per lettura mappa )
+                std::unique_lock<std::shared_mutex> loc_map(m_map_);
                 map_thread_worker_[std::this_thread::get_id()] = i;
                 loc_map.unlock();
 
