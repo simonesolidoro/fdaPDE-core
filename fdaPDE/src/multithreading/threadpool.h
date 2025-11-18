@@ -555,6 +555,7 @@ namespace fdapde{
             //prova di parallel_for cono variadic template di tmp object per ogni job, per poter usare parallel_for con granularity in input al posto di parallel_for gran=1 con divisione in job a mano
             template<typename F, typename... Args> 
             requires std::is_same_v<std::invoke_result_t<F,int,int,Args&...>, void> && (! std::is_reference_v<Args> && ...)//F in input ha: int i (loop index), index worker,  reference a  Args (tmp ogetti copie per ogni job), però Args non reference perché in lambda che viene inviata alla threadpool si deve copiare oggetto non reference ad oggetto
+            //TODO: i require che Args non siano reference e che F prenda in input reference di args non funzionano, da capire come forzarli.
             //TODO: capire come forzare F a prende in input solo reference di Args, perché se body_function prede in input copia ricrea tmp ad ogni iterazione e siamo punto e a capo. vogliamo un solo tmp per job e body_function che prendere reference a copia tmp di job
             void parallel_for(int start, int end, F&& f, int granularity, Args... args){//n universal reference per Args perché ne voglio una copia per ogni job
                 using return_type = void;
@@ -638,26 +639,28 @@ namespace fdapde{
             } 
 
             //2 (it+n ok)
-            template<typename F,typename It> 
-            requires std::is_same_v<std::invoke_result_t<F,It>, void> && std::random_access_iterator<It>
-            void parallel_for(It start, It end, F&& f,int granularity){
+            template<typename F,typename It, typename... Args> 
+            requires std::is_same_v<std::invoke_result_t<F,It,int,Args&...>, void> && std::random_access_iterator<It> && (! std::is_reference_v<Args> && ...)
+            void parallel_for(It start, It end, F&& f,int granularity,Args... args){
                 using return_type = void;
                 int range = (end-start); 
                 int n_job = range / granularity;
                 std::vector<std::future<return_type>> ret_fut;
                 ret_fut.reserve(n_job+1); 
                 for (int j = 0; j<n_job; j++){
-                    ret_fut.emplace_back(this->send_task_round([granularity,fun = f](auto it)mutable{ 
+                    ret_fut.emplace_back(this->send_task_round([granularity,fun = f, ...args = args, this](auto it)mutable{ 
+                            int index_worker = this-> get_index_worker_from_thread();
                             for(int k=0; k<granularity; k++ ){
-                                fun(it+k);
+                                fun(it+k,index_worker,args...);
                             }
                         },j*granularity+start));
                 }
                 int granularity_last_job = range % granularity;
                 if(granularity_last_job > 0){
-                    ret_fut.emplace_back(this->send_task_round([granularity_last_job,fun = f](auto it)mutable{ 
+                    ret_fut.emplace_back(this->send_task_round([granularity_last_job,fun = f, ...args = args, this](auto it)mutable{ 
+                        int index_worker = this-> get_index_worker_from_thread();
                         for(int k=0; k<granularity_last_job; k++ ){
-                            fun(it+k);
+                            fun(it+k,index_worker,args...);
                         }
                     }, n_job*granularity+start ));
                 }
@@ -667,9 +670,9 @@ namespace fdapde{
 
 
             //3 (it+n NONok)
-            template<typename F,typename It> 
-            requires std::is_same_v<std::invoke_result_t<F,It>, void> && (!std::random_access_iterator<It>)
-            void parallel_for(It start, It end, F&& f,int granularity){
+            template<typename F,typename It, typename... Args> 
+            requires std::is_same_v<std::invoke_result_t<F,It,int,Args&...>, void> && (!std::random_access_iterator<It>) && (! std::is_reference_v<Args> && ...)
+            void parallel_for(It start, It end, F&& f,int granularity, Args... args){
                 using return_type = void;
                 //Let's first scroll through the entire range so that we can copy iterators at each start + k * granularity into the vector its
                 int range = 0;
@@ -685,18 +688,20 @@ namespace fdapde{
                 std::vector<std::future<return_type>> ret_fut;
                 ret_fut.reserve(n_job+1);
                 for(int j = 0; j<n_job; j++){
-                    ret_fut.emplace_back(this->send_task_round([granularity,fun = f](auto it)mutable{ 
+                    ret_fut.emplace_back(this->send_task_round([granularity,fun = f, ...args = args, this](auto it)mutable{ 
+                            int index_worker = this-> get_index_worker_from_thread();
                             for(int k=0; k<granularity; k++ ){
-                                fun(it);
+                                fun(it,index_worker,args...);
                                 ++it;
                             }
                         },its[j])); 
                 }
                 int granularity_last_job = range % granularity;
                 if(granularity_last_job > 0){
-                    ret_fut.emplace_back(this->send_task_round([granularity_last_job,fun = f](auto it)mutable{ 
+                    ret_fut.emplace_back(this->send_task_round([granularity_last_job,fun = f, ...args = args,this](auto it)mutable{ 
+                        int index_worker = this-> get_index_worker_from_thread();
                         for(int k=0; k<granularity_last_job; k++ ){
-                            fun(it);
+                            fun(it,index_worker,args...);
                             ++it;
                         }
                     }, its[n_job])); 

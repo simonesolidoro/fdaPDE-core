@@ -30,17 +30,17 @@ int main(int argc,char** argv)
     });
 
     std::cout<<"-------------------------------------- granularity random acces ----------------------------------------"<<std::endl;
-
-    tp.parallel_for(V.begin(),V.end(),[=](std::vector<int>::iterator iter){
+    int tmp = 10;
+    tp.parallel_for(V.begin(),V.end(),[=](std::vector<int>::iterator iter, int index_w, int& tmp){
         std::cout<<*iter<<" da thread: "<<std::this_thread::get_id()<<std::endl;
-    },gran);
+    },gran,tmp);
 
     
     std::cout<<"-------------------------------------- granularity non random acces (list,map,set)----------------------------------------"<<std::endl;
 
-    tp.parallel_for(W.begin(),W.end(),[=](std::list<int>::iterator iter){
+    tp.parallel_for(W.begin(),W.end(),[=](std::list<int>::iterator iter, int index_w, int& tmp){
         std::cout<<*iter<<" da thread: "<<std::this_thread::get_id()<<std::endl;
-    },gran);
+    },gran,tmp);
     /*
 
 //for non parallel

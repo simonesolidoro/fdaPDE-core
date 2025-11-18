@@ -37,7 +37,7 @@ int main(int argc,char** argv)
     
     auto end3 = std::chrono::high_resolution_clock::now(); 
     auto duration3 = std::chrono::duration_cast<std::chrono::microseconds>(end3 - start3);  
-    std::cout<<"par_for- incrementata a da 0 ad: "<<a.load()<<"  impiegato:"<<duration3.count()<< " microsecondi, doveva arrivare a : "<<n_it*n<<std::endl;
+    std::cout<<"par_for- incrementata a da 0 ad: "<<a.load()<<"  impiegato:"<<duration3.count()<< " microsecondi, doveva  arrivare a : "<<n_it*n<<std::endl;
 
 
 }
