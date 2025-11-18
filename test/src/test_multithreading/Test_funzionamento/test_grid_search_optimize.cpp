@@ -48,6 +48,11 @@ int main(int argc, char** argv){
         grid(i,0) = unif(re);
         grid(i,1) = unif(re);
     }
+    // //valore ottimo di rastrigin subito il primo per ogni worker, così verifichiamo che overhead di paralle_for graanularity è dato da scrittura risultati in vettore comune ad ogni iterazione 
+    // for(int i = 0; i<grid.rows(); i++){
+    //     grid(i,0) = 0;
+    //     grid(i,1) = 0; 
+    // }
  { //rastrigin
     std::cout<<"=========minimization of Rastrigin function (value_min: 0 in (0,0))==================================="<<std::endl;
     //creazione threadpool per versioni con Tp in input
@@ -85,53 +90,15 @@ int main(int argc, char** argv){
     std::cout<<"value: "<<opt3.value()<<std::endl; 
     std::cout<<"optimum: "<<opt3.optimum()<<std::endl;
     std::cout<<std::endl;
- }
-  { //rastrigin
-    std::cout<<"=========minimization of rosenbrock function (value_min: 0 in (1,1))=================================="<<std::endl;
-    //creazione threadpool per versioni con Tp in input
-    fdapde::threadpool<fdapde::steal::random> Tp(1024, n_threads);
 
-
-    //---------------------- no parallel------------ ---------- ---------------------- ---------------------- ---------------------- 
-    std::cout<<"========================sequenziale========================"<<std::endl;
-    fdapde::GridSearch<2> opt2;
-
-    auto start3 = std::chrono::high_resolution_clock::now();
-
-    opt2.optimize(rosenbrock, grid); // <- da modificare questo step
-
-    auto end3 = std::chrono::high_resolution_clock::now();
-    auto duration3 = std::chrono::duration_cast<std::chrono::microseconds>(end3 - start3);  
-    std::cout<<"tempo impiegato: "<<duration3.count()<<","<<std::endl;
-    std::cout<<"value: "<<opt2.value()<<std::endl; 
-    std::cout<<"optimum: "<<opt2.optimum()<<std::endl; 
-    std::cout<<std::endl;
-    
-
-//---------------------- parallel: optimize (parallel_for)---------------------- ---------------------- ---------------------- ---------------------- 
-    std::cout<<"========================parallel_for optimize, granularity:"<<granularity<<", threads: "<<n_threads<<"========================"<<std::endl;
-    // definizione dell'ottimizzatore 
-    fdapde::GridSearch<2> opt3;
-
-    auto start4 = std::chrono::high_resolution_clock::now();
-
-    opt3.optimize(rosenbrock, grid, execution::par,Tp,granularity);  
-
-    auto end4 = std::chrono::high_resolution_clock::now();
-    auto duration4 = std::chrono::duration_cast<std::chrono::microseconds>(end4 - start4);  
-    std::cout<<"tempo impiegato: "<<duration4.count()<<","<<std::endl;
-    std::cout<<"value: "<<opt3.value()<<std::endl; 
-    std::cout<<"optimum: "<<opt3.optimum()<<std::endl;
-    std::cout<<std::endl;
-
-    //---------------------- parallel_variadic : optimize (parallel_for_granularity_variadic)---------------------- ---------------------- ---------------------- ---------------------- 
+        //---------------------- parallel_variadic : optimize (parallel_for_granularity_variadic)---------------------- ---------------------- ---------------------- ---------------------- 
     std::cout<<"========================parallel_for_granularity_variadic, gran:"<<granularity<<", threads: "<<n_threads<<"========================"<<std::endl;
     // definizione dell'ottimizzatore 
     fdapde::GridSearch<2> opt4;
 
     auto start5 = std::chrono::high_resolution_clock::now();
 
-    opt4.optimize(rosenbrock, grid, execution::par,Tp,granularity);  
+    opt4.optimize_variadic(rastrigin, grid, execution::par,Tp,granularity);  
 
     auto end5 = std::chrono::high_resolution_clock::now();
     auto duration5 = std::chrono::duration_cast<std::chrono::microseconds>(end5 - start5);  
@@ -140,5 +107,59 @@ int main(int argc, char** argv){
     std::cout<<"optimum: "<<opt4.optimum()<<std::endl;
     std::cout<<std::endl;
  }
+//   { //rastrigin
+//     std::cout<<"=========minimization of rosenbrock function (value_min: 0 in (1,1))= ================================="<<std::endl;
+//     //creazione threadpool per versioni con Tp in input
+//     fdapde::threadpool<fdapde::steal::random> Tp(1024, n_threads);
+
+
+//     //---------------------- no parallel------------ ---------- ---------------------- ---------------------- ---------------------- 
+//     std::cout<<"========================sequenziale========================"<<std::endl;
+//     fdapde::GridSearch<2> opt2;
+
+//     auto start3 = std::chrono::high_resolution_clock::now();
+
+//     opt2.optimize(rosenbrock, grid); // <- da modificare questo step
+
+//     auto end3 = std::chrono::high_resolution_clock::now();
+//     auto duration3 = std::chrono::duration_cast<std::chrono::microseconds>(end3 - start3);  
+//     std::cout<<"tempo impiegato: "<<duration3.count()<<","<<std::endl;
+//     std::cout<<"value: "<<opt2.value()<<std::endl; 
+//     std::cout<<"optimum: "<<opt2.optimum()<<std::endl; 
+//     std::cout<<std::endl;
+    
+
+// //---------------------- parallel: optimize (parallel_for)---------------------- ---------------------- ---------------------- ---------------------- 
+//     std::cout<<"========================parallel_for optimize, granularity:"<<granularity<<", threads: "<<n_threads<<"========================"<<std::endl;
+//     // definizione dell'ottimizzatore 
+//     fdapde::GridSearch<2> opt3;
+
+//     auto start4 = std::chrono::high_resolution_clock::now();
+
+//     opt3.optimize(rosenbrock, grid, execution::par,Tp,granularity);  
+
+//     auto end4 = std::chrono::high_resolution_clock::now();
+//     auto duration4 = std::chrono::duration_cast<std::chrono::microseconds>(end4 - start4);  
+//     std::cout<<"tempo impiegato: "<<duration4.count()<<","<<std::endl;
+//     std::cout<<"value: "<<opt3.value()<<std::endl; 
+//     std::cout<<"optimum: "<<opt3.optimum()<<std::endl;
+//     std::cout<<std::endl;
+
+//     //---------------------- parallel_variadic : optimize (parallel_for_granularity_variadic)---------------------- ---------------------- ---------------------- ---------------------- 
+//     std::cout<<"========================parallel_for_granularity_variadic, gran:"<<granularity<<", threads: "<<n_threads<<"========================"<<std::endl;
+//     // definizione dell'ottimizzatore 
+//     fdapde::GridSearch<2> opt4;
+
+//     auto start5 = std::chrono::high_resolution_clock::now();
+
+//     opt4.optimize_variadic(rosenbrock, grid, execution::par,Tp,granularity);  
+
+//     auto end5 = std::chrono::high_resolution_clock::now();
+//     auto duration5 = std::chrono::duration_cast<std::chrono::microseconds>(end5 - start5);  
+//     std::cout<<"tempo impiegato: "<<duration5.count()<<","<<std::endl;
+//     std::cout<<"value: "<<opt4.value()<<std::endl; 
+//     std::cout<<"optimum: "<<opt4.optimum()<<std::endl;
+//     std::cout<<std::endl;
+//  }
     return 0;
 }
