@@ -21,7 +21,18 @@ int main(int argc,char** argv){
     int end = std::stoi(argv[2]);
     int granularity = std::stoi(argv[3]);
     int n = end-start;
-    fdapde::Threadpool<fdapde::steal::random> tp(1024,8);
+    fdapde::threadpool<fdapde::steal::random> tp(1024,8);
+
+{
+std::cout<<"================ parallel_for_granularity_variadic  ================"<<std::endl; 
+    std::atomic<int> a=0; //usata per verifica tutti job vengano eseguiti (a deve arrivare ad n)
+    int tmp_int = 10;
+    tp.parallel_for_granularity_variadic(start,end,[&](int i,int tmp){
+        a++;
+    },granularity,tmp_int);
+    if(a.load() == n){std::cout<<"variadic ok "<<std::endl;}
+    else{std::cout<<"qualcosa non va :("<<std::endl;}
+}
 {
 std::cout<<"================ parallel_for (gran=1) ================"<<std::endl;
     std::atomic<int> a=0; //usata per verifica tutti job vengano eseguiti (a deve arrivare ad n)
