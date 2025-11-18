@@ -555,118 +555,60 @@ namespace fdapde{
             template<typename F, typename... Args> 
             requires std::is_same_v<std::invoke_result_t<F,int,Args...>, void> //F in input ha sia int i sia Args args
             void parallel_for_granularity_variadic(int start, int end, int granularity, F&& f,Args&&... args){//non credo serva universal reference per Args perché ne voglio una copia per ogni job
-                // if constexpr(sizeof...(args) == 0){//come vecchia  
-                //     using return_type = void;
-                //     //range: [start, end) --> end-start= dim range
-                //     int range = (end-start);
-                //     if(granularity > range){granularity = range;}////oss: se granularity > range allora tutto range fatto da unico worker, messo granularity=range per evitare errori poi. magari mettere un warning ??? 
-                //     int n_job = range / std::max(1,granularity); //se gran non valida (= 0) non da errore
-                //     //default gran se mandato valore non valido, non più solo -1. cosi evitiamo controllo se granularity valida          
-                //     if(granularity <= 0) {// 1 job per worker max (quindi resto spalmato), se range<n_worker allora n_job = range 
-                //         if(range<n_worker_){
-                //             granularity = 1;
-                //             n_job = range;
-                //         }else{
-                //             granularity = range / n_worker_;
-                //             n_job = n_worker_;
-                //         }
-                //     }
-                //     int gran_last = granularity;
-                //     int plus_one = 0;
-                //     int resto = range%granularity; 
-                //     if((n_job%n_worker_) == 0 && resto >0){ // spalma perché fare un ultimo job con iterazioni di resto sbilancia
-                //         plus_one = resto;
-                //     }
-                //     if((n_job%n_worker_) != 0 && resto >0){ // ultimo job contiente resto di iterazioni (non spalmate perché c'é (almeno 1) worker che ha 1 job meno di worker0, e quindi le da a lui)
-                //         gran_last = resto;
-                //         n_job ++;
-                //     }
-                //     std::vector<std::future<return_type>> ret_fut;
-                //     ret_fut.reserve(n_job); 
-                //     // se non ha spalmato allora plus_one == 0 e questo for lo salta
-                //     for (int j= 0; j<plus_one; j++){
-                //         ret_fut.emplace_back(this->send_task_round([granularity = granularity +1,j,start,fun = f]()mutable{ 
-                //                 int stop = (j+1)*granularity+start;
-                //                 for(int k=j*granularity+start; k<stop; k++ ){
-                //                     fun(k);
-                //                 }
-                //             }));
-                //     }
-                //     for (int j= plus_one; j<n_job-1; j++){
-                //         ret_fut.emplace_back(this->send_task_round([granularity,plus_one,j,start,fun = f]()mutable{ 
-                //                 int stop = (j+1)*granularity+plus_one+start;
-                //                 for(int k=j*granularity+plus_one+start; k<stop; k++ ){
-                //                     fun(k);
-                //                 }
-                //             }));
-                //     }
-                //     //last job (puo essere o gran_last o granularity normale) inviato separatamente per non dover fare if
-                //     ret_fut.emplace_back(this->send_task_round([gran_last,end,fun = f]()mutable{ 
-                //             for(int k=end-gran_last; k<end; k++ ){
-                //                 fun(k);
-                //             }
-                //         }));
-                    
-                //     //get futures
-                //     for(std::future<void>& fut : ret_fut){fut.get();}
-                //     return;
-                // }
-                // else{
-                    using return_type = void;
-                    //range: [start, end) --> end-start= dim range
-                    int range = (end-start);
-                    if(granularity > range){granularity = range;}////oss: se granularity > range allora tutto range fatto da unico worker, messo granularity=range per evitare errori poi. magari mettere un warning ??? 
-                    int n_job = range / std::max(1,granularity); //se gran non valida (= 0) non da errore
-                    //default gran se mandato valore non valido, non più solo -1. cosi evitiamo controllo se granularity valida          
-                    if(granularity <= 0) {// 1 job per worker max (quindi resto spalmato), se range<n_worker allora n_job = range 
-                        if(range<n_worker_){
-                            granularity = 1;
-                            n_job = range;
-                        }else{
-                            granularity = range / n_worker_;
-                            n_job = n_worker_;
-                        }
+                using return_type = void;
+                //range: [start, end) --> end-start= dim range
+                int range = (end-start);
+                if(granularity > range){granularity = range;}////oss: se granularity > range allora tutto range fatto da unico worker, messo granularity=range per evitare errori poi. magari mettere un warning ??? 
+                int n_job = range / std::max(1,granularity); //se gran non valida (= 0) non da errore
+                //default gran se mandato valore non valido, non più solo -1. cosi evitiamo controllo se granularity valida          
+                if(granularity <= 0) {// 1 job per worker max (quindi resto spalmato), se range<n_worker allora n_job = range 
+                    if(range<n_worker_){
+                        granularity = 1;
+                        n_job = range;
+                    }else{
+                        granularity = range / n_worker_;
+                        n_job = n_worker_;
                     }
-                    int gran_last = granularity;
-                    int plus_one = 0;
-                    int resto = range%granularity; 
-                    if((n_job%n_worker_) == 0 && resto >0){ // spalma perché fare un ultimo job con iterazioni di resto sbilancia
-                        plus_one = resto;
-                    }
-                    if((n_job%n_worker_) != 0 && resto >0){ // ultimo job contiente resto di iterazioni (non spalmate perché c'é (almeno 1) worker che ha 1 job meno di worker0, e quindi le da a lui)
-                        gran_last = resto;
-                        n_job ++;
-                    }
-                    std::vector<std::future<return_type>> ret_fut;
-                    ret_fut.reserve(n_job); 
-                    // se non ha spalmato allora plus_one == 0 e questo for lo salta
-                    for (int j= 0; j<plus_one; j++){
-                        ret_fut.emplace_back(this->send_task_round([granularity = granularity +1,j,start,fun = f, ... args = args]()mutable{ 
-                                int stop = (j+1)*granularity+start;
-                                for(int k=j*granularity+start; k<stop; k++ ){
-                                    fun(k,args...);//f prende in input reference a variadic template altrimenti tutto inutile
-                                }
-                            }));
-                    }
-                    for (int j= plus_one; j<n_job-1; j++){
-                        ret_fut.emplace_back(this->send_task_round([granularity,plus_one,j,start,fun = f, ... args = args]()mutable{ 
-                                int stop = (j+1)*granularity+plus_one+start;
-                                for(int k=j*granularity+plus_one+start; k<stop; k++ ){
-                                    fun(k,args...);
-                                }
-                            }));
-                    }
-                    //last job (puo essere o gran_last o granularity normale) inviato separatamente per non dover fare if
-                    ret_fut.emplace_back(this->send_task_round([gran_last,end,fun = f, ... args = args]()mutable{ 
-                            for(int k=end-gran_last; k<end; k++ ){
+                }
+                int gran_last = granularity;
+                int plus_one = 0;
+                int resto = range%granularity; 
+                if((n_job%n_worker_) == 0 && resto >0){ // spalma perché fare un ultimo job con iterazioni di resto sbilancia
+                    plus_one = resto;
+                }
+                if((n_job%n_worker_) != 0 && resto >0){ // ultimo job contiente resto di iterazioni (non spalmate perché c'é (almeno 1) worker che ha 1 job meno di worker0, e quindi le da a lui)
+                    gran_last = resto;
+                    n_job ++;
+                }
+                std::vector<std::future<return_type>> ret_fut;
+                ret_fut.reserve(n_job); 
+                // se non ha spalmato allora plus_one == 0 e questo for lo salta
+                for (int j= 0; j<plus_one; j++){
+                    ret_fut.emplace_back(this->send_task_round([granularity = granularity +1,j,start,fun = f, ... args = args]()mutable{ 
+                            int stop = (j+1)*granularity+start;
+                            for(int k=j*granularity+start; k<stop; k++ ){
+                                fun(k,args...);//f prende in input reference a variadic template altrimenti tutto inutile
+                            }
+                        }));
+                }
+                for (int j= plus_one; j<n_job-1; j++){
+                    ret_fut.emplace_back(this->send_task_round([granularity,plus_one,j,start,fun = f, ... args = args]()mutable{ 
+                            int stop = (j+1)*granularity+plus_one+start;
+                            for(int k=j*granularity+plus_one+start; k<stop; k++ ){
                                 fun(k,args...);
                             }
                         }));
-                    
-                    //get futures
-                    for(std::future<void>& fut : ret_fut){fut.get();}
-                    return;
-                // }
+                }
+                //last job (puo essere o gran_last o granularity normale) inviato separatamente per non dover fare if
+                ret_fut.emplace_back(this->send_task_round([gran_last,end,fun = f, ... args = args]()mutable{ 
+                        for(int k=end-gran_last; k<end; k++ ){
+                            fun(k,args...);
+                        }
+                    }));
+                
+                //get futures
+                for(std::future<void>& fut : ret_fut){fut.get();}
+                return;
             } 
 
             //PARALLEL_FOR_ITERATOR:
