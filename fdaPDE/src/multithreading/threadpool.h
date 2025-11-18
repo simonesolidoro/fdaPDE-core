@@ -520,9 +520,9 @@ namespace fdapde{
 
 
             /*non so se va lasciato*/
-            template<typename F> 
-            requires std::is_same_v<std::invoke_result_t<F,int>, void>
-            void parallel_for(int start, int end, F&& f,std::vector<int>& vect){
+            template<typename F, typename... Args> 
+            requires std::is_same_v<std::invoke_result_t<F,int,int,Args&...>, void> && (! std::is_reference_v<Args> && ...)
+            void parallel_for(int start, int end, F&& f,std::vector<int> vect, Args... args){ //copia di vettore gran è più sicuro in multithreading
                 using return_type = void;
                 if(std::reduce(vect.cbegin(),vect.cend(),0) != (end-start)){
                     std::cerr<<"somma di elem in vect deve essere uguale a range (end-start)"<<std::endl;
@@ -538,9 +538,10 @@ namespace fdapde{
                 std::vector<std::future<return_type>> ret_fut;
                 ret_fut.reserve(vect_size);
                 for (size_t j = 0; j<vect_size; j++){
-                    ret_fut.emplace_back(this->send_task_round([&,j,fun = f]()mutable{
+                    ret_fut.emplace_back(this->send_task_round([&seq,j,fun = f, ... args = args, this]()mutable{
+                            int index_worker = this->get_index_worker_from_thread();
                             for(int k=seq[j]; k<seq[j+1]; k++ ){
-                                fun(k);
+                                fun(k, index_worker, args...);
                             }
                         }));
                 }            
