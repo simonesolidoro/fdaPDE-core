@@ -522,17 +522,17 @@ namespace fdapde{
             /*non so se va lasciato*/
             template<typename F, typename... Args> 
             requires std::is_same_v<std::invoke_result_t<F,int,int,Args&...>, void> && (! std::is_reference_v<Args> && ...)
-            void parallel_for(int start, int end, F&& f,std::vector<int> vect, Args... args){ //copia di vettore gran è più sicuro in multithreading
+            void parallel_for(int start, int end, F&& f,std::vector<int> granularities, Args... args){ //copia di vettore gran è più sicuro in multithreading
                 using return_type = void;
-                if(std::reduce(vect.cbegin(),vect.cend(),0) != (end-start)){
-                    std::cerr<<"somma di elem in vect deve essere uguale a range (end-start)"<<std::endl;
+                if(std::reduce(granularities.cbegin(),granularities.cend(),0) != (end-start)){
+                    std::cerr<<"somma di elem in granularities deve essere uguale a range (end-start)"<<std::endl;
                     return;
                 }
                 std::vector<int> seq={start}; //seq vettore di somme parziali (es np.cumsum) con primo elemento però 0 cosi da pterlo usare in divisione di for piu comodamente
                 int sum_seq = start;
-                size_t vect_size = vect.size();
+                size_t vect_size = granularities.size();
                 for(size_t l = 0; l<vect_size; l++){
-                    sum_seq += vect[l];
+                    sum_seq += granularities[l];
                     seq.push_back(sum_seq);
                 }
                 std::vector<std::future<return_type>> ret_fut;
