@@ -381,7 +381,7 @@ void assemble_lambda(std::vector<Eigen::Triplet<double>>& triplet_list) const {
 /*=====================================================================================================================================================================*/
 /*=====================================================================================================================================================================*/
 
-    Eigen::SparseMatrix<double> assemble_seqnoemplace() const {
+    Eigen::SparseMatrix<double> assemble_seqnoemplace_lambda() const {
         Eigen::SparseMatrix<double> assembled_mat(test_dof_handler()->n_dofs(), trial_dof_handler()->n_dofs());
 
         int n_cell = this->Base::dof_handler_->triangulation()->n_cells();
@@ -389,7 +389,7 @@ void assemble_lambda(std::vector<Eigen::Triplet<double>>& triplet_list) const {
         int tot_triple = n_cell * triple_per_cella;
         std::vector<Eigen::Triplet<double>> triplet_list(tot_triple);
 
-	assemble_seqnoemplace(triplet_list);
+	assemble_seqnoemplace_lambda(triplet_list);
 
 	// linearity of the integral is implicitly used here, as duplicated triplets are summed up (see Eigen docs)
         assembled_mat.setFromTriplets(triplet_list.begin(), triplet_list.end());
@@ -398,7 +398,7 @@ void assemble_lambda(std::vector<Eigen::Triplet<double>>& triplet_list) const {
         return assembled_mat;
     }
 
-        Eigen::SparseMatrix<double> assemble_tempotriple_seqnoemplace() const {
+        Eigen::SparseMatrix<double> assemble_tempotriple_seqnoemplace_lambda() const {
         Eigen::SparseMatrix<double> assembled_mat(test_dof_handler()->n_dofs(), trial_dof_handler()->n_dofs());
 
         int n_cell = this->Base::dof_handler_->triangulation()->n_cells();
@@ -406,7 +406,7 @@ void assemble_lambda(std::vector<Eigen::Triplet<double>>& triplet_list) const {
         int tot_triple = n_cell * triple_per_cella;
         std::vector<Eigen::Triplet<double>> triplet_list(tot_triple);
     auto start = std::chrono::high_resolution_clock::now();
-        assemble_seqnoemplace(triplet_list);
+        assemble_seqnoemplace_lambda(triplet_list);
     auto end = std::chrono::high_resolution_clock::now();
     auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start);  
     std::cout<<duration.count()<<" ";
@@ -418,7 +418,7 @@ void assemble_lambda(std::vector<Eigen::Triplet<double>>& triplet_list) const {
         return assembled_mat;
     }
 
-    void assemble_seqnoemplace(std::vector<Eigen::Triplet<double>>& triplet_list) const {
+    void assemble_seqnoemplace_lambda(std::vector<Eigen::Triplet<double>>& triplet_list) const {
         using iterator = typename Base::fe_traits::dof_iterator;
         iterator begin(Base::begin_.index(), test_dof_handler(), Base::begin_.marker());
         iterator end  (Base::end_.index(),   test_dof_handler(), Base::end_.marker()  );
@@ -449,78 +449,79 @@ void assemble_lambda(std::vector<Eigen::Triplet<double>>& triplet_list) const {
         if constexpr (trial_hess_is_zero) {
             std::fill_n(fe_packet.trial_hess.data(), fe_packet.trial_hess.size(), 0.0);
         }
-
-        int local_cell_id = 0;
-        int index_global_triplet_list = 0;
-        for (iterator it = begin; it != end; ++it) {
-            // update fe_packet content based on form requests
-            fe_packet.measure = it->measure();
-            if constexpr (Form::XprBits & int(geo_assembler_flags::compute_geo_id)) { fe_packet.geo_id = it->id(); }
-            if constexpr (Form::XprBits & int(geo_assembler_flags::compute_face_normal)) {
-                fdapde_static_assert(Options_ == FaceMajor, BILINEAR_FORM_REQUIRES_A_FACE_MAJOR_ASSEMBLY_LOOP);
-                fe_packet.normal.assign_inplace_from(it->normal());
-            }
-            if constexpr (Form::XprBits & int(fe_assembler_flags::compute_shape_grad)) {
-                Base::eval_shape_grads_on_cell(it, test_shape_grads_, test_grads);
-                if constexpr (is_petrov_galerkin) Base::eval_shape_grads_on_cell(it, trial_shape_grads_, trial_grads);
-            }
-            if constexpr (Form::XprBits & int(fe_assembler_flags::compute_shape_div)) {
-                fdapde_static_assert(
-                  n_test_components != 1 || n_trial_components != 1,
-                  DIVERGENCE_OPERATOR_IS_DEFINED_ONLY_FOR_VECTOR_ELEMENTS);
-                if constexpr (n_test_components != 1) Base::eval_shape_div_on_cell(it, test_shape_grads_, test_divs);
-                if constexpr (is_petrov_galerkin && n_trial_components != 1)
-                    Base::eval_shape_div_on_cell(it, trial_shape_grads_, trial_divs);
-            }
-            if constexpr (Form::XprBits & int(fe_assembler_flags::compute_shape_hess)) {
-                if constexpr (!test_hess_is_zero) Base::eval_shape_hess_on_cell(it, test_shape_hess_, test_hess);
-                if constexpr (is_petrov_galerkin && !trial_hess_is_zero)
-                    Base::eval_shape_hess_on_cell(it, trial_shape_hess_, trial_hess);
-            }
-
-            // perform integration of weak form for (i, j)-th basis pair
-            test_active_dofs = it->dofs();
-            if constexpr (is_petrov_galerkin) { trial_active_dofs = trial_dof_handler()->active_dofs(it->id()); }
-            for (int i = 0; i < n_trial_basis; ++i) {      // trial function loop
-                for (int j = 0; j < n_test_basis; ++j) {   // test function loop
-                    double value = 0;
-                    for (int q_k = 0; q_k < n_quadrature_nodes; ++q_k) {
-                        if constexpr (Form::XprBits & int(fe_assembler_flags::compute_shape_values)) {
-                            fe_packet.trial_value.assign_inplace_from(trial_shape_values_.template slice<0, 1>(i, q_k));
-                            fe_packet.test_value .assign_inplace_from(test_shape_values_ .template slice<0, 1>(j, q_k));
-                        }
-                        if constexpr (Form::XprBits & int(fe_assembler_flags::compute_shape_grad)) {
-                            fe_packet.trial_grad.assign_inplace_from(is_galerkin ?
-                                test_grads.template slice<0, 1>(i, q_k) : trial_grads.template slice<0, 1>(i, q_k));
-                            fe_packet.test_grad .assign_inplace_from(test_grads.template slice<0, 1>(j, q_k));
-                        }
-                        if constexpr (Form::XprBits & int(fe_assembler_flags::compute_shape_div)) {
-                            if constexpr (n_trial_components != 1) {
-                                fe_packet.trial_div =
-                                  (is_galerkin && n_test_components != 1) ? test_divs(i, q_k) : trial_divs(i, q_k);
-                            }
-                            if constexpr (n_test_components != 1) fe_packet.test_div = test_divs(j, q_k);
-                        }
-                        if constexpr (Form::XprBits & int(fe_assembler_flags::compute_shape_hess)) {
-                            if constexpr (!trial_hess_is_zero)
-                                fe_packet.trial_hess.assign_inplace_from(is_galerkin ?
-				    test_hess.template slice<0, 1>(i, q_k) : trial_hess.template slice<0, 1>(i, q_k));
-                            if constexpr (!test_hess_is_zero)
-                                fe_packet.test_hess.assign_inplace_from(test_hess.template slice<0, 1>(j, q_k));
-                        }
-                        if constexpr (Form::XprBits & int(fe_assembler_flags::compute_physical_quad_nodes)) {
-                            fe_packet.quad_node_id = local_cell_id * n_quadrature_nodes + q_k;
-                        }
-                        value += Quadrature::weights[q_k] * form_(fe_packet);
-                    }
-
-                    Eigen::Triplet<double> tripla(test_active_dofs[j], is_galerkin ? test_active_dofs[i] : trial_active_dofs[i],value * fe_packet.measure);
-                    triplet_list[index_global_triplet_list] = std::move(tripla);
-                    index_global_triplet_list ++;
+        [&,this](){
+            int local_cell_id = 0;
+            int index_global_triplet_list = 0;
+            for (iterator it = begin; it != end; ++it) {
+                // update fe_packet content based on form requests
+                fe_packet.measure = it->measure();
+                if constexpr (Form::XprBits & int(geo_assembler_flags::compute_geo_id)) { fe_packet.geo_id = it->id(); }
+                if constexpr (Form::XprBits & int(geo_assembler_flags::compute_face_normal)) {
+                    fdapde_static_assert(Options_ == FaceMajor, BILINEAR_FORM_REQUIRES_A_FACE_MAJOR_ASSEMBLY_LOOP);
+                    fe_packet.normal.assign_inplace_from(it->normal());
                 }
+                if constexpr (Form::XprBits & int(fe_assembler_flags::compute_shape_grad)) {
+                    Base::eval_shape_grads_on_cell(it, test_shape_grads_, test_grads);
+                    if constexpr (is_petrov_galerkin) Base::eval_shape_grads_on_cell(it, trial_shape_grads_, trial_grads);
+                }
+                if constexpr (Form::XprBits & int(fe_assembler_flags::compute_shape_div)) {
+                    fdapde_static_assert(
+                    n_test_components != 1 || n_trial_components != 1,
+                    DIVERGENCE_OPERATOR_IS_DEFINED_ONLY_FOR_VECTOR_ELEMENTS);
+                    if constexpr (n_test_components != 1) Base::eval_shape_div_on_cell(it, test_shape_grads_, test_divs);
+                    if constexpr (is_petrov_galerkin && n_trial_components != 1)
+                        Base::eval_shape_div_on_cell(it, trial_shape_grads_, trial_divs);
+                }
+                if constexpr (Form::XprBits & int(fe_assembler_flags::compute_shape_hess)) {
+                    if constexpr (!test_hess_is_zero) Base::eval_shape_hess_on_cell(it, test_shape_hess_, test_hess);
+                    if constexpr (is_petrov_galerkin && !trial_hess_is_zero)
+                        Base::eval_shape_hess_on_cell(it, trial_shape_hess_, trial_hess);
+                }
+
+                // perform integration of weak form for (i, j)-th basis pair
+                test_active_dofs = it->dofs();
+                if constexpr (is_petrov_galerkin) { trial_active_dofs = trial_dof_handler()->active_dofs(it->id()); }
+                for (int i = 0; i < n_trial_basis; ++i) {      // trial function loop
+                    for (int j = 0; j < n_test_basis; ++j) {   // test function loop
+                        double value = 0;
+                        for (int q_k = 0; q_k < n_quadrature_nodes; ++q_k) {
+                            if constexpr (Form::XprBits & int(fe_assembler_flags::compute_shape_values)) {
+                                fe_packet.trial_value.assign_inplace_from(trial_shape_values_.template slice<0, 1>(i, q_k));
+                                fe_packet.test_value .assign_inplace_from(test_shape_values_ .template slice<0, 1>(j, q_k));
+                            }
+                            if constexpr (Form::XprBits & int(fe_assembler_flags::compute_shape_grad)) {
+                                fe_packet.trial_grad.assign_inplace_from(is_galerkin ?
+                                    test_grads.template slice<0, 1>(i, q_k) : trial_grads.template slice<0, 1>(i, q_k));
+                                fe_packet.test_grad .assign_inplace_from(test_grads.template slice<0, 1>(j, q_k));
+                            }
+                            if constexpr (Form::XprBits & int(fe_assembler_flags::compute_shape_div)) {
+                                if constexpr (n_trial_components != 1) {
+                                    fe_packet.trial_div =
+                                    (is_galerkin && n_test_components != 1) ? test_divs(i, q_k) : trial_divs(i, q_k);
+                                }
+                                if constexpr (n_test_components != 1) fe_packet.test_div = test_divs(j, q_k);
+                            }
+                            if constexpr (Form::XprBits & int(fe_assembler_flags::compute_shape_hess)) {
+                                if constexpr (!trial_hess_is_zero)
+                                    fe_packet.trial_hess.assign_inplace_from(is_galerkin ?
+                        test_hess.template slice<0, 1>(i, q_k) : trial_hess.template slice<0, 1>(i, q_k));
+                                if constexpr (!test_hess_is_zero)
+                                    fe_packet.test_hess.assign_inplace_from(test_hess.template slice<0, 1>(j, q_k));
+                            }
+                            if constexpr (Form::XprBits & int(fe_assembler_flags::compute_physical_quad_nodes)) {
+                                fe_packet.quad_node_id = local_cell_id * n_quadrature_nodes + q_k;
+                            }
+                            value += Quadrature::weights[q_k] * form_(fe_packet);
+                        }
+
+                        Eigen::Triplet<double> tripla(test_active_dofs[j], is_galerkin ? test_active_dofs[i] : trial_active_dofs[i],value * fe_packet.measure);
+                        triplet_list[index_global_triplet_list] = std::move(tripla);
+                        index_global_triplet_list ++;
+                    }
+                }
+                local_cell_id++;
             }
-            local_cell_id++;
-        }
+        }();
         return;
     }
 
