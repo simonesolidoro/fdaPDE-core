@@ -1,0 +1,126 @@
+// This file is part of fdaPDE, a C++ library for physics-informed
+// spatial and functional data analysis.
+//
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+#ifndef __synchro_queue_helpfun_H__
+#define __synchro_queue_helpfun_H__   
+#include"synchro_queue.h"
+
+namespace fdapde{
+    //definition of friend function to move index
+    template<typename value_type,typename access_model> 
+    int push_b_indx(synchro_queue<value_type,access_model> & S){
+        if constexpr(std::is_same_v<access_model,deferred> || std::is_same_v<access_model,blocking>){ //OSS: per metodi or_wait() di blocking non serve riverificare che coda non sia piena (perche gia fatto nella CV) però bisognerebbe fare helper function apposta solo per loro e codice si allunga, non ne vale la pena
+            if (S.head_ == S.tail_ && !S.empty_queue_ ){return -1;}
+            S.empty_queue_ = false; //maybe already false, so redundant, but avoids if(empty_queue_) {empty_queue_ = false;} 
+        }
+        int t = S.tail_; //index to return
+        if constexpr(std::is_same_v<access_model,relaxed>){
+            if(S.queue_[t].state_.load(std::memory_order_relaxed) != synchro_queue<value_type,relaxed>::Empty)
+                return -1;
+            S.queue_[t].state_.store(synchro_queue<value_type,relaxed>::Busy, std::memory_order_relaxed); 
+        }
+        S.tail_ = (S.tail_ == S.size_-1)? (0) : (S.tail_ + 1); //tail_++
+        return t;
+    };
+
+    template<typename value_type,typename access_model> 
+    int pop_b_indx(synchro_queue<value_type,access_model> & S){
+        if constexpr(std::is_same_v<access_model,deferred> || std::is_same_v<access_model,blocking> ){
+            if (S.empty_queue_){
+                return -1;
+            }
+        }
+        int new_tail = (S.tail_== 0)? (S.size_-1) : (S.tail_-1);
+        if constexpr(std::is_same_v<access_model,relaxed>){
+            if(S.queue_[new_tail].state_.load(std::memory_order_relaxed) != synchro_queue<value_type,relaxed>::Full)
+                return -1;
+            S.queue_[new_tail].state_.store(synchro_queue<value_type,relaxed>::Busy, std::memory_order_relaxed);
+        }
+        S.tail_ = new_tail; 
+        if constexpr(std::is_same_v<access_model,deferred> || std::is_same_v<access_model,blocking>){
+            if(S.head_==S.tail_) {S.empty_queue_ = true;} 
+            S.queue_[new_tail].count_pop_ ++;
+        }
+        return new_tail;
+    };
+
+    template<typename value_type, typename access_model>
+    int push_f_indx(synchro_queue<value_type,access_model> & S){
+        if constexpr(std::is_same_v<access_model,deferred> || std::is_same_v<access_model,blocking>){
+            if (S.head_ == S.tail_ && !S.empty_queue_ ){
+                return -1;
+            }
+            S.empty_queue_ = false;
+        }
+        int new_head = (S.head_ == 0)? (S.size_-1) : (S.head_ -1);
+        if constexpr(std::is_same_v<access_model,relaxed>){
+            if(S.queue_[new_head].state_.load(std::memory_order_relaxed) != synchro_queue<value_type,relaxed>::Empty)
+                return -1;
+            S.queue_[new_head].state_.store(synchro_queue<value_type,relaxed>::Busy, std::memory_order_relaxed);
+        }
+        S.head_ = new_head;                         
+        return new_head;
+    };
+
+    template<typename value_type,typename access_model>
+    int pop_f_indx(synchro_queue<value_type,access_model> & S){
+        if constexpr(std::is_same_v<access_model,deferred> || std::is_same_v<access_model,blocking>){
+            if(S.empty_queue_ ){
+                return -1;
+            }
+        }
+        int h = S.head_; 
+        if constexpr(std::is_same_v<access_model,relaxed>){
+            if(S.queue_[h].state_.load(std::memory_order_relaxed) != synchro_queue<value_type,relaxed>::Full)
+                return -1;
+            S.queue_[h].state_.store(synchro_queue<value_type,relaxed>::Busy, std::memory_order_relaxed);
+        }
+        S.head_ = (S.head_ == S.size_-1)? (0):(S.head_+1);
+        if constexpr(std::is_same_v<access_model,deferred> || std::is_same_v<access_model,blocking>){
+            if(S.head_==S.tail_) {S.empty_queue_ = true;}
+            S.queue_[h].count_pop_ ++;
+        }   
+        return h;
+    };
+
+    // helper function to push/pop
+    template<typename value_type,typename access_model> 
+    void push_fb_push(typename synchro_queue<value_type,access_model>::elem & E, value_type& new_value){ 
+        E.v_ = std::move(new_value);
+        if constexpr(std::is_same_v<access_model,relaxed>){
+            E.state_.store(synchro_queue<value_type,relaxed>::Full, std::memory_order_relaxed); 
+        }
+        if constexpr(std::is_same_v<access_model,deferred> || std::is_same_v<access_model,blocking>){
+            E.state_ = synchro_queue<value_type,deferred>::Full; 
+        }
+    };
+
+    template<typename value_type,typename access_model> 
+    value_type pop_fb_pop(typename synchro_queue<value_type,access_model>::elem & E){
+        value_type ret = std::move(E.v_.value());
+        E.v_ = std::nullopt;
+        if constexpr(std::is_same_v<access_model,relaxed>){
+            E.state_.store(synchro_queue<value_type,relaxed>::Empty, std::memory_order_relaxed);
+        }
+        if constexpr(std::is_same_v<access_model,deferred> || std::is_same_v<access_model,blocking>){
+            E.state_ = synchro_queue<value_type,deferred>::Empty;
+            E.count_pop_ --;
+        }
+        return ret; 
+    };
+}
+
+#endif
