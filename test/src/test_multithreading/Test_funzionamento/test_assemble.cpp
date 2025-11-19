@@ -25,7 +25,8 @@ int main(int argc, char** argv){
     std::cout<<"tempo (microsec) assemblaggio non parallelo: "<<duration.count()<<std::endl; 
 //cronometro assemblaggio parallelo
     auto start2 = std::chrono::high_resolution_clock::now();
-    Eigen::SparseMatrix<double> A2 = b.assemble(execution::par,Tp,kk); // use parallel version
+    Eigen::SparseMatrix<double> A2 = b.assemble_seqnoemplace();
+    //Eigen::SparseMatrix<double> A2 = b.assemble(execution::par,Tp,kk); // use parallel version
     //Eigen::SparseMatrix<double> A2 = b.assemble_unicamatrix(execution::par,Tp,kk); // use parallel version 
     //Eigen::SparseMatrix<double> A2 = b.assemble_unica_tripla(execution::par,Tp,kk); // use parallel version 
     //Eigen::SparseMatrix<double> A2 = b.assemble_lambda();
