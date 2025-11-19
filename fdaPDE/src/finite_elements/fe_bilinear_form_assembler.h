@@ -130,7 +130,7 @@ auto start = std::chrono::high_resolution_clock::now();
 	assemble(triplet_list);
 auto end = std::chrono::high_resolution_clock::now();
 auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start);  
-std::cout<<duration.count()<<",";
+std::cout<<duration.count()<<" ";
 	// linearity of the integral is implicitly used here, as duplicated triplets are summed up (see Eigen docs)
         assembled_mat.setFromTriplets(triplet_list.begin(), triplet_list.end());
         assembled_mat.makeCompressed();
@@ -411,7 +411,7 @@ auto start = std::chrono::high_resolution_clock::now();
     //assemble_unica_triple(triplet_list,Tp,granularity);
 auto end = std::chrono::high_resolution_clock::now();
 auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start);  
-std::cout<<duration.count()<<",";
+std::cout<<duration.count()<<" ";
 
 	// linearity of the integral is implicitly used here, as duplicated triplets are summed up (see Eigen docs)
         assembled_mat.setFromTriplets(triplet_list.begin(), triplet_list.end());
