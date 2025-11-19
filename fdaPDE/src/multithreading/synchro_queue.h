@@ -209,7 +209,7 @@ namespace fdapde{
             static constexpr int Full = 0; //false 0
             // elem hold
             struct elem{
-                int state_ = Empty; //1 == true == empty, 0 == false == full. relying on the implicit int-to-bool conversion
+                int state_ = Empty; 
                 std::optional<value_type> v_;
                 mutable std::mutex m_el_;
                 std::condition_variable cv_ready_to_push_;

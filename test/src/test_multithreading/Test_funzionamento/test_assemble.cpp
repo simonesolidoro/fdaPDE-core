@@ -6,7 +6,7 @@ int main(int argc, char** argv){
     int nodi = std::stoi(argv[1]);
     int workers = std::stoi(argv[2]);
     int kk = std::stoi(argv[3]);
-    fdapde::Threadpool<fdapde::steal::random> Tp(1000,workers);
+    fdapde::threadpool<fdapde::steal::random> Tp(1000,workers);
     Triangulation<2, 2> unit_square = Triangulation<2, 2>::UnitSquare(nodi);//cube
 
     FeSpace Vh(unit_square, P1<1>);
