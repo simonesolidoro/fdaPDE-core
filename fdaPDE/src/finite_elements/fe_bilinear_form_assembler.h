@@ -389,7 +389,7 @@ void assemble_lambda(std::vector<Eigen::Triplet<double>>& triplet_list) const {
         int tot_triple = n_cell * triple_per_cella;
         std::vector<Eigen::Triplet<double>> triplet_list(tot_triple);
 
-	assemble_assemble_seqnoemplace(triplet_list);
+	assemble_seqnoemplace(triplet_list);
 
 	// linearity of the integral is implicitly used here, as duplicated triplets are summed up (see Eigen docs)
         assembled_mat.setFromTriplets(triplet_list.begin(), triplet_list.end());
@@ -398,7 +398,27 @@ void assemble_lambda(std::vector<Eigen::Triplet<double>>& triplet_list) const {
         return assembled_mat;
     }
 
-    void assemble_assemble_seqnoemplace(std::vector<Eigen::Triplet<double>>& triplet_list) const {
+        Eigen::SparseMatrix<double> assemble_tempotriple_seqnoemplace() const {
+        Eigen::SparseMatrix<double> assembled_mat(test_dof_handler()->n_dofs(), trial_dof_handler()->n_dofs());
+
+        int n_cell = this->Base::dof_handler_->triangulation()->n_cells();
+        int triple_per_cella = n_trial_basis * n_test_basis; //9 qui;
+        int tot_triple = n_cell * triple_per_cella;
+        std::vector<Eigen::Triplet<double>> triplet_list(tot_triple);
+    auto start = std::chrono::high_resolution_clock::now();
+        assemble_seqnoemplace(triplet_list);
+    auto end = std::chrono::high_resolution_clock::now();
+    auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start);  
+    std::cout<<duration.count()<<" ";
+
+	// linearity of the integral is implicitly used here, as duplicated triplets are summed up (see Eigen docs)
+        assembled_mat.setFromTriplets(triplet_list.begin(), triplet_list.end());
+        assembled_mat.makeCompressed();
+
+        return assembled_mat;
+    }
+
+    void assemble_seqnoemplace(std::vector<Eigen::Triplet<double>>& triplet_list) const {
         using iterator = typename Base::fe_traits::dof_iterator;
         iterator begin(Base::begin_.index(), test_dof_handler(), Base::begin_.marker());
         iterator end  (Base::end_.index(),   test_dof_handler(), Base::end_.marker()  );
