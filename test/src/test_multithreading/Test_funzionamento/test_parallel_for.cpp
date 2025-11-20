@@ -27,7 +27,7 @@ int main(int argc,char** argv){
 std::cout<<"================ parallel_for_granularity_variadic  ================"<<std::endl; 
     std::atomic<int> a=0; //usata per verifica tutti job vengano eseguiti (a deve arrivare ad n)
     int tmp_int = 10;
-    tp.parallel_for_granularity_variadic(start,end,[&](int i,int tmp){
+    tp.parallel_for(start,end,[&](int i,int index_w, int& tmp){
         a++;
     },granularity,tmp_int);
     if(a.load() == n){std::cout<<"variadic ok "<<std::endl;}
@@ -43,15 +43,6 @@ std::cout<<"================ parallel_for (gran=1) ================"<<std::endl;
     else{std::cout<<"qualcosa non va :("<<std::endl;}
 }
 
-{
-std::cout<<"================ parallel_for granularity ================"<<std::endl;
-    std::atomic<int> a=0; //usata per verifica tutti job vengano eseguiti (a deve arrivare ad n)
-    tp.parallel_for(start,end,[&](int i){
-        a++;
-    },granularity);
-    if(a.load() == n){std::cout<<" ok "<<std::endl;}
-    else{std::cout<<"qualcosa non va :("<<std::endl;}
-}
 
 {
 std::cout<<"================ parallel_for incremento ================"<<std::endl;

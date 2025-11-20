@@ -20,7 +20,7 @@ int main(){
 
     int n = 5;
 
-    fdapde::synchro_queue<int,fdapde::relax> q(n);
+    fdapde::synchro_queue<int,fdapde::relaxed> q(n);
 
     q.print();
 
