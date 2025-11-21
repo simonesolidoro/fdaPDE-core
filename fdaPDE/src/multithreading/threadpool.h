@@ -644,13 +644,43 @@ namespace fdapde{
             requires std::is_same_v<std::invoke_result_t<F,It,int,Args&...>, void> && (! std::is_reference_v<Args> && ...) //&& std::random_access_iterator<It> PER IL MOMEMNTO NON CHECK SE RANDOM ACCESS PERCHé VOGLIO PROVARLO IN ASSEMBLE 
             void parallel_for(It start, It end, F&& f,int granularity,Args... args){
                 using return_type = void;
-                std::cout<<"usato parallel_for iterator random acc granularity"<<std::endl;
-                int range = (end-start); 
-                int n_job = range / granularity;
+                int range = (end-start);
+                if(granularity > range){granularity = range;}////oss: se granularity > range allora tutto range fatto da unico worker, messo granularity=range per evitare errori poi. magari mettere un warning ??? 
+                int n_job = range / std::max(1,granularity); //se gran non valida (= 0) non da errore
+                //default gran se mandato valore non valido, non più solo -1. cosi evitiamo controllo se granularity valida          
+                if(granularity <= 0) {// 1 job per worker max (quindi resto spalmato), se range<n_worker allora n_job = range 
+                    if(range<n_worker_){
+                        granularity = 1;
+                        n_job = range;
+                    }else{
+                        granularity = range / n_worker_;
+                        n_job = n_worker_;
+                    }
+                }
+                int gran_last = granularity;
+                int plus_one = 0;
+                int resto = range%granularity; 
+                if((n_job%n_worker_) == 0 && resto >0){ // spalma perché fare un ultimo job con iterazioni di resto sbilancia
+                    plus_one = resto;
+                }
+                if((n_job%n_worker_) != 0 && resto >0){ // ultimo job contiente resto di iterazioni (non spalmate perché c'é (almeno 1) worker che ha 1 job meno di worker0, e quindi le da a lui)
+                    gran_last = resto;
+                    n_job ++;
+                }
                 std::vector<std::future<return_type>> ret_fut;
-                ret_fut.reserve(n_job+1); 
-                for (int j = 0; j<n_job; j++){
-                    ret_fut.emplace_back(this->send_task_round([granularity,fun = f, ...args = args, this](auto it)mutable{ 
+                ret_fut.reserve(n_job);
+                for (int j= 0; j<plus_one; j++){
+                    ret_fut.emplace_back(this->send_task_round([granularity = granularity +1,fun = f, ...args = args, this](auto it)mutable{ 
+                            int index_worker = this-> get_index_worker_from_thread();
+                            for(int k=0; k<granularity; k++ ){
+                                fun(it,index_worker,args...);
+                                ++it;
+                            }
+                        },start));
+                    start+=(granularity+1);//manda avanti start
+                }
+                for (int j= plus_one; j<n_job-1; j++){
+                    ret_fut.emplace_back(this->send_task_round([granularity ,fun = f, ...args = args, this](auto it)mutable{ 
                             int index_worker = this-> get_index_worker_from_thread();
                             for(int k=0; k<granularity; k++ ){
                                 fun(it,index_worker,args...);
@@ -659,16 +689,13 @@ namespace fdapde{
                         },start));
                     start+=granularity;//manda avanti start
                 }
-                int granularity_last_job = range % granularity;
-                if(granularity_last_job > 0){
-                    ret_fut.emplace_back(this->send_task_round([granularity_last_job,fun = f, ...args = args, this](auto it)mutable{ 
-                        int index_worker = this-> get_index_worker_from_thread();
-                        for(int k=0; k<granularity_last_job; k++ ){
-                            fun(it,index_worker,args...);
-                            ++it;
-                        }
-                    }, start));
-                }
+                ret_fut.emplace_back(this->send_task_round([gran_last,fun = f, ...args = args, this](auto it)mutable{ 
+                    int index_worker = this-> get_index_worker_from_thread();
+                    for(int k=0; k<gran_last; k++ ){
+                        fun(it,index_worker,args...);
+                        ++it;
+                    }
+                }, start));
                 for(std::future<void>& fut : ret_fut){fut.get();}
                 return;
             }
