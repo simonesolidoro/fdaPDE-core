@@ -118,6 +118,12 @@ template <typename IteratorType, typename ValueType> class index_iterator {
   108 |         if (index_ < end_) derived().operator()(index_);
   momemntanea amicizia tra index_iterator e cell_iterator in dof_handler.h riga 80
   */
+    //aggiunto per poter usare parallel_for con granularity in assemble, così ritrovato indice di cella da it-begin
+    friend int 
+    operator-(const index_iterator<IteratorType, ValueType>& lhs, const index_iterator<IteratorType, ValueType>& rhs) {
+        return lhs.index_ - rhs.index_;
+    }
+
 
     friend bool
     operator!=(const index_iterator<IteratorType, ValueType>& lhs, const index_iterator<IteratorType, ValueType>& rhs) {
