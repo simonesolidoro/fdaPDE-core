@@ -63,7 +63,7 @@ template <typename IteratorType, typename ValueType> class index_iterator {
     using size_type = std::size_t;
     using difference_type = std::ptrdiff_t;
     //using iterator_category = std::bidirectional_iterator_tag;
-    using iterator_category = std::random_access_iterator_tag;
+    using iterator_category = std::random_access_iterator_tag; //in realtà mancano diversi altri operator e quindi non soddisfa ancora: std::random_access_iterator<It>
 
     index_iterator() = default;
     index_iterator(int index, int begin, int end) : index_(index), begin_(begin), end_(end) { }

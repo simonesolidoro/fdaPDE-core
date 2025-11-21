@@ -641,9 +641,10 @@ namespace fdapde{
             //TODO: granularity qui ancora solo last_job senza spalmare se n_job multiplo di worker. da aggiornare
             //2 (it+n ok)
             template<typename F,typename It, typename... Args> 
-            requires std::is_same_v<std::invoke_result_t<F,It,int,Args&...>, void> && std::random_access_iterator<It> && (! std::is_reference_v<Args> && ...)
+            requires std::is_same_v<std::invoke_result_t<F,It,int,Args&...>, void> && (! std::is_reference_v<Args> && ...) //&& std::random_access_iterator<It> PER IL MOMEMNTO NON CHECK SE RANDOM ACCESS PERCHé VOGLIO PROVARLO IN ASSEMBLE 
             void parallel_for(It start, It end, F&& f,int granularity,Args... args){
                 using return_type = void;
+                std::cout<<"usato parallel_for iterator random acc granularity"<<std::endl;
                 int range = (end-start); 
                 int n_job = range / granularity;
                 std::vector<std::future<return_type>> ret_fut;
@@ -652,64 +653,70 @@ namespace fdapde{
                     ret_fut.emplace_back(this->send_task_round([granularity,fun = f, ...args = args, this](auto it)mutable{ 
                             int index_worker = this-> get_index_worker_from_thread();
                             for(int k=0; k<granularity; k++ ){
-                                fun(it+k,index_worker,args...);
+                                fun(it,index_worker,args...);
+                                ++it;
                             }
-                        },j*granularity+start));
+                        },start));
+                    start+=granularity;//manda avanti start
                 }
                 int granularity_last_job = range % granularity;
                 if(granularity_last_job > 0){
                     ret_fut.emplace_back(this->send_task_round([granularity_last_job,fun = f, ...args = args, this](auto it)mutable{ 
                         int index_worker = this-> get_index_worker_from_thread();
                         for(int k=0; k<granularity_last_job; k++ ){
-                            fun(it+k,index_worker,args...);
+                            fun(it,index_worker,args...);
+                            ++it;
                         }
-                    }, n_job*granularity+start ));
+                    }, start));
                 }
                 for(std::future<void>& fut : ret_fut){fut.get();}
                 return;
             }
 
-
-            //3 (it+n NONok)
-            template<typename F,typename It, typename... Args> 
-            requires std::is_same_v<std::invoke_result_t<F,It,int,Args&...>, void> && (!std::random_access_iterator<It>) && (! std::is_reference_v<Args> && ...)
-            void parallel_for(It start, It end, F&& f,int granularity, Args... args){
-                using return_type = void;
-                //Let's first scroll through the entire range so that we can copy iterators at each start + k * granularity into the vector its
-                int range = 0;
-                std::vector<It> its; 
-                its.push_back(start);
-                for (It it= start; it!= end; ++it){
-                    range ++;
-                    if(range % granularity == 0){
-                        its.push_back(it);
-                    }
-                } 
-                int n_job = range / granularity; 
-                std::vector<std::future<return_type>> ret_fut;
-                ret_fut.reserve(n_job+1);
-                for(int j = 0; j<n_job; j++){
-                    ret_fut.emplace_back(this->send_task_round([granularity,fun = f, ...args = args, this](auto it)mutable{ 
-                            int index_worker = this-> get_index_worker_from_thread();
-                            for(int k=0; k<granularity; k++ ){
-                                fun(it,index_worker,args...);
-                                ++it;
-                            }
-                        },its[j])); 
-                }
-                int granularity_last_job = range % granularity;
-                if(granularity_last_job > 0){
-                    ret_fut.emplace_back(this->send_task_round([granularity_last_job,fun = f, ...args = args,this](auto it)mutable{ 
-                        int index_worker = this-> get_index_worker_from_thread();
-                        for(int k=0; k<granularity_last_job; k++ ){
-                            fun(it,index_worker,args...);
-                            ++it;
-                        }
-                    }, its[n_job])); 
-                }
-                for(std::future<void>& fut : ret_fut){fut.get();}
-                return;        
-            }
+//MOMENTANEAMENTE COMMENTATO PERCHé VOGLIO USARE PARALLEL_FOR CON ITEARTOR E GRANULARITY PER ASSEMBLE, MA ITERATOR DI CELLE ANCHE SE HANNO OPERATOR +n non sono ancora random access.
+//TODO: NON FUNZIONA FA DIVISIONE DI RANGE IN JOB MALE C'è AULCOSA CHE NON VA (IN TEST ASSEMBLE UTILIZZATO PER SBAGLIO E STESSA CELLA RIPETUTA DA 2 WORKER)
+//        DA SISTEMARE
+            // //3 (it+n NONok)
+            // template<typename F,typename It, typename... Args> 
+            // requires std::is_same_v<std::invoke_result_t<F,It,int,Args&...>, void> && (!std::random_access_iterator<It>) && (! std::is_reference_v<Args> && ...)
+            // void parallel_for(It start, It end, F&& f,int granularity, Args... args){
+            //     using return_type = void;
+            //     std::cout<<"usato parallel_for iterator NON random acc granularity"<<std::endl;
+            //     //Let's first scroll through the entire range so that we can copy iterators at each start + k * granularity into the vector its
+            //     int range = 0;
+            //     std::vector<It> its; 
+            //     its.push_back(start);
+            //     for (It it= start; it!= end; ++it){
+            //         range ++;
+            //         if(range % granularity == 0){
+            //             its.push_back(it);
+            //         }
+            //     } 
+            //     int n_job = range / granularity; 
+            //     std::vector<std::future<return_type>> ret_fut;
+            //     ret_fut.reserve(n_job+1);
+            //     for(int j = 0; j<n_job; j++){
+            //         ret_fut.emplace_back(this->send_task_round([granularity,fun = f, ...args = args, this](auto it)mutable{ 
+            //                 int index_worker = this-> get_index_worker_from_thread();
+            //                 for(int k=0; k<granularity; k++ ){
+            //                     fun(it,index_worker,args...);
+            //                     ++it;
+            //                 }
+            //             },its[j])); 
+            //     }
+            //     int granularity_last_job = range % granularity;
+            //     if(granularity_last_job > 0){
+            //         ret_fut.emplace_back(this->send_task_round([granularity_last_job,fun = f, ...args = args,this](auto it)mutable{ 
+            //             int index_worker = this-> get_index_worker_from_thread();
+            //             for(int k=0; k<granularity_last_job; k++ ){
+            //                 fun(it,index_worker,args...);
+            //                 ++it;
+            //             }
+            //         }, its[n_job])); 
+            //     }
+            //     for(std::future<void>& fut : ret_fut){fut.get();}
+            //     return;        
+            // }
 
 
             //TODO: SE LASCIATI MODIFICA CON STRONG SEND 
