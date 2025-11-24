@@ -496,36 +496,38 @@ int main(int argc, char** argv){
             }
             std::vector<std::thread> thread_pool;
             //generatore numeri casuali cosi per tutti uguale
-            std::vector<int> randomop;
+            std::vector<std::vector<int>> randomop(n_thread);
             std::mt19937 gen(42);
             std::uniform_int_distribution<> distrib(0,3);
-            for(int l = 0; l<tot_elem; l++){
-                randomop.push_back(distrib(gen));
+            for(int j = 0; j< n_thread; j++){
+                for(int l = 0; l<tot_elem; l++){
+                    randomop[j].push_back(distrib(gen));
+                }
             }
             //deque
             start = std::chrono::high_resolution_clock::now(); 
-            for (int j=0; j<n_thread; j++){thread_pool.emplace_back(random_op_di_n_elem<d>,std::ref(d_),elem_per_thread,std::ref(randomop),j);}
+            for (int j=0; j<n_thread; j++){thread_pool.emplace_back(random_op_di_n_elem<d>,std::ref(d_),elem_per_thread,std::ref(randomop[j]),j);}
             for (int j= 0; j<n_thread; j++){thread_pool[j].join();}
             end = std::chrono::high_resolution_clock::now();
             tempi_random[0].push_back(std::chrono::duration_cast<std::chrono::microseconds>(end - start));
             thread_pool.clear();
             //relax
             start = std::chrono::high_resolution_clock::now(); 
-            for (int j=0; j<n_thread; j++){thread_pool.emplace_back(random_op_di_n_elem<q_r>,std::ref(q_r_),elem_per_thread,std::ref(randomop),j);}
+            for (int j=0; j<n_thread; j++){thread_pool.emplace_back(random_op_di_n_elem<q_r>,std::ref(q_r_),elem_per_thread,std::ref(randomop[j]),j);}
             for (int j= 0; j<n_thread; j++){thread_pool[j].join();}
             end = std::chrono::high_resolution_clock::now();
             tempi_random[1].push_back(std::chrono::duration_cast<std::chrono::microseconds>(end - start));
             thread_pool.clear();
             // hold
             start = std::chrono::high_resolution_clock::now(); 
-            for (int j=0; j<n_thread; j++){thread_pool.emplace_back(random_op_di_n_elem<q_h>,std::ref(q_h_),elem_per_thread,std::ref(randomop),j);}
+            for (int j=0; j<n_thread; j++){thread_pool.emplace_back(random_op_di_n_elem<q_h>,std::ref(q_h_),elem_per_thread,std::ref(randomop[j]),j);}
             for (int j= 0; j<n_thread; j++){thread_pool[j].join();}
             end = std::chrono::high_resolution_clock::now();
             tempi_random[2].push_back(std::chrono::duration_cast<std::chrono::microseconds>(end - start));
             thread_pool.clear();
             // hold_wait
             start = std::chrono::high_resolution_clock::now(); 
-            for (int j=0; j<n_thread; j++){thread_pool.emplace_back(random_op_di_n_elem<q_hw>,std::ref(q_hw_),elem_per_thread,std::ref(randomop),j);}
+            for (int j=0; j<n_thread; j++){thread_pool.emplace_back(random_op_di_n_elem<q_hw>,std::ref(q_hw_),elem_per_thread,std::ref(randomop[j]),j);}
             for (int j= 0; j<n_thread; j++){thread_pool[j].join();}
             end = std::chrono::high_resolution_clock::now();
             tempi_random[3].push_back(std::chrono::duration_cast<std::chrono::microseconds>(end - start));
