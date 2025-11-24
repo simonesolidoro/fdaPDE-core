@@ -775,7 +775,7 @@ std::cout<<duration.count()<<" ";
             )mutable{ //passare tutto come copia o reference ? ogni iterazione deve avere suo fe_packet ecc quindi copia. 
                 // update fe_packet content based on form requests
                 fe_packet.measure = it->measure();
-        std::cout<<"worker: "<<index_worker<<" cella: "<<it - begin<<std::endl;
+        //std::cout<<"worker: "<<index_worker<<" cella: "<<it - begin<<std::endl;
                 if constexpr (Form::XprBits & int(geo_assembler_flags::compute_geo_id)) { fe_packet.geo_id = it->id(); }
                 if constexpr (Form::XprBits & int(geo_assembler_flags::compute_face_normal)) {
                     fdapde_static_assert(Options_ == FaceMajor, BILINEAR_FORM_REQUIRES_A_FACE_MAJOR_ASSEMBLY_LOOP);
