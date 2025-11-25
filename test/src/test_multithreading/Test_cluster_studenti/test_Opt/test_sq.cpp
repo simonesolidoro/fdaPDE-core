@@ -86,11 +86,10 @@ void riempi(queue& d, int tot_elem){
 } 
 int main(int argc, char** argv){
     int n_thread= std::stoi(argv[1]);
-    int runs = 20;
+    int tot_elem = std::stoi(argv[2]);
+    int runs = std::stoi(argv[3]);
   
 {//============== Test deque vs synchro_queue =====================
-    runs = 5; //100
-    int tot_elem = 12000;
     int elem_per_thread = tot_elem / n_thread;
     //tempi single
     std::vector<std::vector<std::chrono::microseconds>> d_single(4); //per ogni operazione {1,2,3,4} un vettore di tempi
