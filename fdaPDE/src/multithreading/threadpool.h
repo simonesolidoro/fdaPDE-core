@@ -574,10 +574,18 @@ namespace fdapde{
                     }
                 }
                 int gran_last = granularity;
-                int plus_one = 0;
+                std::vector<int> it_add; // vettore di iterazioni aggiuntive al primo job di ogni worker
+                int resto_spalmato; //usato in secono for per send per eventualmente se spalmato il resto aggiustare i local_range (start stop)
                 int resto = range%granularity; 
                 if((n_job%n_worker_) == 0 && resto >0){ // spalma perché fare un ultimo job con iterazioni di resto sbilancia
-                    plus_one = resto;
+                    int iter_add = resto / n_worker_;
+                    int resto_di_resto = resto % n_worker_;// tutti i worker si prendono iter_add iterazioni extra e quello che rimane dato +1 ai primi resto_di_resto worker
+                    for(int w = 0; w< resto_di_resto; w++){
+                        it_add.push_back(iter_add + 1);
+                    }
+                    for(int w = resto_di_resto; w<n_worker_ ; w++){
+                        it_add.push_back(iter_add);
+                    }
                 }
                 if((n_job%n_worker_) != 0 && resto >0){ // ultimo job contiente resto di iterazioni (non spalmate perché c'é (almeno 1) worker che ha 1 job meno di worker0, e quindi le da a lui)
                     gran_last = resto;
@@ -585,21 +593,25 @@ namespace fdapde{
                 }
                 std::vector<std::future<return_type>> ret_fut;
                 ret_fut.reserve(n_job); 
-                // se non ha spalmato allora plus_one == 0 e questo for lo salta
-                for (int j= 0; j<plus_one; j++){
-                    ret_fut.emplace_back(this->send_task_round([granularity = granularity +1,j,start,fun = f, ... args = args, this]()mutable{ 
-                            int stop = (j+1)*granularity+start;
+                // se non ha spalmato allora it_add.size() == 0 e questo for lo salta
+                // primi job con eventuale itrazioni aggiuntive rispetto granularity
+                int start_local = start; //usati perchè calcolo di start dipende dai valori dentro it_add e quindi non si può calcolare solo con granularity dentro a job
+                int stop_local = start;
+                for (int j= 0; j<it_add.size(); j++){
+                    stop_local += (granularity+it_add[j]);
+                    ret_fut.emplace_back(this->send_task_round([granularity = granularity +it_add[j],start = start_local,stop = stop_local,j,fun = f, ... args = args, this]()mutable{ 
                             int index_worker = this->get_index_worker_from_thread();
-                            for(int k=j*granularity+start; k<stop; k++ ){
+                            for(int k=start; k<stop; k++ ){
                                 fun(k,index_worker,args...);//f prende in input reference a variadic template altrimenti tutto inutile
                             }
                         }));
+                    start_local = stop_local;
                 }
-                for (int j= plus_one; j<n_job-1; j++){
-                    ret_fut.emplace_back(this->send_task_round([granularity,plus_one,j,start,fun = f, ... args = args, this]()mutable{ 
-                            int stop = (j+1)*granularity+plus_one+start;
+                for (int j= it_add.size(); j<n_job-1; j++){
+                    ret_fut.emplace_back(this->send_task_round([granularity,resto_spalmato,j,start,fun = f, ... args = args, this]()mutable{// usato resto_spalmato perché magari c'è resto ma non viene spalmato eviene inserito in ultimo job e quindi qui le iterazioni vanno da j*granularity+start a (j+1)*granularity+start 
+                            int stop = (j+1)*granularity+resto_spalmato+start;
                             int index_worker = this->get_index_worker_from_thread();
-                            for(int k=j*granularity+plus_one+start; k<stop; k++ ){
+                            for(int k=j*granularity+resto_spalmato+start; k<stop; k++ ){
                                 fun(k,index_worker,args...);
                             }
                         }));
@@ -638,7 +650,7 @@ namespace fdapde{
                 return;
             } 
 
-            //TODO: granularity qui ancora solo last_job senza spalmare se n_job multiplo di worker. da aggiornare
+            //TODO: correggere divione di ultime iterazioni come in paralle_for con int, non più plus_one che era sbagliato perché presupponeva massimo +1 per job iniziale, ma it_add
             //2 (it+n ok)
             template<typename F,typename It, typename... Args> 
             requires std::is_same_v<std::invoke_result_t<F,It,int,Args&...>, void> && (! std::is_reference_v<Args> && ...) //&& std::random_access_iterator<It> PER IL MOMEMNTO NON CHECK SE RANDOM ACCESS PERCHé VOGLIO PROVARLO IN ASSEMBLE 
