@@ -602,10 +602,15 @@ namespace fdapde{
                     ret_fut.emplace_back(this->send_task_round([granularity = granularity +it_add[j],start = start_local,stop = stop_local,j,fun = f, ... args = args, this]()mutable{ 
                             int index_worker = this->get_index_worker_from_thread();
                             for(int k=start; k<stop; k++ ){
-                                fun(k,index_worker,args...);//f prende in input reference a variadic template altrimenti tutto inutile
+                                fun(k,index_worker,args...);//f deve prendere in input reference a variadic template altrimenti tutto inutile
                             }
                         }));
                     start_local = stop_local;
+                }
+                if(it_add.size()==n_job){//per evitare di arrivare a send di last job con gran_last.  
+                    //get futures
+                    for(std::future<void>& fut : ret_fut){fut.get();}
+                    return;
                 }
                 for (int j= it_add.size(); j<n_job-1; j++){
                     ret_fut.emplace_back(this->send_task_round([granularity,resto_spalmato,j,start,fun = f, ... args = args, this]()mutable{// usato resto_spalmato perché magari c'è resto ma non viene spalmato eviene inserito in ultimo job e quindi qui le iterazioni vanno da j*granularity+start a (j+1)*granularity+start 
