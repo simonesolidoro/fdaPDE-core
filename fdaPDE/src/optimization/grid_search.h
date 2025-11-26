@@ -71,7 +71,7 @@ template <int N> class GridSearch {
         bool stop = false;   // asserted true in case of forced stop
         grid_.row(0).assign_to(x_curr.transpose());
         obj_curr = objective(x_curr);
-        stop |= internals::exec_eval_hooks(*this, objective, callbacks_);
+/*commentato per test fair*///stop |= internals::exec_eval_hooks(*this, objective, callbacks_);
         values_.clear();
         values_.push_back(obj_curr);
         if (obj_curr < value_) {
