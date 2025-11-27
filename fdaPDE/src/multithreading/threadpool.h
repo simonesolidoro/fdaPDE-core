@@ -658,8 +658,9 @@ namespace fdapde{
             //TODO: correggere divione di ultime iterazioni come in paralle_for con int, non più plus_one che era sbagliato perché presupponeva massimo +1 per job iniziale, ma it_add
             //2 (it+n ok)
             template<typename F,typename It, typename... Args> 
-            requires std::is_same_v<std::invoke_result_t<F,It,int,Args&...>, void> && (! std::is_reference_v<Args> && ...) //&& std::random_access_iterator<It> PER IL MOMEMNTO NON CHECK SE RANDOM ACCESS PERCHé VOGLIO PROVARLO IN ASSEMBLE 
+            requires std::is_same_v<std::invoke_result_t<F,It,int,Args&...>, void> && (! std::is_reference_v<Args> && ...) // && std::random_access_iterator<It>// PER IL MOMEMNTO NON CHECK SE RANDOM ACCESS PERCHé VOGLIO PROVARLO IN ASSEMBLE 
             void parallel_for(It start, It end, F&& f,int granularity,Args... args){
+                //std::cout<<"usato random access"<<std::endl;
                 using return_type = void;
                 int range = (end-start);
                 if(granularity > range){granularity = range;}////oss: se granularity > range allora tutto range fatto da unico worker, messo granularity=range per evitare errori poi. magari mettere un warning ??? 

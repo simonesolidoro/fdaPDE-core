@@ -706,7 +706,8 @@ std::cout<<duration.count()<<" ";
         return;
     }
 
-
+// assemble usando parallel_for con input iterator
+// impiega molto di più di assemble parallelo con parallel_for non iterato, da capire cosa c'è che non va se problema è in metodo parallel_for iterator 
     Eigen::SparseMatrix<double> assemble_iterator(execution::execution_parallel, fdapde::threadpool<fdapde::steal::random>& Tp, int granularity = -1) const {
         Eigen::SparseMatrix<double> assembled_mat(test_dof_handler()->n_dofs(), trial_dof_handler()->n_dofs());
         

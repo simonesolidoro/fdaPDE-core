@@ -1,0 +1,17 @@
+calcolo_triple_grandef 1000 thread_1 597196 633995 676206 
+calcolo_triple_grantc10jpw 1000 thread_1 570918 537551 531402 
+calcolo_triple 1000 sequenziale 1289909 786526 1346708 
+calcolo_triple_grandef 1000 thread_2 298215 398573 629168 
+calcolo_triple_grantc10jpw 1000 thread_2 319771 404399 371217 
+calcolo_triple_grandef 1000 thread_3 266432 518233 210405 
+calcolo_triple_grantc10jpw 1000 thread_3 317369 555110 230473 
+calcolo_triple_grandef 1000 thread_4 186771 218133 433598 
+calcolo_triple_grantc10jpw 1000 thread_4 211415 468927 202175 
+calcolo_triple_grandef 1000 thread_5 189856 180489 357925 
+calcolo_triple_grantc10jpw 1000 thread_5 184819 350557 242581 
+calcolo_triple_grandef 1000 thread_6 235566 205247 333764 
+calcolo_triple_grantc10jpw 1000 thread_6 171052 338365 218942 
+calcolo_triple_grandef 1000 thread_7 401544 163715 170039 
+calcolo_triple_grantc10jpw 1000 thread_7 171932 180317 166572 
+calcolo_triple_grandef 1000 thread_8 324281 206473 215806 
+calcolo_triple_grantc10jpw 1000 thread_8 255739 155730 404920 

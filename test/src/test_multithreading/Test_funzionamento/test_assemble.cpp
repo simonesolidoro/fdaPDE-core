@@ -33,7 +33,7 @@ int main(int argc, char** argv){
     //Eigen::SparseMatrix<double> A2 = b.assemble_lambda();
     auto end2 = std::chrono::high_resolution_clock::now();
     auto duration2 = std::chrono::duration_cast<std::chrono::microseconds>(end2 - start2);  
-    std::cout<<"tempo (microsec) assemblaggio parallelo, thread: "<<workers<<" ,"<<duration2.count()<<std::endl; 
+    std::cout<<"tempo (microsec) assemblaggio parallelo, thread: "<<workers<<" ,"<<duration2.count()<<std::endl;  
     
 
     std::cout<<A.size()<<std::endl;

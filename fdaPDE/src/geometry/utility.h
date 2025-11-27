@@ -118,12 +118,40 @@ template <typename IteratorType, typename ValueType> class index_iterator {
   108 |         if (index_ < end_) derived().operator()(index_);
   momemntanea amicizia tra index_iterator e cell_iterator in dof_handler.h riga 80
   */
-    //aggiunto per poter usare parallel_for con granularity in assemble, così ritrovato indice di cella da it-begin
+    //aggiunti per random access completo (ancora comunque non soddisfa std::random_access<>)
     friend int 
     operator-(const index_iterator<IteratorType, ValueType>& lhs, const index_iterator<IteratorType, ValueType>& rhs) {
         return lhs.index_ - rhs.index_;
     }
 
+    // it2 = it + n
+    friend //anche se non accede a membri privati, è per non farla membro di classe. 
+    IteratorType operator+(const index_iterator<IteratorType, ValueType>& it, int n) {
+        IteratorType tmp = static_cast<IteratorType&>(it);
+        tmp += n;
+        return tmp;
+    }
+    // it2 = n + it
+    friend
+    IteratorType operator+(int n, const index_iterator<IteratorType, ValueType>& it) {
+        return it + n;
+    }
+    // it2 = it - n
+    friend
+    IteratorType operator-(const index_iterator<IteratorType, ValueType>& it, difference_type n) {
+        IteratorType tmp = static_cast<IteratorType&>(it);
+        tmp -= n;
+        return tmp;
+    }
+    friend bool
+    operator<=(const index_iterator<IteratorType, ValueType>& lhs, const index_iterator<IteratorType, ValueType>& rhs) {
+        return lhs.index_ <= rhs.index_;
+    }
+    // it[n] return *(it+n)
+    reference operator[](int n)const{ 
+        if (index_ < end_){return (derived()+n).operator*();}//(derived().operator+(derived(),n)).operator*()
+        return derived(); //stessa gestione del "controllo limite" in operator++
+    }
 
     friend bool
     operator!=(const index_iterator<IteratorType, ValueType>& lhs, const index_iterator<IteratorType, ValueType>& rhs) {
