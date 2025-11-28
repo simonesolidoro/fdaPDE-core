@@ -573,9 +573,7 @@ namespace fdapde{
                         n_job = n_worker_;
                     }
                 }
-                int gran_last = granularity;
                 std::vector<int> it_add; // vettore di iterazioni aggiuntive al primo job di ogni worker
-                int resto_spalmato; //usato in secono for per send per eventualmente se spalmato il resto aggiustare i local_range (start stop)
                 int resto = range%granularity; 
                 if((n_job%n_worker_) == 0 && resto >0){ // spalma perché fare un ultimo job con iterazioni di resto sbilancia
                     int iter_add = resto / n_worker_;
@@ -588,24 +586,22 @@ namespace fdapde{
                     }
                 }
                 if((n_job%n_worker_) != 0 && resto >0){ // ultimo job contiente resto di iterazioni (non spalmate perché c'é (almeno 1) worker che ha 1 job meno di worker0, e quindi le da a lui)
-                    gran_last = resto;
                     n_job ++;
                 }
                 std::vector<std::future<return_type>> ret_fut;
                 ret_fut.reserve(n_job); 
                 // se non ha spalmato allora it_add.size() == 0 e questo for lo salta
                 // primi job con eventuale itrazioni aggiuntive rispetto granularity
-                int start_local = start; //usati perchè calcolo di start dipende dai valori dentro it_add e quindi non si può calcolare solo con granularity dentro a job
                 int stop_local = start;
                 for (int j= 0; j<it_add.size(); j++){
                     stop_local += (granularity+it_add[j]);
-                    ret_fut.emplace_back(this->send_task_round([granularity = granularity +it_add[j],start = start_local,stop = stop_local,j,fun = f, ... args = args, this]()mutable{ 
+                    ret_fut.emplace_back(this->send_task_round([start = start,stop = stop_local,j,fun = f, ... args = args, this]()mutable{ 
                             int index_worker = this->get_index_worker_from_thread();
                             for(int k=start; k<stop; k++ ){
                                 fun(k,index_worker,args...);//f deve prendere in input reference a variadic template altrimenti tutto inutile
                             }
                         }));
-                    start_local = stop_local;
+                    start = stop_local;//job successivo parte da fine di precedente
                 }
                 if(it_add.size()==n_job){//per evitare di arrivare a send di last job con gran_last.  
                     //get futures
@@ -613,18 +609,19 @@ namespace fdapde{
                     return;
                 }
                 for (int j= it_add.size(); j<n_job-1; j++){
-                    ret_fut.emplace_back(this->send_task_round([granularity,resto_spalmato,j,start,fun = f, ... args = args, this]()mutable{// usato resto_spalmato perché magari c'è resto ma non viene spalmato eviene inserito in ultimo job e quindi qui le iterazioni vanno da j*granularity+start a (j+1)*granularity+start 
-                            int stop = (j+1)*granularity+resto_spalmato+start;
+                    stop_local = granularity+start;
+                    ret_fut.emplace_back(this->send_task_round([start,stop = stop_local,fun = f, ... args = args, this]()mutable{// usato resto_spalmato perché magari c'è resto ma non viene spalmato eviene inserito in ultimo job e quindi qui le iterazioni vanno da j*granularity+start a (j+1)*granularity+start 
                             int index_worker = this->get_index_worker_from_thread();
-                            for(int k=j*granularity+resto_spalmato+start; k<stop; k++ ){
+                            for(int k=start; k<stop; k++ ){
                                 fun(k,index_worker,args...);
                             }
                         }));
+                    start = stop_local;
                 }
                 //last job (puo essere o gran_last o granularity normale) inviato separatamente per non dover fare if
-                ret_fut.emplace_back(this->send_task_round([gran_last,end,fun = f, ... args = args, this]()mutable{ 
+                ret_fut.emplace_back(this->send_task_round([start,end,fun = f, ... args = args, this]()mutable{ 
                         int index_worker = this->get_index_worker_from_thread();
-                        for(int k=end-gran_last; k<end; k++ ){
+                        for(int k=start; k<end; k++ ){
                             fun(k,index_worker, args...);
                         }
                     }));

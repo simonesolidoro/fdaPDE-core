@@ -19,7 +19,7 @@
 int main(int argc,char** argv)
 {   
     int n = 10000;
-    fdapde::threadpool<fdapde::steal::random> tp(2048,3);
+    fdapde::threadpool<fdapde::steal::random> tp(2048,8);
     std::atomic<int> a=0;
 
 // parallel_for   granularity
@@ -27,13 +27,14 @@ int main(int argc,char** argv)
     int n_it = std::stoi(argv[1]); //granularity
     auto start3 = std::chrono::high_resolution_clock::now();
 
-    tp.parallel_for(0,12001,[&](int i){a++;
+    tp.parallel_for(0,1000,[&](int i, int worker_index){a++;
         //std::cout<<i<<" da thread: "<<std::this_thread::get_id()<<std::endl;
         std::this_thread::sleep_for(std::chrono::milliseconds(1));
         /*for (int j =0; j<10000; j++){
             int b = 6;
             b++;
         }*/
+       
     },n_it);
     
     auto end3 = std::chrono::high_resolution_clock::now(); 
