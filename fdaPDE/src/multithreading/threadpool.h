@@ -530,7 +530,7 @@ namespace fdapde{
 
             /*non so se va lasciato*/
             template<typename F, typename... Args> 
-            requires std::is_same_v<std::invoke_result_t<F,int,int,Args&...>, void> && (! std::is_reference_v<Args> && ...)
+            requires std::is_same_v<std::invoke_result_t<F,int,int,Args&...>, void>
             void parallel_for(int start, int end, F&& f,std::vector<int> granularities, Args... args){ //copia di vettore gran è più sicuro in multithreading
                 using return_type = void;
                 if(std::reduce(granularities.cbegin(),granularities.cend(),0) != (end-start)){
@@ -563,7 +563,7 @@ namespace fdapde{
 
             //prova di parallel_for cono variadic template di tmp object per ogni job, per poter usare parallel_for con granularity in input al posto di parallel_for gran=1 con divisione in job a mano
             template<typename F, typename... Args> 
-            requires std::is_same_v<std::invoke_result_t<F,int,int,Args&...>, void> && (! std::is_reference_v<Args> && ...)//F in input ha: int i (loop index), index worker,  reference a  Args (tmp ogetti copie per ogni job), però Args non reference perché in lambda che viene inviata alla threadpool si deve copiare oggetto non reference ad oggetto
+            requires std::is_same_v<std::invoke_result_t<F,int,int,Args&...>, void> //F in input ha: int i (loop index), index worker,  reference a  Args (tmp ogetti copie per ogni job), però Args non reference perché in lambda che viene inviata alla threadpool si deve copiare oggetto non reference ad oggetto
             //TODO: i require che Args non siano reference e che F prenda in input reference di args non funzionano, da capire come forzarli.
             //TODO: capire come forzare F a prende in input solo reference di Args, perché se body_function prede in input copia ricrea tmp ad ogni iterazione e siamo punto e a capo. vogliamo un solo tmp per job e body_function che prendere reference a copia tmp di job
             void parallel_for(int start, int end, F&& f, int granularity, Args... args){//n universal reference per Args perché ne voglio una copia per ogni job
@@ -650,7 +650,7 @@ namespace fdapde{
 
             //1
             template<typename F,typename It> 
-            requires std::is_same_v<std::invoke_result_t<F,It>, void> && (std::random_access_iterator<It> || (!std::random_access_iterator<It>)) //sicuro c'è concept per itertor type e non si fa così ma dopo ci penso
+            requires std::is_same_v<std::invoke_result_t<F,It>, void> && std::input_or_output_iterator<It> //(std::random_access_iterator<It> || (!std::random_access_iterator<It>)) //sicuro c'è concept per itertor type e non si fa così ma dopo ci penso
             void parallel_for(It start, It end, F&& f){
                 using return_type = void; 
                 std::vector<std::future<return_type>> ret_fut;
@@ -666,7 +666,7 @@ namespace fdapde{
             //TODO: correggere divione di ultime iterazioni come in paralle_for con int, non più plus_one che era sbagliato perché presupponeva massimo +1 per job iniziale, ma it_add
             //2 (it+n ok)
             template<typename F,typename It, typename... Args> 
-            requires std::is_same_v<std::invoke_result_t<F,It,int,Args&...>, void> && (! std::is_reference_v<Args> && ...)  && internals::parallel_iterator<It>// PER IL MOMEMNTO NON CHECK SE RANDOM ACCESS PERCHé VOGLIO PROVARLO IN ASSEMBLE 
+            requires std::is_same_v<std::invoke_result_t<F,It,int,Args&...>, void> && internals::parallel_iterator<It>// PER IL MOMEMNTO NON CHECK SE RANDOM ACCESS PERCHé VOGLIO PROVARLO IN ASSEMBLE 
             void parallel_for(It start, It end, F&& f,int granularity,Args... args){
                 std::cout<<"usato random access"<<std::endl;
                 using return_type = void;
@@ -745,7 +745,7 @@ namespace fdapde{
 //              // no default granularity
             // //3 (it+n NONok)
             template<typename F,typename It, typename... Args> 
-            requires std::is_same_v<std::invoke_result_t<F,It,int,Args&...>, void> && (! std::is_reference_v<Args> && ...) && (! internals::parallel_iterator<It>)
+            requires std::is_same_v<std::invoke_result_t<F,It,int,Args&...>, void> && (! internals::parallel_iterator<It>)
             void parallel_for(It start, It end, F&& f,int granularity, Args... args){
                 using return_type = void;
                 std::cout<<"usato parallel_for iterator NON random acc granularity"<<std::endl;
