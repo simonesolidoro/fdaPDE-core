@@ -23,7 +23,7 @@ int main(int argc,char** argv)
     std::atomic<int> a=0; //usata per verifica tutti jo vengano eseguiti (a deve arrivare ad n)
 
     std::vector<int> V(1000,1); //{1,2,3,4,5,6,7,8,9,0};
-    std::list<int> W= {1,2,3,4,5,6,7,8,9,0};
+    std::list<int> W(1000,1); // {1,2,3,4,5,6,7,8,9};
 
     tp.parallel_for(V.begin(),V.end(),[&](std::vector<int>::iterator iter){
         //std::cout<<*iter<<" da thread: "<<std::this_thread::get_id()<<std::endl;
@@ -40,11 +40,13 @@ int main(int argc,char** argv)
     },gran,tmp);
     std::cout<<"a arriavta da 0 ad: "<<a.load()<<" doveva arrivare a:"<<V.size()<<std::endl;
     
-    // std::cout<<"-------------------------------------- granularity non random acces (list,map,set)----------------------------------------"<<std::endl;
-
-    // tp.parallel_for(W.begin(),W.end(),[=](std::list<int>::iterator iter, int index_w, int& tmp){
-    //     std::cout<<*iter<<" da thread: "<<std::this_thread::get_id()<<std::endl;
-    // },gran,tmp);
+    std::cout<<"-------------------------------------- granularity non random acces (list,map,set)----------------------------------------"<<std::endl;
+    a.store(0);
+    tp.parallel_for(W.begin(),W.end(),[&](std::list<int>::iterator iter, int index_w, int& tmp){
+       //std::cout<<*iter<<" da thread: "<<std::this_thread::get_id()<<std::endl;
+        a++;
+    },gran,tmp);
+    std::cout<<"a arriavta da 0 ad: "<<a.load()<<" doveva arrivare a:"<<V.size()<<std::endl;
     /*
 
 //for non parallel

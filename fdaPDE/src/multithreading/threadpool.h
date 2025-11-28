@@ -665,10 +665,10 @@ namespace fdapde{
 
             //TODO: correggere divione di ultime iterazioni come in paralle_for con int, non più plus_one che era sbagliato perché presupponeva massimo +1 per job iniziale, ma it_add
             //2 (it+n ok)
-            template<typename F,internals::parallel_iterator It, typename... Args> 
-            requires std::is_same_v<std::invoke_result_t<F,It,int,Args&...>, void> && (! std::is_reference_v<Args> && ...) // && std::random_access_iterator<It>// PER IL MOMEMNTO NON CHECK SE RANDOM ACCESS PERCHé VOGLIO PROVARLO IN ASSEMBLE 
+            template<typename F,typename It, typename... Args> 
+            requires std::is_same_v<std::invoke_result_t<F,It,int,Args&...>, void> && (! std::is_reference_v<Args> && ...)  && internals::parallel_iterator<It>// PER IL MOMEMNTO NON CHECK SE RANDOM ACCESS PERCHé VOGLIO PROVARLO IN ASSEMBLE 
             void parallel_for(It start, It end, F&& f,int granularity,Args... args){
-                //std::cout<<"usato random access"<<std::endl;
+                std::cout<<"usato random access"<<std::endl;
                 using return_type = void;
                 int range = (end-start);
                 if(granularity > range){granularity = range;}////oss: se granularity > range allora tutto range fatto da unico worker, messo granularity=range per evitare errori poi. magari mettere un warning ??? 
@@ -744,44 +744,44 @@ namespace fdapde{
 //        DA SISTEMARE
 //              // no default granularity
             // //3 (it+n NONok)
-            // template<typename F,typename It, typename... Args> 
-            // requires std::is_same_v<std::invoke_result_t<F,It,int,Args&...>, void> && (!std::random_access_iterator<It>) && (! std::is_reference_v<Args> && ...)
-            // void parallel_for(It start, It end, F&& f,int granularity, Args... args){
-            //     using return_type = void;
-            //     //std::cout<<"usato parallel_for iterator NON random acc granularity"<<std::endl;
-            //     if(granularity<=0){
-            //         std::cerr<<"granularity must be positive";
-            //         return;}
-            //     //Let's first scroll through the entire range so that we can copy iterators at each start + k * granularity into the vector its
-            //     int range = 0;
-            //     std::vector<It> its; 
-            //     its.push_back(start);
-            //     for (It it= start; it!= end; ++it){
-            //         range ++;
-            //         if(range % granularity == 0){
-            //             its.push_back(it);
-            //         }
-            //     } 
-            //     int n_job = its.size(); 
-            //     std::vector<std::future<return_type>> ret_fut;
-            //     ret_fut.reserve(n_job);
-            //     for(int j = 0; j<n_job-1; j++){
-            //         ret_fut.emplace_back(this->send_task_round([start = its[j],stop = its[j+1],fun = f, ...args = args, this]()mutable{ 
-            //                 int index_worker = this-> get_index_worker_from_thread();
-            //                 for(int it = start; it != stop; ++it ){
-            //                     fun(it,index_worker,args...);
-            //                 }
-            //             })); 
-            //     }
-        //         ret_fut.emplace_back(this->send_task_round([start = its[n_job-1],end,fun = f, ...args = args, this]()mutable{ 
-        //                 int index_worker = this-> get_index_worker_from_thread();
-        //                 for(int it = start; it != end; ++it ){
-        //                     fun(it,index_worker,args...);
-        //                 }
-        //             }));
-            //     for(std::future<void>& fut : ret_fut){fut.get();}
-            //     return;        
-            // }
+            template<typename F,typename It, typename... Args> 
+            requires std::is_same_v<std::invoke_result_t<F,It,int,Args&...>, void> && (! std::is_reference_v<Args> && ...) && (! internals::parallel_iterator<It>)
+            void parallel_for(It start, It end, F&& f,int granularity, Args... args){
+                using return_type = void;
+                std::cout<<"usato parallel_for iterator NON random acc granularity"<<std::endl;
+                if(granularity<=0){
+                    std::cerr<<"granularity must be positive";
+                    return;}
+                //Let's first scroll through the entire range so that we can copy iterators at each start + k * granularity into the vector its
+                int range = 0;
+                std::vector<It> its; 
+                its.push_back(start);
+                for (It it= start; it!= end; ++it){
+                    range ++;
+                    if(range % granularity == 0){
+                        its.push_back(it);
+                    }
+                } 
+                int n_job = its.size(); 
+                std::vector<std::future<return_type>> ret_fut;
+                ret_fut.reserve(n_job);
+                for(int j = 0; j<n_job-1; j++){
+                    ret_fut.emplace_back(this->send_task_round([start = its[j],stop = its[j+1],fun = f, ...args = args, this]()mutable{ 
+                            int index_worker = this-> get_index_worker_from_thread();
+                            for(auto it = start; it != stop; ++it ){
+                                fun(it,index_worker,args...);
+                            }
+                        })); 
+                }
+                ret_fut.emplace_back(this->send_task_round([start = its[n_job-1],end,fun = f, ...args = args, this]()mutable{ 
+                        int index_worker = this-> get_index_worker_from_thread();
+                        for(auto it = start; it != end; ++it ){
+                            fun(it,index_worker,args...);
+                        }
+                    }));
+                for(std::future<void>& fut : ret_fut){fut.get();}
+                return;        
+            }
 
 
             //TODO: SE LASCIATI MODIFICA CON STRONG SEND 
