@@ -467,68 +467,8 @@ namespace fdapde{
                 return;
             } 
 
-/*vecchio parallel_for con granularity in input che spalma ma che non ha tmp_obj come variadic così da crearne uno solo per job */
-            // template<typename F> 
-            // requires std::is_same_v<std::invoke_result_t<F,int>, void> 
-            // void parallel_for(int start, int end, F&& f,int granularity){  
-            //     using return_type = void;
-            //     //range: [start, end) --> end-start= dim range
-            //     int range = (end-start);
-            //     if(granularity > range){granularity = range;}////oss: se granularity > range allora tutto range fatto da unico worker, messo granularity=range per evitare errori poi. magari mettere un warning ??? 
-            //     int n_job = range / std::max(1,granularity); //se gran non valida (= 0) non da errore
-            //     //default gran se mandato valore non valido, non più solo -1. cosi evitiamo controllo se granularity valida          
-            //     if(granularity <= 0) {// 1 job per worker max (quindi resto spalmato), se range<n_worker allora n_job = range 
-            //         if(range<n_worker_){
-            //             granularity = 1;
-            //             n_job = range;
-            //         }else{
-            //             granularity = range / n_worker_;
-            //             n_job = n_worker_;
-            //         }
-            //     }
-            //     int gran_last = granularity;
-            //     int plus_one = 0;
-            //     int resto = range%granularity; 
-            //     if((n_job%n_worker_) == 0 && resto >0){ // spalma perché fare un ultimo job con iterazioni di resto sbilancia
-            //         plus_one = resto;
-            //     }
-            //     if((n_job%n_worker_) != 0 && resto >0){ // ultimo job contiente resto di iterazioni (non spalmate perché c'é (almeno 1) worker che ha 1 job meno di worker0, e quindi le da a lui)
-            //         gran_last = resto;
-            //         n_job ++;
-            //     }
-            //     std::vector<std::future<return_type>> ret_fut;
-            //     ret_fut.reserve(n_job); 
-            //     // se non ha spalmato allora plus_one == 0 e questo for lo salta
-            //     for (int j= 0; j<plus_one; j++){
-            //         ret_fut.emplace_back(this->send_task_round([granularity = granularity +1,j,start,fun = f]()mutable{ 
-            //                 int stop = (j+1)*granularity+start;
-            //                 for(int k=j*granularity+start; k<stop; k++ ){
-            //                     fun(k);
-            //                 }
-            //             }));
-            //     }
-            //     for (int j= plus_one; j<n_job-1; j++){
-            //         ret_fut.emplace_back(this->send_task_round([granularity,plus_one,j,start,fun = f]()mutable{ 
-            //                 int stop = (j+1)*granularity+plus_one+start;
-            //                 for(int k=j*granularity+plus_one+start; k<stop; k++ ){
-            //                     fun(k);
-            //                 }
-            //             }));
-            //     }
-            //     //last job (puo essere o gran_last o granularity normale) inviato separatamente per non dover fare if
-            //     ret_fut.emplace_back(this->send_task_round([gran_last,end,fun = f]()mutable{ 
-            //             for(int k=end-gran_last; k<end; k++ ){
-            //                 fun(k);
-            //             }
-            //         }));
-                
-            //     //get futures
-            //     for(std::future<void>& fut : ret_fut){fut.get();}
-            //     return;
-            // } 
 
-
-            /*non so se va lasciato*/
+            
             template<typename F, typename... Args> 
             requires std::is_same_v<std::invoke_result_t<F,int,int,Args&...>, void>
             void parallel_for(int start, int end, F&& f,std::vector<int> granularities, Args... args){ //copia di vettore gran è più sicuro in multithreading
@@ -537,7 +477,7 @@ namespace fdapde{
                     std::cerr<<"somma di elem in granularities deve essere uguale a range (end-start)"<<std::endl;
                     return;
                 }
-                std::vector<int> seq={start}; //seq vettore di somme parziali (es np.cumsum) con primo elemento però 0 cosi da pterlo usare in divisione di for piu comodamente
+                std::vector<int> seq={start}; //seq vettore di somme parziali (es np.cumsum) 
                 int sum_seq = start;
                 size_t vect_size = granularities.size();
                 for(size_t l = 0; l<vect_size; l++){
@@ -561,12 +501,11 @@ namespace fdapde{
             } 
 
 
-            //prova di parallel_for cono variadic template di tmp object per ogni job, per poter usare parallel_for con granularity in input al posto di parallel_for gran=1 con divisione in job a mano
+            
             template<typename F, typename... Args> 
             requires std::is_same_v<std::invoke_result_t<F,int,int,Args&...>, void> //F in input ha: int i (loop index), index worker,  reference a  Args (tmp ogetti copie per ogni job), però Args non reference perché in lambda che viene inviata alla threadpool si deve copiare oggetto non reference ad oggetto
-            //TODO: i require che Args non siano reference e che F prenda in input reference di args non funzionano, da capire come forzarli.
             //TODO: capire come forzare F a prende in input solo reference di Args, perché se body_function prede in input copia ricrea tmp ad ogni iterazione e siamo punto e a capo. vogliamo un solo tmp per job e body_function che prendere reference a copia tmp di job
-            void parallel_for(int start, int end, F&& f, int granularity, Args... args){//n universal reference per Args perché ne voglio una copia per ogni job
+            void parallel_for(int start, int end, F&& f, int granularity, Args... args){//non universal reference per Args perché ne voglio una copia per ogni job
                 using return_type = void;
                 //range: [start, end) --> end-start= dim range
                 int range = (end-start);
@@ -791,215 +730,70 @@ namespace fdapde{
 
             //reduce min con parallel for , idea: ogni worker avrà suo min, ogni job ha suo min e worker che lo esegue lo confronta con proprio e se migliore lo sostituisce, cosi poi alla fine sequenziale solo il confronto tra n_worker value per trovare min
             //F bodyfunction deve restituire valore da confrontare
-            template<typename F> 
-            requires (!std::is_same_v<std::invoke_result_t<F,int>, void>)
-            auto parallel_for_reduce_min(int start, int end, F&& f,int granularity)->std::pair<std::invoke_result_t<F, int>,int>{ //TODO cambiare granularity on 
+            
+            enum class reduceOp{
+                min,
+                max,
+                sum,
+                dot,
+            };
+// min e max reduce 
+            template<typename type,reduceOp op>
+            struct alignas(64) AlignedPair{};
+            template<typename type>
+            struct alignas(64) AlignedPair<type,reduceOp::min>{
+                double first = std::numeric_limits<type>::max();
+                int second = std::numeric_limits<int>::quiet_NaN(); // int perché int scorre range in parallel_for 
+            };
+            template<typename type>
+            struct alignas(64) AlignedPair<type,reduceOp::max>{
+                double first = std::numeric_limits<type>::min();
+                int second = std::numeric_limits<int>::quiet_NaN();
+            };
+            template<reduceOp op, typename F, typename... Args> 
+            requires (!std::is_same_v<std::invoke_result_t<F,int,Args&...>, void>) && (op == reduceOp::min || op == reduceOp::max)
+            auto parallel_for_reduce(int start, int end, F&& f,int granularity, Args... args)->std::pair<std::invoke_result_t<F, int>,int>{ 
                 using return_type = std::invoke_result_t<F, int>;
-                //range va da start a end-1--> end-start= dimensione range
-                int range = (end-start); 
-                int n = range / granularity; //numero job con granularity iterazioni, se poi c'è resto le ultime iterazioni messe in ultimo job
-                //scelta valore ottimo di  se passato -1 (vedi parallel_for per sppiegazioe scelta 10)
-                if(granularity == -1) { 
-                    granularity = range/n_worker_; 
-                    if(granularity < 1){//less iteration than worker, so granularity = 1 
-                        granularity = 1; 
-                    }
-                    n = range/granularity;    
+                std::vector<AlignedPair<return_type,op>> min_workers(n_worker_); 
+                return_type min;
+                if constexpr(op == reduceOp::min) {
+                    min= std::numeric_limits<return_type>::max();
+                }else{
+                    min= std::numeric_limits<return_type>::min();
                 }
-                std::vector<std::future<void>> ret_fut; //no optinal<future> perché se nullopt non pushato quindi solo future
-                ret_fut.reserve(n+1); //per evitare riallocameto memoria, +1 per eventuale ultimo job fatto da ultime (end-start)%granularity iterazioni  
-
-                //min_curr,index_in_loop_associato di ogni worker (bodyFunction F(k)=value, ci salviamo min(value) e k=argmin F(j) )
-                //TODO: allineare le coppie per evitare false sharing ?
-                std::vector<std::pair<return_type,int>> min_workers(n_worker_ ,std::make_pair(std::numeric_limits<return_type>::max(),start-1)); //argmin inizializzato a start-1 e non -1 perche  se loop parte con start<0 non va bene -1
-
-                int j = 0;
-                while(j< n){
-                    std::optional<std::future<void>> opt_fut = this->send_task_round([granularity,j,start,map_thread_worker_ =this->map_thread_worker_,fun = f, &min_workers]()mutable{ //j catturato come copia perchè modificato detro job (j+1) quidi se catturi come reference si sballa tutto !!!
-                        int stop = (j+1)*granularity+start;
-                        //minimi locali in job
-                        return_type min_job_local = std::numeric_limits<return_type>::max();
-                        return_type min_job_curr;
-                        int argmin_job_local;
-                        for(int k=j*granularity+start; k<stop; k++ ){
-                            min_job_curr = fun(k);
-                            if(min_job_curr < min_job_local){
-                                min_job_local = min_job_curr;
-                                argmin_job_local = k;
-                            }
+                this->parallel_for(start,end,[fun = f, &min_workers](int i,int index_worker,return_type& min_job, Args&... args){
+                    min_job = fun(i,args...);
+                    if constexpr(op == reduceOp::min){
+                        if(min_job < min_workers[index_worker].first){
+                            min_workers[index_worker].first = min_job;
+                            min_workers[index_worker].second = i;
                         }
-                        //job ha confrontato valore di ogni iterazione e ha trovato il migliore ora se meglio di worker_min (minimo di worker che ha eseguito il job) lo aggiorna
-                        int indx_worker_from_thread = map_thread_worker_[std::this_thread::get_id()];
-                        if(min_job_local < min_workers[indx_worker_from_thread].first){
-                            min_workers[indx_worker_from_thread].first = min_job_local;
-                            min_workers[indx_worker_from_thread].second = argmin_job_local;
+                    }else{
+                        if(min_job > min_workers[index_worker].first){
+                            min_workers[index_worker].first = min_job;
+                            min_workers[index_worker].second = i;
                         }
-                    });
-                    if(opt_fut){
-                        //se send andato a buon push di fut in ret_fut e incrementa j
-                        ret_fut.push_back(std::move(opt_fut.value())); //move perche future non copiabili
-                        j++;
                     }
-                }
-                //?= possibile evitare questo if mettendo sopra while(j<n+1) e poi ultimo se range % granularity == 0 ultimo job mandato sara for(k=end, k<end){f()} cioè job "vuoto"
-                //risposta: no perchè poi bisognerebbe mettere controllo se (j+1)*granularity+start > end, perchè in ultimo job di avanzi k<end non k<(j+1)*granularity+start 
-                if(range % granularity > 0){ //inviamo ultimo job con iterazioni rimanenti 
-                    j=0;
-                    while(j<1){
-                        std::optional<std::future<void>> opt_fut = this->send_task_round([granularity,n,start,end,j,map_thread_worker_ =this->map_thread_worker_,fun = f,&min_workers]()mutable{ //j gia catturata in & credo non serve
-                        //minimi locali in job
-                        return_type min_job_local = std::numeric_limits<return_type>::max();
-                        return_type min_job_curr;
-                        int argmin_job_local;
-                        for(int k=n*granularity+start; k<end; k++ ){
-                            min_job_curr = fun(k);
-                            if(min_job_curr < min_job_local){
-                                min_job_local = min_job_curr;
-                                argmin_job_local = k;
-                            }
-                        }
-                        //job ha confrontato valore di ogni iterazione e ha trovato il migliore ora se meglio di worker_min (minimo di worker che ha eseguito il job) lo aggiorna
-                        int indx_worker_from_thread = map_thread_worker_[std::this_thread::get_id()];
-                        if(min_job_local < min_workers[indx_worker_from_thread].first){
-                            min_workers[indx_worker_from_thread].first = min_job_local;
-                            min_workers[indx_worker_from_thread].second = argmin_job_local;
-                        }
-                    });
-                    if(opt_fut){
-                        //se send andato a buon push di fut in ret_fut e incrementa j
-                        ret_fut.push_back(std::move(opt_fut.value())); //move perche future non copiabili
-                        j++;
-                    }
-                    }
-                }
-                //get dei future void per assicurarsi che tutti i job siano stati eseguiti dopo uso parallel_for in main
-                for(std::future<void>& fut : ret_fut){
-                    fut.get();
-                }
-
-                /*
-                // per debug vedere minimo di ogni worker 
-                for (size_t k = 0; k<n_worker_; k++){
-                    std::cout<<"worker indx: "<<k<<" minimo: "<<min_workers[k].first<<" argmin: "<<min_workers[k].second<<std::endl;
-                }
-                */
+                },granularity,min,args...);                
                 //minimo di minimi di ogni worker
-                return_type min = min_workers[0].first;
+                min = min_workers[0].first;
                 int indx_best_in_min_workers = 0;
                 for (size_t k = 1; k<n_worker_; k++){
-                    if(min_workers[k].first < min){
-                        indx_best_in_min_workers = k;
-                        min = min_workers[k].first;
+                    if constexpr(op == reduceOp::min){
+                        if(min_workers[k].first < min){
+                            indx_best_in_min_workers = k;
+                            min = min_workers[k].first;
+                        }
+                    }else{
+                        if(min_workers[k].first > min){
+                            indx_best_in_min_workers = k;
+                            min = min_workers[k].first;
+                        }
                     }
                 }
-                return min_workers[indx_best_in_min_workers];
+                return std::pair<return_type,int>(min_workers[indx_best_in_min_workers].first,min_workers[indx_best_in_min_workers].second);
             }
 
-
-            //reduce max con parallel for , idea: ogni worker avrà suo max, ogni job ha suo max e worker che lo esegue lo confronta con proprio e se migliore lo sostituisce, cosi poi alla fine sequenziale solo il confronto tra n_worker value per trovare min
-            //F bodyfunction deve restituire valore da confrontare
-            template<typename F> 
-            requires (!std::is_same_v<std::invoke_result_t<F,int>, void>)
-            auto parallel_for_reduce_max(int start, int end, F&& f,int granularity)->std::pair<std::invoke_result_t<F, int>,int>{ //TODO cambiare granularity on 
-                using return_type = std::invoke_result_t<F, int>;
-                //range va da start a end-1--> end-start= dimensione range
-                int range = (end-start); 
-                int n = range / granularity; //numero job con granularity iterazioni, se poi c'è resto le ultime iterazioni messe in ultimo job
-                //scelta valore ottimo di  se passato -1 (vedi parallel_for per sppiegazioe scelta 100)
-                if(granularity == -1) { 
-                    granularity = range/n_worker_; 
-                    if(granularity < 1){//less iteration than worker, so granularity = 1 
-                        granularity = 1; 
-                    }
-                    n = range/granularity;    
-                }
-                std::vector<std::future<void>> ret_fut; //no optinal<future> perché se nullopt non pushato quindi solo future
-                ret_fut.reserve(n+1); //per evitare riallocameto memoria, +1 per eventuale ultimo job fatto da ultime (end-start)%granularity iterazioni  
-
-                //min_curr,index_in_loop_associato di ogni worker (bodyFunction F(k)=value, ci salviamo min(value) e k=argmin F(j) )
-                std::vector<std::pair<return_type,int>> max_workers(n_worker_ ,std::make_pair(std::numeric_limits<return_type>::min(),start-1)); //argmin inizializzato a start-1 e non -1 perche  se loop parte con start<0 non va bene -1
-
-                int j = 0;
-                while(j< n){
-                    std::optional<std::future<void>> opt_fut = this->send_task_round([granularity,j,start,map_thread_worker_ =this->map_thread_worker_,fun = f, &max_workers]()mutable{ //j catturato come copia perchè modificato detro job (j+1) quidi se catturi come reference si sballa tutto !!!
-                        int stop = (j+1)*granularity+start;
-                        //minimi locali in job
-                        return_type max_job_local = std::numeric_limits<return_type>::min();
-                        return_type max_job_curr;
-                        int argmax_job_local;
-                        for(int k=j*granularity+start; k<stop; k++ ){
-                            max_job_curr = fun(k);
-                            if(max_job_curr > max_job_local){
-                                max_job_local = max_job_curr;
-                                argmax_job_local = k;
-                            }
-                        }
-                        //job ha confrontato valore di ogni iterazione e ha trovato il migliore ora se meglio di worker_min (minimo di worker che ha eseguito il job) lo aggiorna
-                        int indx_worker_from_thread = map_thread_worker_[std::this_thread::get_id()];
-                        if(max_job_local > max_workers[indx_worker_from_thread].first){
-                            max_workers[indx_worker_from_thread].first = max_job_local;
-                            max_workers[indx_worker_from_thread].second = argmax_job_local;
-                        }
-                    });
-                    if(opt_fut){
-                        //se send andato a buon push di fut in ret_fut e incrementa j
-                        ret_fut.push_back(std::move(opt_fut.value())); //move perche future non copiabili
-                        j++;
-                    }
-                }
-                //?= possibile evitare questo if mettendo sopra while(j<n+1) e poi ultimo se range % granularity == 0 ultimo job mandato sara for(k=end, k<end){f()} cioè job "vuoto"
-                //risposta: no perchè poi bisognerebbe mettere controllo se (j+1)*granularity+start > end, perchè in ultimo job di avanzi k<end non k<(j+1)*granularity+start 
-                if(range % granularity > 0){ //inviamo ultimo job con iterazioni rimanenti 
-                    j=0;
-                    while(j<1){
-                        std::optional<std::future<void>> opt_fut = this->send_task_round([granularity,n,start,end,j,map_thread_worker_ =this->map_thread_worker_,fun = f,&max_workers]()mutable{ //j gia catturata in & credo non serve
-                        //minimi locali in job
-                        return_type max_job_local = std::numeric_limits<return_type>::min();
-                        return_type max_job_curr;
-                        int argmax_job_local;
-                        for(int k=n*granularity+start; k<end; k++ ){
-                            max_job_curr = fun(k);
-                            if(max_job_curr > max_job_local){
-                                max_job_local = max_job_curr;
-                                argmax_job_local = k;
-                            }
-                        }
-                        //job ha confrontato valore di ogni iterazione e ha trovato il migliore ora se meglio di worker_min (minimo di worker che ha eseguito il job) lo aggiorna
-                        int indx_worker_from_thread = map_thread_worker_[std::this_thread::get_id()];
-                        if(max_job_local > max_workers[indx_worker_from_thread].first){
-                            max_workers[indx_worker_from_thread].first = max_job_local;
-                            max_workers[indx_worker_from_thread].second = argmax_job_local;
-                        }
-                    });
-                    if(opt_fut){
-                        //se send andato a buon push di fut in ret_fut e incrementa j
-                        ret_fut.push_back(std::move(opt_fut.value())); //move perche future non copiabili
-                        j++;
-                    }
-                    }
-                }
-                //get dei future void per assicurarsi che tutti i job siano stati eseguiti dopo uso parallel_for in main
-                for(std::future<void>& fut : ret_fut){
-                    fut.get();
-                }
-
-                /*
-                // per debug vedere max di ogni worker 
-                for (size_t k = 0; k<n_worker_; k++){
-                    std::cout<<"worker indx: "<<k<<" massimo: "<<min_workers[k].first<<" argmax: "<<min_workers[k].second<<std::endl;
-                }
-                */
-                //max di max di ogni worker
-                return_type max = max_workers[0].first;
-                int indx_best_in_max_workers = 0;
-                for (size_t k = 1; k<n_worker_; k++){
-                    if(max_workers[k].first > max){
-                        indx_best_in_max_workers = k;
-                        max = max_workers[k].first;
-                    }
-                }
-                return max_workers[indx_best_in_max_workers];
-            }
 
             //TODO: reduce sum e product
             // ogni body function f(int i) ridà un return_type, metodo restituisce somma di tutti con logica di reduce come in parallel_for_reduce_min
