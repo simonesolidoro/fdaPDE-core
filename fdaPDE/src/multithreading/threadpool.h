@@ -575,18 +575,20 @@ namespace fdapde{
                 }
                 std::vector<int> it_add; // vettore di iterazioni aggiuntive al primo job di ogni worker
                 int resto = range%granularity; 
-                if((n_job%n_worker_) == 0 && resto >0){ // spalma perché fare un ultimo job con iterazioni di resto sbilancia
-                    int iter_add = resto / n_worker_;
-                    int resto_di_resto = resto % n_worker_;// tutti i worker si prendono iter_add iterazioni extra e quello che rimane dato +1 ai primi resto_di_resto worker
-                    for(int w = 0; w< resto_di_resto; w++){
-                        it_add.push_back(iter_add + 1);
+                if(resto >0){
+                    if((n_job%n_worker_) != 0){
+                        n_job ++;    
                     }
-                    for(int w = resto_di_resto; w<n_worker_ ; w++){
-                        it_add.push_back(iter_add);
-                    }
-                }
-                if((n_job%n_worker_) != 0 && resto >0){ // ultimo job contiente resto di iterazioni (non spalmate perché c'é (almeno 1) worker che ha 1 job meno di worker0, e quindi le da a lui)
-                    n_job ++;
+                    else{// spalma perché fare un ultimo job con iterazioni di resto sbilancia
+                        int iter_add = resto / n_worker_;
+                        int resto_di_resto = resto % n_worker_;// tutti i worker si prendono iter_add iterazioni extra e quello che rimane dato +1 ai primi resto_di_resto worker
+                        for(int w = 0; w< resto_di_resto; w++){
+                            it_add.push_back(iter_add + 1);
+                        }
+                        for(int w = resto_di_resto; w<n_worker_ ; w++){
+                            it_add.push_back(iter_add);
+                        }
+                    } 
                 }
                 std::vector<std::future<return_type>> ret_fut;
                 ret_fut.reserve(n_job); 
@@ -676,19 +678,20 @@ namespace fdapde{
                 std::vector<int> it_add; // vettore di iterazioni aggiuntive al primo job di ogni worker
                 
                 int resto = range%granularity; 
-                if((n_job%n_worker_) == 0 && resto >0){ // spalma perché fare un ultimo job con iterazioni di resto sbilancia
-                    int iter_add = resto / n_worker_;
-                    int resto_di_resto = resto % n_worker_;// tutti i worker si prendono iter_add iterazioni extra e quello che rimane dato +1 ai primi resto_di_resto worker
-                    for(int w = 0; w< resto_di_resto; w++){
-                        it_add.push_back(iter_add + 1);
+                if(resto >0){
+                    if((n_job%n_worker_) != 0){
+                        n_job ++;    
                     }
-                    for(int w = resto_di_resto; w<n_worker_ ; w++){
-                        it_add.push_back(iter_add);
-                    }
-                }
-                if((n_job%n_worker_) != 0 && resto >0){ // ultimo job contiente resto di iterazioni (non spalmate perché c'é (almeno 1) worker che ha 1 job meno di worker0, e quindi le da a lui)
-                    gran_last = resto;
-                    n_job ++;
+                    else{// spalma perché fare un ultimo job con iterazioni di resto sbilancia
+                        int iter_add = resto / n_worker_;
+                        int resto_di_resto = resto % n_worker_;// tutti i worker si prendono iter_add iterazioni extra e quello che rimane dato +1 ai primi resto_di_resto worker
+                        for(int w = 0; w< resto_di_resto; w++){
+                            it_add.push_back(iter_add + 1);
+                        }
+                        for(int w = resto_di_resto; w<n_worker_ ; w++){
+                            it_add.push_back(iter_add);
+                        }
+                    } 
                 }
                 std::vector<std::future<return_type>> ret_fut;
                 ret_fut.reserve(n_job);
