@@ -676,10 +676,18 @@ namespace fdapde{
                     }
                 }
                 int gran_last = granularity;
-                int plus_one = 0;
+                std::vector<int> it_add; // vettore di iterazioni aggiuntive al primo job di ogni worker
+                
                 int resto = range%granularity; 
                 if((n_job%n_worker_) == 0 && resto >0){ // spalma perché fare un ultimo job con iterazioni di resto sbilancia
-                    plus_one = resto;
+                    int iter_add = resto / n_worker_;
+                    int resto_di_resto = resto % n_worker_;// tutti i worker si prendono iter_add iterazioni extra e quello che rimane dato +1 ai primi resto_di_resto worker
+                    for(int w = 0; w< resto_di_resto; w++){
+                        it_add.push_back(iter_add + 1);
+                    }
+                    for(int w = resto_di_resto; w<n_worker_ ; w++){
+                        it_add.push_back(iter_add);
+                    }
                 }
                 if((n_job%n_worker_) != 0 && resto >0){ // ultimo job contiente resto di iterazioni (non spalmate perché c'é (almeno 1) worker che ha 1 job meno di worker0, e quindi le da a lui)
                     gran_last = resto;
@@ -687,17 +695,24 @@ namespace fdapde{
                 }
                 std::vector<std::future<return_type>> ret_fut;
                 ret_fut.reserve(n_job);
-                for (int j= 0; j<plus_one; j++){
-                    ret_fut.emplace_back(this->send_task_round([granularity = granularity +1,fun = f, ...args = args, this](auto it)mutable{ 
+
+                for (int j= 0; j<it_add.size(); j++){
+                    ret_fut.emplace_back(this->send_task_round([granularity = granularity+it_add[j],fun = f, ...args = args, this](auto it)mutable{ 
                             int index_worker = this-> get_index_worker_from_thread();
                             for(int k=0; k<granularity; k++ ){
                                 fun(it,index_worker,args...);
                                 ++it;
                             }
                         },start));
-                    start+=(granularity+1);//manda avanti start
+                    start+=(granularity+it_add[j]);//manda avanti start
                 }
-                for (int j= plus_one; j<n_job-1; j++){
+                if(it_add.size()==n_job){//per evitare di arrivare a send di last job con gran_last.  
+                    //get futures
+                    for(std::future<void>& fut : ret_fut){fut.get();}
+                    return;
+                }
+
+                for (int j= it_add.size(); j<n_job-1; j++){
                     ret_fut.emplace_back(this->send_task_round([granularity ,fun = f, ...args = args, this](auto it)mutable{ 
                             int index_worker = this-> get_index_worker_from_thread();
                             for(int k=0; k<granularity; k++ ){

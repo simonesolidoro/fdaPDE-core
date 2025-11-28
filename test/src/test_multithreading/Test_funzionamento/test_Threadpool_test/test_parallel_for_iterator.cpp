@@ -22,25 +22,29 @@ int main(int argc,char** argv)
     fdapde::threadpool<fdapde::steal::random> tp(64,8);
     std::atomic<int> a=0; //usata per verifica tutti jo vengano eseguiti (a deve arrivare ad n)
 
-    std::vector<int> V = {1,2,3,4,5,6,7,8,9,0};
+    std::vector<int> V(1000,1); //{1,2,3,4,5,6,7,8,9,0};
     std::list<int> W= {1,2,3,4,5,6,7,8,9,0};
 
-    tp.parallel_for(V.begin(),V.end(),[=](std::vector<int>::iterator iter){
-        std::cout<<*iter<<" da thread: "<<std::this_thread::get_id()<<std::endl;
+    tp.parallel_for(V.begin(),V.end(),[&](std::vector<int>::iterator iter){
+        //std::cout<<*iter<<" da thread: "<<std::this_thread::get_id()<<std::endl;
+        a++;
     });
 
+    std::cout<<"a arriavta da 0 ad: "<<a.load()<<" doveva arrivare a:"<<V.size()<<std::endl;
+    a.store(0);
     std::cout<<"-------------------------------------- granularity random acces ----------------------------------------"<<std::endl;
     int tmp = 10;
-    tp.parallel_for(V.begin(),V.end(),[=](std::vector<int>::iterator iter, int index_w, int& tmp){
-        std::cout<<*iter<<" da thread: "<<std::this_thread::get_id()<<std::endl;
+    tp.parallel_for(V.begin(),V.end(),[&](std::vector<int>::iterator iter, int index_w, int& tmp){
+        //std::cout<<*iter<<" da thread: "<<std::this_thread::get_id()<<std::endl;
+        a++;
     },gran,tmp);
-
+    std::cout<<"a arriavta da 0 ad: "<<a.load()<<" doveva arrivare a:"<<V.size()<<std::endl;
     
-    std::cout<<"-------------------------------------- granularity non random acces (list,map,set)----------------------------------------"<<std::endl;
+    // std::cout<<"-------------------------------------- granularity non random acces (list,map,set)----------------------------------------"<<std::endl;
 
-    tp.parallel_for(W.begin(),W.end(),[=](std::list<int>::iterator iter, int index_w, int& tmp){
-        std::cout<<*iter<<" da thread: "<<std::this_thread::get_id()<<std::endl;
-    },gran,tmp);
+    // tp.parallel_for(W.begin(),W.end(),[=](std::list<int>::iterator iter, int index_w, int& tmp){
+    //     std::cout<<*iter<<" da thread: "<<std::this_thread::get_id()<<std::endl;
+    // },gran,tmp);
     /*
 
 //for non parallel
@@ -61,7 +65,7 @@ int main(int argc,char** argv)
     a.store(0);
     int n_it = std::stoi(argv[1]); //numero di blocchi in cui dividere range di for
     auto start3 = std::chrono::high_resolution_clock::now();
-
+ 
     tp.parallel_for_sure_granularity(0,10000,n_it,[&](int i){a++;
         //std::cout<<i<<std::endl;
     std::this_thread::sleep_for(std::chrono::microseconds(10));
