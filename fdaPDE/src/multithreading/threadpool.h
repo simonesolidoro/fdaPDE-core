@@ -674,9 +674,7 @@ namespace fdapde{
                         n_job = n_worker_;
                     }
                 }
-                int gran_last = granularity;
                 std::vector<int> it_add; // vettore di iterazioni aggiuntive al primo job di ogni worker
-                
                 int resto = range%granularity; 
                 if(resto >0){
                     if((n_job%n_worker_) != 0){
@@ -697,38 +695,37 @@ namespace fdapde{
                 ret_fut.reserve(n_job);
 
                 for (int j= 0; j<it_add.size(); j++){
-                    ret_fut.emplace_back(this->send_task_round([granularity = granularity+it_add[j],fun = f, ...args = args, this](auto it)mutable{ 
+                    ret_fut.emplace_back(this->send_task_round([granularity = granularity+it_add[j],it=start,fun = f, ...args = args, this]()mutable{ 
                             int index_worker = this-> get_index_worker_from_thread();
                             for(int k=0; k<granularity; k++ ){
                                 fun(it,index_worker,args...);
                                 ++it;
                             }
-                        },start));
+                        }));
                     start+=(granularity+it_add[j]);//manda avanti start
                 }
-                if(it_add.size()==n_job){//per evitare di arrivare a send di last job con gran_last.  
+                if(start == end){//per evitare di andare avanti. senza andrebbe avanti e salterebbe il secondo for ma poi invierebbe un ultimo job vuoto (perché it = start = end subito) ma che aumenta contatore di indx_worker per niente.  
                     //get futures
                     for(std::future<void>& fut : ret_fut){fut.get();}
                     return;
                 }
 
                 for (int j= it_add.size(); j<n_job-1; j++){
-                    ret_fut.emplace_back(this->send_task_round([granularity ,fun = f, ...args = args, this](auto it)mutable{ 
+                    ret_fut.emplace_back(this->send_task_round([granularity ,it = start,fun = f, ...args = args, this]()mutable{ 
                             int index_worker = this-> get_index_worker_from_thread();
                             for(int k=0; k<granularity; k++ ){
                                 fun(it,index_worker,args...);
                                 ++it;
                             }
-                        },start));
+                        }));
                     start+=granularity;//manda avanti start
                 }
-                ret_fut.emplace_back(this->send_task_round([gran_last,fun = f, ...args = args, this](auto it)mutable{ 
+                ret_fut.emplace_back(this->send_task_round([start,end,fun = f, ...args = args, this]()mutable{ 
                     int index_worker = this-> get_index_worker_from_thread();
-                    for(int k=0; k<gran_last; k++ ){
+                    for(auto it = start; it != end; ++it ){
                         fun(it,index_worker,args...);
-                        ++it;
                     }
-                }, start));
+                }));
                 for(std::future<void>& fut : ret_fut){fut.get();}
                 return;
             }
@@ -741,7 +738,10 @@ namespace fdapde{
             // requires std::is_same_v<std::invoke_result_t<F,It,int,Args&...>, void> && (!std::random_access_iterator<It>) && (! std::is_reference_v<Args> && ...)
             // void parallel_for(It start, It end, F&& f,int granularity, Args... args){
             //     using return_type = void;
-            //     std::cout<<"usato parallel_for iterator NON random acc granularity"<<std::endl;
+            //     //std::cout<<"usato parallel_for iterator NON random acc granularity"<<std::endl;
+            //     if(granularity<=0){
+            //         std::cerr<<"granularity must be positive";
+            //         return;}
             //     //Let's first scroll through the entire range so that we can copy iterators at each start + k * granularity into the vector its
             //     int range = 0;
             //     std::vector<It> its; 
@@ -752,11 +752,11 @@ namespace fdapde{
             //             its.push_back(it);
             //         }
             //     } 
-            //     int n_job = range / granularity; 
+            //     int n_job = its.size(); 
             //     std::vector<std::future<return_type>> ret_fut;
-            //     ret_fut.reserve(n_job+1);
-            //     for(int j = 0; j<n_job; j++){
-            //         ret_fut.emplace_back(this->send_task_round([granularity,fun = f, ...args = args, this](auto it)mutable{ 
+            //     ret_fut.reserve(n_job);
+            //     for(int j = 0; j<n_job-1; j++){
+            //         ret_fut.emplace_back(this->send_task_round([start = its[j],fun = f, ...args = args, this](auto it)mutable{ 
             //                 int index_worker = this-> get_index_worker_from_thread();
             //                 for(int k=0; k<granularity; k++ ){
             //                     fun(it,index_worker,args...);
