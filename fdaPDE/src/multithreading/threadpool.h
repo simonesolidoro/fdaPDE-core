@@ -738,22 +738,24 @@ namespace fdapde{
                 dot,
             };
 // min e max reduce 
-            template<typename type,reduceOp op>
-            struct alignas(64) AlignedPair{};
+            template<typename type,reduceOp op> struct alignas(64) AlignedPair{};
+
             template<typename type>
             struct alignas(64) AlignedPair<type,reduceOp::min>{
                 double first = std::numeric_limits<type>::max();
                 int second = std::numeric_limits<int>::quiet_NaN(); // int perché int scorre range in parallel_for 
             };
+
             template<typename type>
             struct alignas(64) AlignedPair<type,reduceOp::max>{
                 double first = std::numeric_limits<type>::min();
                 int second = std::numeric_limits<int>::quiet_NaN();
             };
+
             template<reduceOp op, typename F, typename... Args> 
             requires (!std::is_same_v<std::invoke_result_t<F,int,Args&...>, void>) && (op == reduceOp::min || op == reduceOp::max)
-            auto parallel_for_reduce(int start, int end, F&& f,int granularity, Args... args)->std::pair<std::invoke_result_t<F, int>,int>{ 
-                using return_type = std::invoke_result_t<F, int>;
+            auto parallel_for_reduce(int start, int end, F&& f,int granularity, Args... args)->std::pair<std::invoke_result_t<F, int,Args&...>,int>{ 
+                using return_type = std::invoke_result_t<F, int,Args&...>;
                 std::vector<AlignedPair<return_type,op>> min_workers(n_worker_); 
                 return_type min;
                 if constexpr(op == reduceOp::min) {

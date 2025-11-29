@@ -262,6 +262,43 @@ template <int N> class GridSearch {
         return optimum_;
     }
 
+// parallel_for_reduce 
+    //paralle_for con granularity e variadic tmp_obj, cosi da far divisione con granularity in input e non a mano con gran1 e minifor
+    template <typename ObjectiveT, typename GridT>
+        requires((internals::is_vector_like_v<GridT> || internals::is_matrix_like_v<GridT>))
+    vector_t optimize_reduce(ObjectiveT&& objective, const GridT& grid, execution::execution_parallel,fdapde::threadpool<fdapde::steal::random>& Tp, int granularity = -1) { // per ora int job_per_worker in input perche piu comodo fare i test poi sostituire valore scelto
+        fdapde_static_assert(
+          std::is_same<decltype(std::declval<ObjectiveT>().operator()(vector_t())) FDAPDE_COMMA double>::value,
+          INVALID_CALL_TO_OPTIMIZE__OBJECTIVE_FUNCTOR_NOT_CALLABLE_AT_VECTOR_TYPE);
+        using layout_policy = decltype([]() {
+            if constexpr (internals::is_eigen_dense_xpr_v<GridT>) {
+                return std::conditional_t<GridT::IsRowMajor, internals::layout_right, internals::layout_left> {};
+            } else {
+                return internals::layout_right {};
+            }
+        }());
+        using grid_t = MdMap<const double, MdExtents<Dynamic, Dynamic>, layout_policy>;
+        
+        constexpr double NaN = std::numeric_limits<double>::quiet_NaN();
+        
+        grid_t grid_;
+        value_ = std::numeric_limits<double>::max();
+        if constexpr (internals::is_vector_like_v<GridT>) {
+            fdapde_assert(grid.size() % size_ == 0);
+            grid_ = grid_t(grid.data(), grid.size() / size_, size_);
+        } else {
+            fdapde_assert(grid.cols() == size_);
+            grid_ = grid_t(grid.data(), grid.rows(), size_);
+        }       
+        std::pair<double,int> opt = Tp.parallel_for_reduce<fdapde::threadpool<fdapde::steal::random>::reduceOp::min>(0,grid_.rows(),[&Tp, &grid_,&objective](int i, vector_t& x_curr){
+            grid_.row(i).assign_to(x_curr.transpose()); 
+            return objective(x_curr);            
+        },granularity,x_curr);
+        value_ = opt.first;
+        grid_.row(opt.second).assign_to(optimum_.transpose());
+        return optimum_;
+    }
+
 
     // observers
     const vector_t& optimum() const { return optimum_; }
