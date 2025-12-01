@@ -66,13 +66,13 @@ int main(int argc, char** argv){
 
     }
 */
-/*
-    // seq vs gran1 vs graniterator 
+
+    // seq vs gran1 vs gran_input vs gran_input_iterator con default granularity -1
 {// ============================= ASSEMBLE =============================================
     using namespace fdapde;
     auto start = std::chrono::high_resolution_clock::now();
     auto end = std::chrono::high_resolution_clock::now();
-    std::vector<int> nodes = {1000}; // cosi da avere anche scalabilità debole con 8 16 32 oppure 16 32 64
+    std::vector<int> nodes = {500}; // cosi da avere anche scalabilità debole con 8 16 32 oppure 16 32 64
     std::vector<int> runs_vett = {3};//{20,20,20};//{20,20,20};//{1,1,1};
     std::vector<std::vector<std::chrono::microseconds>> tempo_seq_assemble(nodes.size()); //per ogni nodi vettore di tempi di assemblaggio completo. (vediamo se overhead in setfromtriple rimane in cluster (speriamo di no perchè il vttore di triple è uguale in seq e in par))
     std::vector<std::vector<std::chrono::microseconds>> tempo_par_assemble(nodes.size());
@@ -108,7 +108,7 @@ int main(int argc, char** argv){
             std::cout<<std::endl;
         }
     }
-        {
+    {
         //std::cout<<"=====Tempi PARALLELO n_thread: "<<n_thread<<"========================================================================================================================================================================================================================================================="<<std::endl; 
         for(int nodi = 0; nodi<nodes.size(); nodi++){
             Triangulation<2, 2> unit_square = Triangulation<2, 2>::UnitSquare(nodes[nodi]);
@@ -116,7 +116,7 @@ int main(int argc, char** argv){
             TrialFunction u(Vh);
             TestFunction  v(Vh);
             auto a = integral(unit_square)(dot(grad(u), grad(v))); // laplacian weak form
-            std::cout<<"calcolo_triple_iterator "<<nodes[nodi]<<" thread_"<<n_thread<<" ";
+            std::cout<<"calcolo_triple_graninput_iterator "<<nodes[nodi]<<" thread_"<<n_thread<<" ";
             for(int run = 0; run <runs_vett[nodi]; run ++){
                 fdapde::threadpool<fdapde::steal::random> Tp(1024,n_thread);
                 Eigen::SparseMatrix<double> A = a.assemble_iterator_tempotriple(execution::par,Tp,-1);// numero celle (e quindi numero iterazioni range)= (nodiperlato-1)^2*2
@@ -124,9 +124,25 @@ int main(int argc, char** argv){
             std::cout<<std::endl;
         }
     }
+    {
+        //std::cout<<"=====Tempi PARALLELO n_thread: "<<n_thread<<"========================================================================================================================================================================================================================================================="<<std::endl; 
+        for(int nodi = 0; nodi<nodes.size(); nodi++){
+            Triangulation<2, 2> unit_square = Triangulation<2, 2>::UnitSquare(nodes[nodi]);
+            FeSpace Vh(unit_square, P1<1>);
+            TrialFunction u(Vh);
+            TestFunction  v(Vh);
+            auto a = integral(unit_square)(dot(grad(u), grad(v))); // laplacian weak form
+            std::cout<<"calcolo_triple_graninput "<<nodes[nodi]<<" thread_"<<n_thread<<" ";
+            for(int run = 0; run <runs_vett[nodi]; run ++){
+                fdapde::threadpool<fdapde::steal::random> Tp(1024,n_thread);
+                Eigen::SparseMatrix<double> A = a.assemble_graninput_tempotriple(execution::par,Tp,-1);// numero celle (e quindi numero iterazioni range)= (nodiperlato-1)^2*2
+            }
+            std::cout<<std::endl;
+        }
+    }
 
     }
-*/
+/*
 // effetto di granularity in solo calcolo triple seq vs parallel con granularity t.c. 1 jpw , 16 job total, 160 job total, 640 job total 
 {// ============================= ASSEMBLE =============================================
     using namespace fdapde;
@@ -216,7 +232,7 @@ int main(int argc, char** argv){
         }
     }
     }
-
+*/
 return 0;
 }
 
