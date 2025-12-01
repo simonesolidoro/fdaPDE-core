@@ -1,6 +1,6 @@
 #!/bin/bash
 
-n_threads=(1 2 3 4 5 6 7 8) # 1 lasciato per vedere overhead threadpool rispetto seq
+n_threads=(1 2 4) # 1 lasciato per vedere overhead threadpool rispetto seq
 output_file="test_assemble.txt"
 for i in "${n_threads[@]}"; do
     ./test_assemble "$i" >> "$output_file"

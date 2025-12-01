@@ -581,6 +581,8 @@ namespace fdapde{
                 return;
             } 
 
+
+
             //PARALLEL_FOR_ITERATOR:
             //body_function f = void(iterator)
             //1)void parallel_for_iterator(It start, It end, F&& f)                     per tutti i container, =1 default
@@ -607,7 +609,7 @@ namespace fdapde{
             template<typename F,typename It, typename... Args> 
             requires std::is_same_v<std::invoke_result_t<F,It,int,Args&...>, void> && internals::parallel_iterator<It>// PER IL MOMEMNTO NON CHECK SE RANDOM ACCESS PERCHé VOGLIO PROVARLO IN ASSEMBLE 
             void parallel_for(It start, It end, F&& f,int granularity,Args... args){
-                std::cout<<"usato random access"<<std::endl;
+                //std::cout<<"usato random access"<<std::endl;
                 using return_type = void;
                 int range = (end-start);
                 if(granularity > range){granularity = range;}////oss: se granularity > range allora tutto range fatto da unico worker, messo granularity=range per evitare errori poi. magari mettere un warning ??? 
@@ -678,10 +680,8 @@ namespace fdapde{
                 return;
             }
 
-//MOMENTANEAMENTE COMMENTATO PERCHé VOGLIO USARE PARALLEL_FOR CON ITEARTOR E GRANULARITY PER ASSEMBLE, MA ITERATOR DI CELLE ANCHE SE HANNO OPERATOR +n non sono ancora random access.
-//TODO: NON FUNZIONA FA DIVISIONE DI RANGE IN JOB MALE C'è AULCOSA CHE NON VA (IN TEST ASSEMBLE UTILIZZATO PER SBAGLIO E STESSA CELLA RIPETUTA DA 2 WORKER)
-//        DA SISTEMARE
-//              // no default granularity
+
+            // no default granularity
             // //3 (it+n NONok)
             template<typename F,typename It, typename... Args> 
             requires std::is_same_v<std::invoke_result_t<F,It,int,Args&...>, void> && (! internals::parallel_iterator<It>)
@@ -723,11 +723,9 @@ namespace fdapde{
             }
 
 
-            //TODO: SE LASCIATI MODIFICA CON STRONG SEND 
             //PARALLEL_FOR_REDUCE (versione simile a #pragma omp parallel for reduction)
             //pair<minimo,argmin> parallel_for_reduce_min/max(int start, int end, F&& f,int granularity)   F = return_type(int), ogni body function ritorna un valore e in parallelo ogni worker calcola il minimo tra tutti i job che ha eseguito. poi sequenziale calcolo minimo tra minimi di worker 
             
-
             //reduce min con parallel for , idea: ogni worker avrà suo min, ogni job ha suo min e worker che lo esegue lo confronta con proprio e se migliore lo sostituisce, cosi poi alla fine sequenziale solo il confronto tra n_worker value per trovare min
             //F bodyfunction deve restituire valore da confrontare
             
