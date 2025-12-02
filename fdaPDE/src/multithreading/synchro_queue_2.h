@@ -322,7 +322,6 @@ namespace fdapde{
             }
 
             bool push_back(value_type val){
-                std::cout<<"chiamato push_back, tail, head, val: "<<tail_<<" "<<head_<<" "<<val<<std::endl;
                 std::unique_lock<std::mutex> loc(m_);
                 if (head_ == tail_ && !empty_queue_ ){return false;}
                 empty_queue_ = false; //maybe already false, so redundant, but avoids if(empty_queue_) {empty_queue_ = false;} 
