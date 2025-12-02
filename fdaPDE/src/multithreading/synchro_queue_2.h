@@ -36,27 +36,6 @@ namespace fdapde{
     //forward declaration
     template<typename value_type, typename access_model> class synchro_queue;
 
-
-    //forward declaration of helper function: index
-    template<typename value_type,typename access_model> 
-    int push_f_indx(synchro_queue<value_type,access_model> & S);
-
-    template<typename value_type,typename access_model> 
-    int pop_f_indx(synchro_queue<value_type,access_model> & S);
-
-    template<typename value_type, typename access_model>
-    int push_b_indx(synchro_queue<value_type,access_model> & S);
-
-    template<typename value_type,typename access_model> 
-    int pop_b_indx(synchro_queue<value_type,access_model> & S);
-
-    //forward declaration of helper function: push/pop 
-    template<typename value_type,typename access_model> 
-    void push_fb_push(typename synchro_queue<value_type,access_model>::elem & E,value_type& new_value);
-
-    template<typename value_type,typename access_model> 
-    value_type pop_fb_pop(typename synchro_queue<value_type,access_model>::elem & E);
-
     template<typename value_type>
     class synchro_queue<value_type,relaxed>{
         public:
@@ -134,49 +113,61 @@ namespace fdapde{
                 std::cout<<std::endl;
             }
 
-            //friendship declarations
-            friend int push_f_indx<value_type,relaxed>(synchro_queue<value_type,relaxed> & S);
-            friend int pop_f_indx<value_type,relaxed>(synchro_queue<value_type,relaxed> & S);
-            friend int push_b_indx<value_type,relaxed>(synchro_queue<value_type,relaxed> & S);
-            friend int pop_b_indx<value_type,relaxed>(synchro_queue<value_type,relaxed> & S);
-
-
             bool push_front(value_type val){
                 std::unique_lock<std::mutex> loc(m_);
-                int h = push_f_indx<value_type,relaxed>(*this);//h = index where to perform push 
+                int new_head = (head_ == 0)? (size_-1) : (head_ -1);
+                if(queue_[new_head].state_.load(std::memory_order_acquire) != Empty)
+                    return -1;
+                queue_[new_head].state_.store(Busy, std::memory_order_relaxed);
+                head_ = new_head;                         
                 loc.unlock();
-                if(h<0) return false; //extra-check due to refactorig
                 //push 
-                push_fb_push<value_type,relaxed>(queue_[h], val);
+                queue_[new_head].v_ = std::move(val);
+                queue_[new_head].state_.store(Full, std::memory_order_release); 
                 return true; 
             }
 
             std::optional<value_type> pop_front(){
                 std::unique_lock<std::mutex> loc(m_);
-                int h = pop_f_indx<value_type,relaxed>(*this);//h = index where to perform pop 
+                int h = head_; 
+                if(queue_[h].state_.load(std::memory_order_acquire) != Full)
+                    return -1;
+                queue_[h].state_.store(Busy, std::memory_order_relaxed);
+                head_ = (head_ == size_-1)? (0):(head_+1);
                 loc.unlock();
-                if(h<0) return std::nullopt; //extra-check due to refactorig
                 // pop 
-                value_type ret = pop_fb_pop<value_type,relaxed>(queue_[h]);
+                value_type ret = std::move(queue_[h].v_.value());
+                queue_[h].v_ = std::nullopt;
+                queue_[h].state_.store(Empty, std::memory_order_release);
                 return ret;
             }
 
             bool push_back(value_type val){
                 std::unique_lock<std::mutex> loc(m_);
-                int t = push_b_indx<value_type,relaxed>(*this);
+                int t = tail_;
+                if(queue_[t].state_.load(std::memory_order_acquire) != Empty)
+                    return -1;
+                queue_[t].state_.store(Busy, std::memory_order_relaxed); 
+                tail_ = (tail_ == size_-1)? (0) : (tail_ + 1); //tail_++
                 loc.unlock();
-                if(t<0) return false;
-
-                push_fb_push<value_type,relaxed>(queue_[t], val);                
+                //push
+                queue_[t].v_ = std::move(val);
+                queue_[t].state_.store(Full, std::memory_order_release);        
                 return true;
             }
 
             std::optional<value_type> pop_back(){
                 std::unique_lock<std::mutex> loc(m_);
-                int t = pop_b_indx<value_type,relaxed>(*this);
+                int new_tail = (tail_== 0)? (size_-1) : (tail_-1);
+                if(queue_[new_tail].state_.load(std::memory_order_acquire) != Full)
+                    return -1;
+                queue_[new_tail].state_.store(Busy, std::memory_order_relaxed);
+                tail_ = new_tail; 
                 loc.unlock();
-                if(t<0) return std::nullopt;
-                value_type ret = pop_fb_pop<value_type,relaxed>(queue_[t]);
+                //pop
+                value_type ret = std::move(queue_[t].v_.value());
+                queue_[t].v_ = std::nullopt;
+                queue_[t].state_.store(Empty, std::memory_order_release);
                 return ret;
             }
 
