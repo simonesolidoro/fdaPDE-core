@@ -401,6 +401,58 @@ namespace fdapde{
             mutable std::mutex m_;
             std::condition_variable cv_can_pop_;
             std::condition_variable cv_can_push_;
+
+            //metodi privati per refactoring (evitano riscrivere stesso codice per metodi wait())
+            bool push_front_(value_type& val, int new_head){
+                cv_can_pop_.notify_one(); // for pop_or_wait
+                std::unique_lock<std::mutex> loc_el(queue_[new_head].m_el_);
+                queue_[new_head].cv_ready_to_push_.wait(loc_el,[this,new_head](){return queue_[new_head].state_==Empty;});
+                queue_[new_head].v_ = std::move(val);
+                queue_[new_head].state_ = Full; 
+                loc_el.unlock();
+                queue_[new_head].cv_ready_to_pop_.notify_one();            
+                return true;
+            }
+
+            std::optional<value_type> pop_front_(int h){
+                cv_can_push_.notify_one();
+                std::unique_lock<std::mutex> loc_el(queue_[h].m_el_);
+                queue_[h].cv_ready_to_pop_.wait(loc_el,[this,h](){return queue_[h].state_==Full;});
+                value_type ret = std::move(queue_[h].v_.value());
+                queue_[h].v_ = std::nullopt;
+                queue_[h].state_ = Empty;
+                queue_[h].count_pop_ --;
+                loc_el.unlock();  
+                queue_[h].cv_ready_to_push_.notify_one();              
+                return ret;
+            }
+
+            bool push_back_(value_type& val, int t){
+                cv_can_pop_.notify_one();
+                std::unique_lock<std::mutex> loc_el(queue_[t].m_el_);
+                queue_[t].cv_ready_to_push_.wait(loc_el,[this,t](){return queue_[t].state_ == Empty;});
+                push_fb_push<value_type,blocking>(queue_[t],val);
+                queue_[t].v_ = std::move(val);
+                queue_[t].state_ = Full; 
+                loc_el.unlock();
+                queue_[t].cv_ready_to_pop_.notify_one();
+                return true;
+            }
+
+            std::optional<value_type> pop_back(int new_tail){
+                cv_can_push_.notify_one();
+                std::unique_lock<std::mutex> loc_el(queue_[new_tail].m_el_);
+                queue_[new_tail].cv_ready_to_pop_.wait(loc_el,[this,new_tail](){return queue_[new_tail].state_ == Full;});
+                value_type ret = std::move(queue_[new_tail].v_.value());
+                queue_[new_tail].v_ = std::nullopt;
+                queue_[new_tail].state_ = Empty;
+                queue_[new_tail].count_pop_ --;
+                loc_el.unlock();
+                queue_[new_tail].cv_ready_to_push_.notify_one();
+                return ret;
+            }
+
+
         public:
             //enumerator state of elem.  
             static constexpr int Empty = 1; //true 1
@@ -464,7 +516,7 @@ namespace fdapde{
                 }
                 std::cout<<std::endl;
             }
-
+// oss: il check se la coda è piena o vuota una volta bloccatto il mutex della coda non viene fatto nei metodi wait() perché sarebbe superflua
 
             bool push_front(value_type val){
                 std::unique_lock<std::mutex> loc(m_);
@@ -475,59 +527,33 @@ namespace fdapde{
                 int new_head = (head_ == 0)? (size_-1) : (head_ -1);
                 head_ = new_head;                         
                 loc.unlock();
-                cv_can_pop_.notify_one(); // for pop_or_wait
-
-                std::unique_lock<std::mutex> loc_el(queue_[new_head].m_el_);
-                queue_[new_head].cv_ready_to_push_.wait(loc_el,[this,new_head](){return queue_[new_head].state_==Empty;});
-                queue_[new_head].v_ = std::move(val);
-                queue_[new_head].state_ = Full; 
-                loc_el.unlock();
-                queue_[new_head].cv_ready_to_pop_.notify_one();            
-                return true; 
+                
+                return push_front_(val,new_head);
             }
 
             bool push_front_or_wait_for(value_type val, int s){
                 std::unique_lock<std::mutex> loc(m_);
                 bool flag  = cv_can_push_.wait_for(loc,std::chrono::seconds(s),[this](){return this->head_ != this->tail_ || this->empty_queue_;}); // head != tail implica sicuro non pieno, poi empty_queue perche head==tail magari per vuoto
                 if(!flag){return false;}
-                if (head_ == tail_ && !empty_queue_ ){
-                    return -1;
-                }
+            
                 empty_queue_ = false;
                 int new_head = (head_ == 0)? (size_-1) : (head_ -1);
                 head_ = new_head; 
                 loc.unlock();
-                cv_can_pop_.notify_one();
-
-                std::unique_lock<std::mutex> loc_el(queue_[new_head].m_el_);
-                queue_[new_head].cv_ready_to_push_.wait(loc_el,[this,new_head](){return queue_[new_head].state_==Empty;}); 
-                queue_[new_head].v_ = std::move(val);
-                queue_[new_head].state_ = Full; 
-                loc_el.unlock();
-                queue_[new_head].cv_ready_to_pop_.notify_one();
-                return true; 
-
+                
+                return push_front_(val,new_head);
             }
 
             bool push_front_or_wait(value_type val){
                 std::unique_lock<std::mutex> loc(m_);
                 cv_can_push_.wait(loc,[this](){return this->head_ != this->tail_ || this->empty_queue_;});
-                if (head_ == tail_ && !empty_queue_ ){
-                    return -1;
-                }
+                
                 empty_queue_ = false;
                 int new_head = (head_ == 0)? (size_-1) : (head_ -1);
                 head_ = new_head; 
                 loc.unlock();
-                cv_can_pop_.notify_one();
 
-                std::unique_lock<std::mutex> loc_el(queue_[new_head].m_el_);
-                queue_[new_head].cv_ready_to_push_.wait(loc_el,[this,new_head](){return queue_[new_head].state_==Empty;}); 
-                queue_[new_head].v_ = std::move(val);
-                queue_[new_head].state_ = Full; 
-                loc_el.unlock();
-                queue_[new_head].cv_ready_to_pop_.notify_one();
-                return true; 
+                return push_front_(val,new_head);
             }
 
             std::optional<value_type> pop_front(){
@@ -535,23 +561,14 @@ namespace fdapde{
                 if(empty_queue_ ){
                     return -1;
                 }
+
                 int h = head_; 
                 head_ = (head_ == size_-1)? (0):(head_+1);
                 if(head_==tail_) {empty_queue_ = true;}
                 queue_[h].count_pop_ ++;
                 loc.unlock();
-                cv_can_push_.notify_one();
 
-                std::unique_lock<std::mutex> loc_el(queue_[h].m_el_);
-                queue_[h].cv_ready_to_pop_.wait(loc_el,[this,h](){return queue_[h].state_==Full;});
-                // pop 
-                value_type ret = std::move(queue_[h].v_.value());
-                queue_[h].v_ = std::nullopt;
-                queue_[h].state_ = Empty;
-                queue_[h].count_pop_ --;
-                loc_el.unlock();  
-                queue_[h].cv_ready_to_push_.notify_one();              
-                return ret;
+                return pop_front_(int h);
             }
 
             std::optional<value_type> pop_front_or_wait_for(int s){
@@ -563,103 +580,59 @@ namespace fdapde{
                 head_ = (head_ == size_-1)? (0):(head_+1);
                 if(head_==tail_) {empty_queue_ = true;}
                 queue_[h].count_pop_ ++;
-
                 loc.unlock();
-                cv_can_push_.notify_one();
-
-                std::unique_lock<std::mutex> loc_el(queue_[h].m_el_);
-                queue_[h].cv_ready_to_pop_.wait(loc_el,[this,h](){return queue_[h].state_ == Full;});
-                // pop 
-                value_type ret = std::move(queue_[h].v_.value());
-                queue_[h].v_ = std::nullopt;
-                queue_[h].state_ = Empty;
-                queue_[h].count_pop_ --;
-                loc_el.unlock(); 
-                queue_[h].cv_ready_to_push_.notify_one();               
-                return ret;  
+                
+                return pop_front_(int h);
             }
 
             std::optional<value_type> pop_front_or_wait(){
                 std::unique_lock<std::mutex> loc(m_);
                 cv_can_pop_.wait(loc,[this](){return !this->empty_queue_;});
+
                 int h = head_; 
                 head_ = (head_ == size_-1)? (0):(head_+1);
                 if(head_==tail_) {empty_queue_ = true;}
                 queue_[h].count_pop_ ++;
-                
                 loc.unlock();
-                cv_can_push_.notify_one();
-
-                std::unique_lock<std::mutex> loc_el(queue_[h].m_el_);
-                queue_[h].cv_ready_to_pop_.wait(loc_el,[this,h](){return queue_[h].state_ == Full;});
-                // pop 
-                value_type ret = std::move(queue_[h].v_.value());
-                queue_[h].v_ = std::nullopt;
-                queue_[h].state_ = Empty;
-                queue_[h].count_pop_ --;
-                loc_el.unlock();     
-                queue_[h].cv_ready_to_push_.notify_one();           
-                return ret;
+                
+                return pop_front_(int h);
             }
              
             bool push_back(value_type val){
-                std::unique_lock<std::mutex> loc(m_);
-            
+                std::unique_lock<std::mutex> loc(m_);    
                 if (head_ == tail_ && !empty_queue_ ){return -1;}
+
                 empty_queue_ = false; //maybe already false, so redundant, but avoids if(empty_queue_) {empty_queue_ = false;} 
                 int t = tail_; //index to return
                 tail_ = (tail_ == size_-1)? (0) : (tail_ + 1); //tail_++
-
                 loc.unlock();
-                cv_can_pop_.notify_one();
 
-                std::unique_lock<std::mutex> loc_el(queue_[t].m_el_);
-                queue_[t].cv_ready_to_push_.wait(loc_el,[this,t](){return queue_[t].state_ == Empty;});
-                push_fb_push<value_type,blocking>(queue_[t],val);
-                queue_[t].v_ = std::move(val);
-                queue_[t].state_ = Full; 
-
-                loc_el.unlock();
-                queue_[t].cv_ready_to_pop_.notify_one();
-                return true;
+                return push_back_(val,t);
             }
 
             bool push_back_or_wait_for(value_type val, int s){
                 std::unique_lock<std::mutex> loc(m_);
                 bool flag = cv_can_push_.wait_for(loc,std::chrono::seconds(s),[this](){return this->head_ != this->tail_ || this->empty_queue_;});
                 if(!flag){return false;}
+
                 empty_queue_ = false; //maybe already false, so redundant, but avoids if(empty_queue_) {empty_queue_ = false;} 
                 int t = tail_; //index to return
                 tail_ = (tail_ == size_-1)? (0) : (tail_ + 1); //tail_++
-
                 loc.unlock();
-                cv_can_pop_.notify_one();
 
-                std::unique_lock<std::mutex> loc_el(queue_[t].m_el_);
-                queue_[t].cv_ready_to_push_.wait(loc_el,[this,t](){return queue_[t].state_ == Empty;});
-                queue_[t].v_ = std::move(val);
-                queue_[t].state_ = Full; 
-                loc_el.unlock();
-                queue_[t].cv_ready_to_pop_.notify_one();
-                return true;
+                return push_back_(val,t);
             }
 
             bool push_back_or_wait(value_type val){
                 std::unique_lock<std::mutex> loc(m_);
                 cv_can_push_.wait(loc,[this](){return this->head_ != this->tail_ || this->empty_queue_;});
+
                 empty_queue_ = false; //maybe already false, so redundant, but avoids if(empty_queue_) {empty_queue_ = false;} 
                 int t = tail_; //index to return
                 tail_ = (tail_ == size_-1)? (0) : (tail_ + 1); //tail_++
                 loc.unlock();
-                cv_can_pop_.notify_one();
-
-                std::unique_lock<std::mutex> loc_el(queue_[t].m_el_);
-                queue_[t].cv_ready_to_push_.wait(loc_el,[this,t](){return queue_[t].state_ == Empty;});
-                queue_[t].v_ = std::move(val);
-                queue_[t].state_ = Full; 
-                loc_el.unlock();
-                queue_[t].cv_ready_to_pop_.notify_one();
-                return true;
+                
+                return push_back_(val,t);
             }
 
             std::optional<value_type> pop_back(){
@@ -667,25 +640,14 @@ namespace fdapde{
                 if (empty_queue_){
                     return -1;
                 }
+
                 int new_tail = (tail_== 0)? (size_-1) : (tail_-1);
                 tail_ = new_tail; 
                 if(head_==tail_) {empty_queue_ = true;} 
                 queue_[new_tail].count_pop_ ++;
-
                 loc.unlock();
-                cv_can_push_.notify_one();
-
-                std::unique_lock<std::mutex> loc_el(queue_[new_tail].m_el_);
-                queue_[new_tail].cv_ready_to_pop_.wait(loc_el,[this,new_tail](){return queue_[new_tail].state_ == Full;});
-
-                value_type ret = std::move(queue_[new_tail].v_.value());
-                queue_[new_tail].v_ = std::nullopt;
-                queue_[new_tail].state_ = Empty;
-                queue_[new_tail].count_pop_ --;
-
-                loc_el.unlock();
-                queue_[new_tail].cv_ready_to_push_.notify_one();
-                return ret;
+                
+                return pop_back_(new_tail);
             }
 
             std::optional<value_type> pop_back_or_wait_for(int s){
@@ -693,45 +655,27 @@ namespace fdapde{
                 bool flag = cv_can_pop_.wait_for(loc,std::chrono::seconds(s),[this](){return !this->empty_queue_;}); 
                 //copy of the pop_back() code except for the check if the queue is empty, alternative to a direct call to pop_back which, however, leads to having to use a recursive mutex
                 if(!flag){return std::nullopt;}
+
                 int new_tail = (tail_== 0)? (size_-1) : (tail_-1);
                 tail_ = new_tail; 
                 if(head_==tail_) {empty_queue_ = true;} 
                 queue_[new_tail].count_pop_ ++;
-
                 loc.unlock();
-                cv_can_push_.notify_one();
-
-                std::unique_lock<std::mutex> loc_el(queue_[new_tail].m_el_);
-                queue_[new_tail].cv_ready_to_pop_.wait(loc_el,[this,new_tail](){return queue_[new_tail].state_ == Full;});
-                value_type ret = std::move(queue_[new_tail].v_.value());
-                queue_[new_tail].v_ = std::nullopt;
-                queue_[new_tail].state_ = Empty;
-                queue_[new_tail].count_pop_ --;
-                loc_el.unlock();
-                queue_[new_tail].cv_ready_to_push_.notify_one();
-                return ret;
+                
+                return pop_back_(new_tail);
             }
 
             std::optional<value_type> pop_back_or_wait(){
                 std::unique_lock<std::mutex> loc(m_);
                 cv_can_pop_.wait(loc,[this](){return !this->empty_queue_;}); 
+
                 int new_tail = (tail_== 0)? (size_-1) : (tail_-1);
                 tail_ = new_tail; 
                 if(head_==tail_) {empty_queue_ = true;} 
                 queue_[new_tail].count_pop_ ++;
-
                 loc.unlock();
-                cv_can_push_.notify_one();
 
-                std::unique_lock<std::mutex> loc_el(queue_[new_tail].m_el_);
-                queue_[new_tail].cv_ready_to_pop_.wait(loc_el,[this,new_tail](){return queue_[new_tail].state_ == Full;});
-                value_type ret = std::move(queue_[new_tail].v_.value());
-                queue_[new_tail].v_ = std::nullopt;
-                queue_[new_tail].state_ = Empty;
-                queue_[new_tail].count_pop_ --;
-                loc_el.unlock();
-                queue_[new_tail].cv_ready_to_push_.notify_one();
-                return ret;
+                return pop_back_(new_tail);
             }
 
             bool empty() const {
