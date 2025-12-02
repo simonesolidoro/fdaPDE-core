@@ -117,7 +117,7 @@ namespace fdapde{
                 std::unique_lock<std::mutex> loc(m_);
                 int new_head = (head_ == 0)? (size_-1) : (head_ -1);
                 if(queue_[new_head].state_.load(std::memory_order_acquire) != Empty)
-                    return -1;
+                    return false;
                 queue_[new_head].state_.store(Busy, std::memory_order_relaxed);
                 head_ = new_head;                         
                 loc.unlock();
@@ -131,7 +131,7 @@ namespace fdapde{
                 std::unique_lock<std::mutex> loc(m_);
                 int h = head_; 
                 if(queue_[h].state_.load(std::memory_order_acquire) != Full)
-                    return -1;
+                    return std::nullopt;
                 queue_[h].state_.store(Busy, std::memory_order_relaxed);
                 head_ = (head_ == size_-1)? (0):(head_+1);
                 loc.unlock();
@@ -146,7 +146,7 @@ namespace fdapde{
                 std::unique_lock<std::mutex> loc(m_);
                 int t = tail_;
                 if(queue_[t].state_.load(std::memory_order_acquire) != Empty)
-                    return -1;
+                    return false;
                 queue_[t].state_.store(Busy, std::memory_order_relaxed); 
                 tail_ = (tail_ == size_-1)? (0) : (tail_ + 1); //tail_++
                 loc.unlock();
@@ -160,7 +160,7 @@ namespace fdapde{
                 std::unique_lock<std::mutex> loc(m_);
                 int new_tail = (tail_== 0)? (size_-1) : (tail_-1);
                 if(queue_[new_tail].state_.load(std::memory_order_acquire) != Full)
-                    return -1;
+                    return std::nullopt;
                 queue_[new_tail].state_.store(Busy, std::memory_order_relaxed);
                 tail_ = new_tail; 
                 loc.unlock();
@@ -282,7 +282,7 @@ namespace fdapde{
             bool push_front(value_type val){
                 std::unique_lock<std::mutex> loc(m_);
                 if (head_ == tail_ && !empty_queue_ ){
-                    return -1;
+                    return false;
                 }
                 empty_queue_ = false;
                 int new_head = (head_ == 0)? (size_-1) : (head_ -1);
@@ -301,7 +301,7 @@ namespace fdapde{
             std::optional<value_type> pop_front(){
                 std::unique_lock<std::mutex> loc(m_);
                 if(empty_queue_ ){
-                    return -1;
+                    return std::nullopt;
                 }
                 int h = head_; 
                 head_ = (head_ == size_-1)? (0):(head_+1);
@@ -321,7 +321,7 @@ namespace fdapde{
 
             bool push_back(value_type val){
                 std::unique_lock<std::mutex> loc(m_);
-                if (head_ == tail_ && !empty_queue_ ){return -1;}
+                if (head_ == tail_ && !empty_queue_ ){return false;}
                 empty_queue_ = false; //maybe already false, so redundant, but avoids if(empty_queue_) {empty_queue_ = false;} 
                 int t = tail_; 
                 tail_ = (tail_ == size_-1)? (0) : (tail_ + 1); //tail_++
@@ -341,7 +341,7 @@ namespace fdapde{
             std::optional<value_type> pop_back(){
                 std::unique_lock<std::mutex> loc(m_);
                 if (empty_queue_){
-                    return -1;
+                    return std::nullopt;
                 }
                 int new_tail = (tail_== 0)? (size_-1) : (tail_-1);
                 tail_ = new_tail; 
@@ -414,7 +414,7 @@ namespace fdapde{
                 return true;
             }
 
-            std::optional<value_type> pop_front_(int h){
+            value_type pop_front_(int h){
                 cv_can_push_.notify_one();
                 std::unique_lock<std::mutex> loc_el(queue_[h].m_el_);
                 queue_[h].cv_ready_to_pop_.wait(loc_el,[this,h](){return queue_[h].state_==Full;});
@@ -439,7 +439,7 @@ namespace fdapde{
                 return true;
             }
 
-            std::optional<value_type> pop_back(int new_tail){
+            value_type pop_back(int new_tail){
                 cv_can_push_.notify_one();
                 std::unique_lock<std::mutex> loc_el(queue_[new_tail].m_el_);
                 queue_[new_tail].cv_ready_to_pop_.wait(loc_el,[this,new_tail](){return queue_[new_tail].state_ == Full;});
@@ -521,7 +521,7 @@ namespace fdapde{
             bool push_front(value_type val){
                 std::unique_lock<std::mutex> loc(m_);
                 if (head_ == tail_ && !empty_queue_ ){
-                    return -1;
+                    return false;
                 }
                 empty_queue_ = false;
                 int new_head = (head_ == 0)? (size_-1) : (head_ -1);
@@ -559,7 +559,7 @@ namespace fdapde{
             std::optional<value_type> pop_front(){
                 std::unique_lock<std::mutex> loc(m_);
                 if(empty_queue_ ){
-                    return -1;
+                    return std::nullopt;
                 }
 
                 int h = head_; 
@@ -585,7 +585,7 @@ namespace fdapde{
                 return pop_front_(int h);
             }
 
-            std::optional<value_type> pop_front_or_wait(){
+            value_type pop_front_or_wait(){
                 std::unique_lock<std::mutex> loc(m_);
                 cv_can_pop_.wait(loc,[this](){return !this->empty_queue_;});
 
@@ -600,7 +600,7 @@ namespace fdapde{
              
             bool push_back(value_type val){
                 std::unique_lock<std::mutex> loc(m_);    
-                if (head_ == tail_ && !empty_queue_ ){return -1;}
+                if (head_ == tail_ && !empty_queue_ ){return false;}
 
                 empty_queue_ = false; //maybe already false, so redundant, but avoids if(empty_queue_) {empty_queue_ = false;} 
                 int t = tail_; //index to return
@@ -638,7 +638,7 @@ namespace fdapde{
             std::optional<value_type> pop_back(){
                 std::unique_lock<std::mutex> loc(m_);
                 if (empty_queue_){
-                    return -1;
+                    return std::nullopt;
                 }
 
                 int new_tail = (tail_== 0)? (size_-1) : (tail_-1);
@@ -665,7 +665,7 @@ namespace fdapde{
                 return pop_back_(new_tail);
             }
 
-            std::optional<value_type> pop_back_or_wait(){
+            value_type pop_back_or_wait(){
                 std::unique_lock<std::mutex> loc(m_);
                 cv_can_pop_.wait(loc,[this](){return !this->empty_queue_;}); 
 
