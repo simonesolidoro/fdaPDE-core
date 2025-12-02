@@ -165,9 +165,9 @@ namespace fdapde{
                 tail_ = new_tail; 
                 loc.unlock();
                 //pop
-                value_type ret = std::move(queue_[t].v_.value());
-                queue_[t].v_ = std::nullopt;
-                queue_[t].state_.store(Empty, std::memory_order_release);
+                value_type ret = std::move(queue_[new_tail].v_.value());
+                queue_[new_tail].v_ = std::nullopt;
+                queue_[new_tail].state_.store(Empty, std::memory_order_release);
                 return ret;
             }
 
@@ -431,7 +431,6 @@ namespace fdapde{
                 cv_can_pop_.notify_one();
                 std::unique_lock<std::mutex> loc_el(queue_[t].m_el_);
                 queue_[t].cv_ready_to_push_.wait(loc_el,[this,t](){return queue_[t].state_ == Empty;});
-                push_fb_push<value_type,blocking>(queue_[t],val);
                 queue_[t].v_ = std::move(val);
                 queue_[t].state_ = Full; 
                 loc_el.unlock();
@@ -439,7 +438,7 @@ namespace fdapde{
                 return true;
             }
 
-            value_type pop_back(int new_tail){
+            value_type pop_back_(int new_tail){
                 cv_can_push_.notify_one();
                 std::unique_lock<std::mutex> loc_el(queue_[new_tail].m_el_);
                 queue_[new_tail].cv_ready_to_pop_.wait(loc_el,[this,new_tail](){return queue_[new_tail].state_ == Full;});
@@ -568,7 +567,7 @@ namespace fdapde{
                 queue_[h].count_pop_ ++;
                 loc.unlock();
 
-                return pop_front_(int h);
+                return pop_front_(h);
             }
 
             std::optional<value_type> pop_front_or_wait_for(int s){
@@ -582,7 +581,7 @@ namespace fdapde{
                 queue_[h].count_pop_ ++;
                 loc.unlock();
                 
-                return pop_front_(int h);
+                return pop_front_(h);
             }
 
             value_type pop_front_or_wait(){
@@ -595,7 +594,7 @@ namespace fdapde{
                 queue_[h].count_pop_ ++;
                 loc.unlock();
                 
-                return pop_front_(int h);
+                return pop_front_(h);
             }
              
             bool push_back(value_type val){
