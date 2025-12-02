@@ -305,6 +305,8 @@ namespace fdapde{
                 }
                 int h = head_; 
                 head_ = (head_ == size_-1)? (0):(head_+1);
+                if(head_==tail_) {empty_queue_ = true;}
+                queue_[h].count_pop_ ++;
                 loc.unlock();
 
                 std::unique_lock<std::mutex> loc_el(queue_[h].m_el_);
@@ -320,6 +322,7 @@ namespace fdapde{
             }
 
             bool push_back(value_type val){
+                std::cout<<"chiamato push_back, tail, head, val: "<<tail_<<" "<<head_<<" "<<val<<std::endl;
                 std::unique_lock<std::mutex> loc(m_);
                 if (head_ == tail_ && !empty_queue_ ){return false;}
                 empty_queue_ = false; //maybe already false, so redundant, but avoids if(empty_queue_) {empty_queue_ = false;} 
