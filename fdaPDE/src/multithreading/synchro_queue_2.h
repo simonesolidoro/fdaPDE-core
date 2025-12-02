@@ -287,38 +287,42 @@ namespace fdapde{
                 std::cout<<std::endl;
             }
 
-            //friendship declaration
-            friend int push_f_indx<value_type,deferred>(synchro_queue<value_type,deferred> & S);
-            friend int pop_f_indx<value_type,deferred>(synchro_queue<value_type,deferred> & S);
-            friend int push_b_indx<value_type,deferred>(synchro_queue<value_type,deferred> & S);
-            friend int pop_b_indx<value_type,deferred>(synchro_queue<value_type,deferred> & S);
 
             bool push_front(value_type val){
                 std::unique_lock<std::mutex> loc(m_);
-                int h = push_f_indx<value_type,deferred>(*this);
+                if (head_ == tail_ && !empty_queue_ ){
+                    return -1;
+                }
+                empty_queue_ = false;
+                int new_head = (head_ == 0)? (size_-1) : (head_ -1);
+                head_ = new_head;
                 loc.unlock();
-                if(h<0) return false;
 
-                std::unique_lock<std::mutex> loc_el(queue_[h].m_el_);
-                queue_[h].cv_ready_to_push_.wait(loc_el,[this,h](){return queue_[h].state_==Empty || !active_;}); // to be sure state_ == Empty
-                if(!active_){return false;}
-                push_fb_push<value_type,deferred>(queue_[h],val);
+                std::unique_lock<std::mutex> loc_el(queue_[new_head].m_el_);
+                queue_[new_head].cv_ready_to_push_.wait(loc_el,[this,new_head](){return queue_[new_head].state_==Empty;}); // to be sure state_ == Empty
+                queue_[new_head].v_ = std::move(val);
+                queue_[new_head].state_ = Full; 
                 loc_el.unlock();
-                queue_[h].cv_ready_to_pop_.notify_one(); // notification of any waiting pop on the same element
+                queue_[new_head].cv_ready_to_pop_.notify_one(); // notification of any waiting pop on the same element
                 return true; 
             }
 
             std::optional<value_type> pop_front(){
                 std::unique_lock<std::mutex> loc(m_);
-                int h = pop_f_indx<value_type,deferred>(*this);
+                if(empty_queue_ ){
+                    return -1;
+                }
+                int h = head_; 
+                head_ = (head_ == size_-1)? (0):(head_+1);
                 loc.unlock();
-                if(h<0) return std::nullopt;
 
                 std::unique_lock<std::mutex> loc_el(queue_[h].m_el_);
-                queue_[h].cv_ready_to_pop_.wait(loc_el,[this,h](){return queue_[h].state_== Full || !active_;});
-                if(!active_) return std::nullopt;
+                queue_[h].cv_ready_to_pop_.wait(loc_el,[this,h](){return queue_[h].state_== Full;});
                 // pop 
-                value_type ret = pop_fb_pop<value_type,deferred>(queue_[h]);
+                value_type ret = std::move(queue_[h].v_.value());
+                queue_[h].v_ = std::nullopt;
+                queue_[h].state_ = Empty;
+                queue_[h].count_pop_ --;
                 loc_el.unlock();  
                 queue_[h].cv_ready_to_push_.notify_one();              
                 return ret;                  
@@ -326,14 +330,17 @@ namespace fdapde{
 
             bool push_back(value_type val){
                 std::unique_lock<std::mutex> loc(m_);
-                int t = push_b_indx<value_type,deferred>(*this);
+                if (head_ == tail_ && !empty_queue_ ){return -1;}
+                empty_queue_ = false; //maybe already false, so redundant, but avoids if(empty_queue_) {empty_queue_ = false;} 
+                int t = tail_; 
+                tail_ = (tail_ == size_-1)? (0) : (tail_ + 1); //tail_++
                 loc.unlock();
-                if(t<0) return false;
 
                 std::unique_lock<std::mutex> loc_el(queue_[t].m_el_);
-                queue_[t].cv_ready_to_push_.wait(loc_el,[this,t](){return queue_[t].state_==Empty || !active_;});
-                if(!active_){return false;}
-                push_fb_push<value_type,deferred>(queue_[t],val);
+                queue_[t].cv_ready_to_push_.wait(loc_el,[this,t](){return queue_[t].state_==Empty;});
+                //push
+                queue_[t].v_ = std::move(val);
+                queue_[t].state_ = Full; 
                 loc_el.unlock();
                 queue_[t].cv_ready_to_pop_.notify_one();
 
@@ -342,16 +349,23 @@ namespace fdapde{
 
             std::optional<value_type> pop_back(){
                 std::unique_lock<std::mutex> loc(m_);
-                int t = pop_b_indx<value_type,deferred>(*this);
+                if (empty_queue_){
+                    return -1;
+                }
+                int new_tail = (tail_== 0)? (size_-1) : (tail_-1);
+                tail_ = new_tail; 
+                if(head_==tail_) {empty_queue_ = true;} 
+                queue_[new_tail].count_pop_ ++;
                 loc.unlock();
-                if(t<0) return std::nullopt;
 
-                std::unique_lock<std::mutex> loc_el(queue_[t].m_el_);
-                queue_[t].cv_ready_to_pop_.wait(loc_el,[this,t](){return queue_[t].state_ == Full || !this->active_;}); //TODO: possiile non passare a lambda tutto this e h ma solo queue_[t]
-                if(!active_) return std::nullopt;
-                value_type ret = pop_fb_pop<value_type,deferred>(queue_[t]);
+                std::unique_lock<std::mutex> loc_el(queue_[new_tail].m_el_);
+                queue_[new_tail].cv_ready_to_pop_.wait(loc_el,[this,new_tail](){return queue_[new_tail].state_ == Full;});
+                value_type ret = std::move(queue_[new_tail].v_.value());
+                queue_[new_tail].v_ = std::nullopt;
+                queue_[new_tail].state_ = Empty;
+                queue_[new_tail].count_pop_ --;
                 loc_el.unlock();
-                queue_[t].cv_ready_to_push_.notify_one();
+                queue_[new_tail].cv_ready_to_push_.notify_one();
                 return ret;
             }
 
