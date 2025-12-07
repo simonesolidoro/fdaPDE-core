@@ -40,7 +40,7 @@
 
 
 #include "src/multithreading/deque.h"
-#include "src/multithreading/synchro_queue_2.h"
+#include "src/multithreading/synchro_queue.h"
 #include "src/multithreading/threadpool.h"
 #include "src/multithreading/execution_type.h"
 // clang-format on
