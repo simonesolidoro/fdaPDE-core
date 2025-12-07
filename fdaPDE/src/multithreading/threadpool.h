@@ -714,48 +714,48 @@ template <steal T> class threadpool {
     auto parallel_for_reduce(int start, int end, F&& f, int granularity, Args... args)
       -> std::pair<std::invoke_result_t<F, int, Args&...>, int> {
         using return_type = std::invoke_result_t<F, int, Args&...>;
-        std::vector<AlignedPair<return_type, op>> min_workers(n_worker_);
-        return_type min;
+        std::vector<AlignedPair<return_type, op>> pair_workers(n_worker_);
+        return_type m; // min o max
         if constexpr (op == reduceOp::min) {
-            min = std::numeric_limits<return_type>::max();
+            m = std::numeric_limits<return_type>::max();
         } else {
-            min = std::numeric_limits<return_type>::min();
+            m = std::numeric_limits<return_type>::min();
         }
         this->parallel_for(
           start, end,
-          [fun = f, &min_workers](int i, int index_worker, return_type& min_job, Args&... args) {
-              min_job = fun(i, args...);
+          [fun = f, &pair_workers](int i, int index_worker, return_type& m_job, Args&... args) {
+              m_job = fun(i, args...);
               if constexpr (op == reduceOp::min) {
-                  if (min_job < min_workers[index_worker].first) {
-                      min_workers[index_worker].first = min_job;
-                      min_workers[index_worker].second = i;
+                  if (m_job < pair_workers[index_worker].first) {
+                      pair_workers[index_worker].first = m_job;
+                      pair_workers[index_worker].second = i;
                   }
               } else {
-                  if (min_job > min_workers[index_worker].first) {
-                      min_workers[index_worker].first = min_job;
-                      min_workers[index_worker].second = i;
+                  if (m_job > pair_workers[index_worker].first) {
+                      pair_workers[index_worker].first = m_job;
+                      pair_workers[index_worker].second = i;
                   }
               }
           },
-          granularity, min, args...);
-        // minimo di minimi di ogni worker
-        min = min_workers[0].first;
-        int indx_best_in_min_workers = 0;
+          granularity, m, args...);
+        // final reduce 
+        m = pair_workers[0].first;
+        int indx_best_in_pair_workers = 0;
         for (size_t k = 1; k < n_worker_; k++) {
             if constexpr (op == reduceOp::min) {
-                if (min_workers[k].first < min) {
-                    indx_best_in_min_workers = k;
-                    min = min_workers[k].first;
+                if (pair_workers[k].first < m) {
+                    indx_best_in_pair_workers = k;
+                    m = pair_workers[k].first;
                 }
             } else {
-                if (min_workers[k].first > min) {
-                    indx_best_in_min_workers = k;
-                    min = min_workers[k].first;
+                if (pair_workers[k].first > m) {
+                    indx_best_in_pair_workers = k;
+                    m = pair_workers[k].first;
                 }
             }
         }
         return std::pair<return_type, int>(
-          min_workers[indx_best_in_min_workers].first, min_workers[indx_best_in_min_workers].second);
+          pair_workers[indx_best_in_pair_workers].first, pair_workers[indx_best_in_pair_workers].second);
     }
 
     // TODO: reduce sum e product
