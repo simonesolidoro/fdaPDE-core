@@ -297,7 +297,7 @@ template <steal T> class threadpool {
         lock.unlock();
         return std::nullopt;
     };
-    // send mostbusy, for sure (while-loop as long as push ends successfully)
+    // send mostfree, for sure (while-loop as long as push ends successfully)
     template <typename F, typename... Args>
     auto send_task_mostfree(F&& f, Args&&... args) -> std::future<decltype(f(args...))> {
         // wrap
@@ -363,90 +363,38 @@ template <steal T> class threadpool {
         return fut;
     };
 
-    /*//only for test logic of steal.
-                //per notificare tutte le CV_ dei worker
-                void notifica_tutti()const{ //possibile const perche cv di singoli worker sono messe mutable
-                    for(int i=0; i<n_worker_; i++){
-                        workers_[i]->cv_.notify_one();
-                    }
-                }
-                //send a sola meta di worker per debug/ test di steal job.
-                template<typename F, typename... Args>
-                auto send_task_only_to_some(F&& f,Args&&... args) -> std::optional<std::future<decltype(f(args...))>>{
-                    //wrap
-                    using return_type = decltype(f(args...));
-                    std::shared_ptr<std::packaged_task<return_type()>> ptr_task =
-       std::make_shared<std::packaged_task<return_type()>> ([fun = std::forward<F>(f), ...args_catturati =
-       std::forward<Args>(args) ]()mutable{return fun(args_catturati...);}); std::future<return_type> fut =
-       ptr_task->get_future(); job j = [ptr_task](){(*ptr_task)();};
-
-                    std::unique_lock<std::mutex> lock(workers_[indxw_.indx_]->get_loc());
-                    bool flag = workers_[indxw_.indx_]->push_back(j);
-                    if(flag){
-                        count_job_[indxw_.indx_].fetch_add(1,std::memory_order_release);
-                        if (n_worker_ != 1)
-                            indxw_.next(n_worker_/2);
-                        lock.unlock();
-                        notifica_tutti(); //qui rimane notifica a tutti perchè alcuni worker non ricevono mai job e
-       quindi non riceverebbero mai notifica return fut;
-                    }
-                    lock.unlock();
-                    return std::nullopt;
-                };
-                //only for test logic of steal
-                //send sola a un worker (0 perche sicuro esiste sempre) per debug/ test di steal job.
-                template<typename F, typename... Args>
-                auto send_task_only_to_zero(F&& f,Args&&... args) -> std::optional<std::future<decltype(f(args...))>>{
-                    //wrap
-                    using return_type = decltype(f(args...));
-                    std::shared_ptr<std::packaged_task<return_type()>> ptr_task =
-       std::make_shared<std::packaged_task<return_type()>> ([fun = std::forward<F>(f), ...args_catturati =
-       std::forward<Args>(args) ]()mutable{return fun(args_catturati...);}); std::future<return_type> fut =
-       ptr_task->get_future(); job j = [ptr_task](){(*ptr_task)();};
-
-                    std::unique_lock<std::mutex> lock(workers_[indxw_.indx_]->get_loc());
-                    bool flag = workers_[0]->push_back(j);
-                    if(flag){
-                        count_job_[indxw_.indx_].fetch_add(1,std::memory_order_release);
-                        lock.unlock();
-                        notifica_tutti();
-                        return fut;
-                    }
-                    lock.unlock();
-                    return std::nullopt;
-                };
-    */
-    struct info_par {
-        int n_job;
-        int granularity;
-        int granularity_last;
-    };
-    info_par info_parallel(int range, int jpw) {
-        info_par ret;
-        int tot_job = jpw * n_worker_;
-        ret.granularity = std::max(range / tot_job, 1);
-        ret.granularity_last = ret.granularity;   // poi aggiornata se c'è resto di divisione
-        ret.n_job =
-          range / ret.granularity;   // cosi sicuro lasta job ha granularity miniore di granularity, però non più max
-                                     // jpw job per worker ma circa jpw job per worker. es: range=37, n_worker=10,
-                                     // jpw=1--> tot_job = 10, gran = 37/10 = 3, n_job=37/3 = 12 poi +1 per resto,
-                                     // quindi tutti worker 1 job, tranne primi 3 che ne hanno 2
-        // if(n_job % n_worker != 0){
-        //     granularity_last = range%granularity;
-        //     n_job ++;
-        // }else{
-        //     //spalma
-        //     /* bisognerebbe dare info che primi  range%granularity  job devono avere granularity+1
-        //         non è comodo da usare come info, quindi lascerei perdere questa ottimizzazione e
-        //         farei sempre granularity ultimo job =  range%granularity a prescindere se i worker hanno o meno già
-        //         tutti lo stesso numero di job */
-        // }
-        if (range % ret.granularity != 0) {
-            ret.granularity_last = range % ret.granularity;
-            ret.n_job++;
-        }
-        return ret;
-    }
+    
+    // struct info_par {
+    //     int n_job;
+    //     int granularity;
+    //     int granularity_last;
+    // };
+    // info_par info_parallel(int range, int jpw) {
+    //     info_par ret;
+    //     int tot_job = jpw * n_worker_;
+    //     ret.granularity = std::max(range / tot_job, 1);
+    //     ret.granularity_last = ret.granularity;   // poi aggiornata se c'è resto di divisione
+    //     ret.n_job =
+    //       range / ret.granularity;   // cosi sicuro lasta job ha granularity miniore di granularity, però non più max
+    //                                  // jpw job per worker ma circa jpw job per worker. es: range=37, n_worker=10,
+    //                                  // jpw=1--> tot_job = 10, gran = 37/10 = 3, n_job=37/3 = 12 poi +1 per resto,
+    //                                  // quindi tutti worker 1 job, tranne primi 3 che ne hanno 2
+    //     // if(n_job % n_worker != 0){
+    //     //     granularity_last = range%granularity;
+    //     //     n_job ++;
+    //     // }else{
+    //     //     //spalma
+    //     //     /* bisognerebbe dare info che primi  range%granularity  job devono avere granularity+1
+    //     //         non è comodo da usare come info, quindi lascerei perdere questa ottimizzazione e
+    //     //         farei sempre granularity ultimo job =  range%granularity a prescindere se i worker hanno o meno già
+    //     //         tutti lo stesso numero di job */
+    //     // }
+    //     if (range % ret.granularity != 0) {
+    //         ret.granularity_last = range % ret.granularity;
+    //         ret.n_job++;
+    //     }
+    //     return ret;
+    // }
 
     // parallel_for //TODO: controllo start<end va aggiunto ?
     // OVERLOAD:
@@ -608,10 +556,8 @@ template <steal T> class threadpool {
     // 1
     template <typename F, typename It>
         requires std::is_same_v<std::invoke_result_t<F, It>, void> &&
-                 std::input_or_output_iterator<It>   //(std::random_access_iterator<It> ||
-                                                     //(!std::random_access_iterator<It>)) //sicuro c'è concept per
-                                                     //itertor type e non si fa così ma dopo ci penso
-                                                     void parallel_for(It start, It end, F&& f) {
+                 std::input_or_output_iterator<It>   
+        void parallel_for(It start, It end, F&& f) {
         using return_type = void;
         std::vector<std::future<return_type>> ret_fut;
         for (It j = start; j != end; ++j) { ret_fut.emplace_back(this->send_task_round(f, j)); }
