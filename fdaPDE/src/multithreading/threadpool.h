@@ -565,12 +565,12 @@ template <steal T> class threadpool {
         return;
     }
 
-    // TODO: correggere divione di ultime iterazioni come in paralle_for con int, non più plus_one che era sbagliato
-    // perché presupponeva massimo +1 per job iniziale, ma it_add 2 (it+n ok)
+    
+    // 2 (it+n ok)
     template <typename F, typename It, typename... Args>
         requires std::is_same_v<std::invoke_result_t<F, It, int, Args&...>, void> &&
                  internals::parallel_iterator<
-                   It>   // PER IL MOMEMNTO NON CHECK SE RANDOM ACCESS PERCHé VOGLIO PROVARLO IN ASSEMBLE
+                   It>// require non più random access ma solo +=,- (concept definito inizio file: parallel_iterator)   
     void parallel_for(It start, It end, F&& f, int granularity, Args... args) {
         // std::cout<<"usato random access"<<std::endl;
         using return_type = void;
@@ -645,7 +645,7 @@ template <steal T> class threadpool {
         return;
     }
 
-    // no default granularity
+    // no default granularity. 
     // //3 (it+n NONok)
     template <typename F, typename It, typename... Args>
         requires std::is_same_v<std::invoke_result_t<F, It, int, Args&...>, void> && (!internals::parallel_iterator<It>)
@@ -688,10 +688,6 @@ template <steal T> class threadpool {
     // pair<minimo,argmin> parallel_for_reduce_min/max(int start, int end, F&& f,int granularity)   F =
     // return_type(int), ogni body function ritorna un valore e in parallelo ogni worker calcola il minimo tra tutti i
     // job che ha eseguito. poi sequenziale calcolo minimo tra minimi di worker
-
-    // reduce min con parallel for , idea: ogni worker avrà suo min, ogni job ha suo min e worker che lo esegue lo
-    // confronta con proprio e se migliore lo sostituisce, cosi poi alla fine sequenziale solo il confronto tra n_worker
-    // value per trovare min F bodyfunction deve restituire valore da confrontare
 
     enum class reduceOp {
         min,
