@@ -233,7 +233,7 @@ template <typename SchedulingStrategy = round_robin_scheduling,typename Stealing
     }
 
     // getter
-    int n_worker() const { return n_worker_; };
+    int n_workers() const { return n_worker_; };
     int index_worker() const {
         std::shared_lock<std::shared_mutex> loc(
           m_map_);   // aggiunto lock perché non saprei che altro possa causare errore out of range in cluster
