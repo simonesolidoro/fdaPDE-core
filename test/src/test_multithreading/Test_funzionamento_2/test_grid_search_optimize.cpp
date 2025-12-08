@@ -58,7 +58,7 @@ int main(int argc, char** argv){
  { //rastrigin
     std::cout<<"=========minimization of Rastrigin function (value_min: 0 in (0,0))==================================="<<std::endl;
     //creazione threadpool per versioni con Tp in input
-    fdapde::threadpool<fdapde::steal::random> Tp(1024, n_threads);
+    fdapde::threadpool<fdapde::round_robin_scheduling, fdapde::max_load_stealing> Tp(1024, n_threads);
 
 
     //---------------------- no parallel---------------------- ---------------------- ---------------------- ---------------------- 
@@ -109,108 +109,7 @@ int main(int argc, char** argv){
     std::cout<<"optimum: "<<opt4.optimum()<<std::endl;
     std::cout<<std::endl;
 
-            //---------------------- parallel_for_reduce : optimize (parallel_for_granularity_variadic)---------------------- ---------------------- ---------------------- ---------------------- 
-    std::cout<<"========================parallel_for_reduce, gran:"<<granularity<<", threads: "<<n_threads<<"========================"<<std::endl;
-    // definizione dell'ottimizzatore 
-    fdapde::GridSearch<2> opt5;
-
-    auto start6 = std::chrono::high_resolution_clock::now();
-
-    opt5.optimize_reduce(rastrigin, grid, execution::par,Tp,granularity);  
-
-    auto end6 = std::chrono::high_resolution_clock::now();
-    auto duration6 = std::chrono::duration_cast<std::chrono::microseconds>(end6 - start6);  
-    std::cout<<"tempo impiegato: "<<duration6.count()<<","<<std::endl;
-    std::cout<<"value: "<<opt5.value()<<std::endl; 
-    std::cout<<"optimum: "<<opt5.optimum()<<std::endl;
-    std::cout<<std::endl;
-
-    
-        //---------------------- parallel_variadic con tmp inutile ma grande: optimize (parallel_for_granularity_variadic)---------------------- ---------------------- ---------------------- ---------------------- 
-    std::cout<<"========================parallel_for_granularity_variadic TMP INUTILE MA GRANDE, gran:"<<granularity<<", threads: "<<n_threads<<"========================"<<std::endl;
-    // definizione dell'ottimizzatore 
-    fdapde::GridSearch<2> opt6;
-
-    auto start7 = std::chrono::high_resolution_clock::now();
-
-    opt6.optimize_variadic_testtmp(rastrigin, grid, execution::par,Tp,granularity);  
-
-    auto end7 = std::chrono::high_resolution_clock::now();
-    auto duration7 = std::chrono::duration_cast<std::chrono::microseconds>(end7 - start7);  
-    std::cout<<"tempo impiegato: "<<duration7.count()<<","<<std::endl;
-    std::cout<<"value: "<<opt6.value()<<std::endl; 
-    std::cout<<"optimum: "<<opt6.optimum()<<std::endl;
-    std::cout<<std::endl;
-
-            //----------------------cattura copia tmp inutile parallel_variadic con tmp inutile ma grande: optimize (parallel_for_granularity_variadic)---------------------- ---------------------- ---------------------- ---------------------- 
-    std::cout<<"========================cattura copia tmp inutile parallel_for_granularity_variadic TMP INUTILE MA GRANDE, gran:"<<granularity<<", threads: "<<n_threads<<"========================"<<std::endl;
-    // definizione dell'ottimizzatore 
-    fdapde::GridSearch<2> opt7;
-
-    auto start8 = std::chrono::high_resolution_clock::now();
-
-    opt7.optimize_variadic_testtmp_catturacopia(rastrigin, grid, execution::par,Tp,granularity);  
-
-    auto end8 = std::chrono::high_resolution_clock::now();
-    auto duration8 = std::chrono::duration_cast<std::chrono::microseconds>(end8 - start8);  
-    std::cout<<"tempo impiegato: "<<duration8.count()<<","<<std::endl;
-    std::cout<<"value: "<<opt7.value()<<std::endl; 
-    std::cout<<"optimum: "<<opt7.optimum()<<std::endl;
-    std::cout<<std::endl;
  }
-//   { //rastrigin
-//     std::cout<<"=========minimization of rosenbrock function (value_min: 0 in (1,1))= ===== ============================"<<std::endl;
-//     //creazione threadpool per versioni con Tp in input
-//     fdapde::threadpool<fdapde::steal::random> Tp(1024, n_threads);
 
-
-//     //---------------------- no parallel------------ ---------- ---------------------- ---------------------- ---------------------- 
-//     std::cout<<"========================sequenziale========================"<<std::endl;
-//     fdapde::GridSearch<2> opt2;
-
-//     auto start3 = std::chrono::high_resolution_clock::now();
-
-//     opt2.optimize(rosenbrock, grid); // <- da modificare questo step
-
-//     auto end3 = std::chrono::high_resolution_clock::now();
-//     auto duration3 = std::chrono::duration_cast<std::chrono::microseconds>(end3 - start3);  
-//     std::cout<<"tempo impiegato: "<<duration3.count()<<","<<std::endl;
-//     std::cout<<"value: "<<opt2.value()<<std::endl; 
-//     std::cout<<"optimum: "<<opt2.optimum()<<std::endl; 
-//     std::cout<<std::endl;
-    
-
-// //---------------------- parallel: optimize (parallel_for)---------------------- ---------------------- ---------------------- ---------------------- 
-//     std::cout<<"========================parallel_for optimize, granularity:"<<granularity<<", threads: "<<n_threads<<"========================"<<std::endl;
-//     // definizione dell'ottimizzatore 
-//     fdapde::GridSearch<2> opt3;
-
-//     auto start4 = std::chrono::high_resolution_clock::now();
-
-//     opt3.optimize(rosenbrock, grid, execution::par,Tp,granularity);  
-
-//     auto end4 = std::chrono::high_resolution_clock::now();
-//     auto duration4 = std::chrono::duration_cast<std::chrono::microseconds>(end4 - start4);  
-//     std::cout<<"tempo impiegato: "<<duration4.count()<<","<<std::endl;
-//     std::cout<<"value: "<<opt3.value()<<std::endl; 
-//     std::cout<<"optimum: "<<opt3.optimum()<<std::endl;
-//     std::cout<<std::endl;
-
-//     //---------------------- parallel_variadic : optimize (parallel_for_granularity_variadic)---------------------- ---------------------- ---------------------- ---------------------- 
-//     std::cout<<"========================parallel_for_granularity_variadic, gran:"<<granularity<<", threads: "<<n_threads<<"========================"<<std::endl;
-//     // definizione dell'ottimizzatore 
-//     fdapde::GridSearch<2> opt4;
-
-//     auto start5 = std::chrono::high_resolution_clock::now();
-
-//     opt4.optimize_variadic(rosenbrock, grid, execution::par,Tp,granularity);  
-
-//     auto end5 = std::chrono::high_resolution_clock::now();
-//     auto duration5 = std::chrono::duration_cast<std::chrono::microseconds>(end5 - start5);  
-//     std::cout<<"tempo impiegato: "<<duration5.count()<<","<<std::endl;
-//     std::cout<<"value: "<<opt4.value()<<std::endl; 
-//     std::cout<<"optimum: "<<opt4.optimum()<<std::endl;
-//     std::cout<<std::endl;
-//  }
     return 0;
 }
