@@ -109,7 +109,31 @@ struct top_half_random_stealing{
     };
 };
 
+struct round_robin_scheduling{
+    int indx_ = 0;
+    int pick(std::deque<std::atomic<int>>& count_job, int n_worker){//qui non serve count_job_ solo n_worker, però per avere firma uguale a tutti altri lasciato
+        int index = indx_;
+        (indx_ == n_worker - 1) ? (indx_ = 0) : (indx_++);//manda avanti indice circolarmente
+        return index;
+    }
+};
 
+struct least_loaded_scheduling{
+    int pick(std::deque<std::atomic<int>>& count_job, int n_worker)const{//non serve n_worker ma lasciato per aver firma identicia ad altri
+        int worker_indx = 0;
+        int min_elem = count_job[0].load(std::memory_order_acquire);
+        int current_el = 0;
+        for (int j = 1; j < n_worker_; j++) {
+            current_el = count_job_[j].load(std::memory_order_acquire);
+            if (current_el < min_elem) {
+                worker_indx = j;
+                min_elem = current_el;
+            }
+        }
+        return worker_indx;
+    };
+    }
+};
 
     
     
@@ -117,12 +141,7 @@ struct top_half_random_stealing{
 template <typename SchedulingStrategy = ,typename StealingStrategy = > class threadpool {
     using job = std::function<void()>;
 
-    struct indx_worker {
-        // OSS: not thread-safe because only main thread send job, if future develop like fork-join (jobs send jobs) add
-        // mutex.
-        int indx_ = 0;
-        void next(int n_worker) { (indx_ == n_worker - 1) ? (indx_ = 0) : (indx_++); };
-    };
+    
    public:
     class worker {
        private:
@@ -166,7 +185,8 @@ template <typename SchedulingStrategy = ,typename StealingStrategy = > class thr
     std::unordered_map<std::thread::id, int>
       map_thread_worker_;   // map of : thread_ID of worker's thread, index of worker in workers_
     mutable std::shared_mutex m_map_;
-    StealingStrategy worker_stealer_;
+    StealingStrategy steal_policy_;
+    SchedulingStrategy schedule_policy_;
    public:
     friend class worker;
     // n = size_synchro_queue, k = number of workers
@@ -254,7 +274,7 @@ template <typename SchedulingStrategy = ,typename StealingStrategy = > class thr
                 continue;   // avoid lock mutex in the end
             }
             // try steal
-            indx_steal = worker_stealer_.pick(count_job_,n_worker_); 
+            indx_steal = steal_policy_.pick(count_job_,n_worker_); 
             if (indx_steal != -1) {
                 try_do(workers_[indx_steal]->pop_back(), indx_steal);
                 continue;
@@ -270,23 +290,6 @@ template <typename SchedulingStrategy = ,typename StealingStrategy = > class thr
         }
     };
 
-    int indx_most_free() const {
-        int worker_indx = 0;
-        int min_elem = count_job_[0].load(std::memory_order_acquire);
-        int current_el = 0;
-        for (int j = 1; j < n_worker_; j++) {
-            current_el = count_job_[j].load(std::memory_order_acquire);
-            if (current_el < min_elem) {
-                worker_indx = j;
-                min_elem = current_el;
-            }
-        }
-        return worker_indx;
-    };
-
-
-
-
     int n_jobs() const {
         int somma = 0;
         for (int i = 0; i < n_worker_; i++) somma += count_job_[i].load(std::memory_order_acquire);
@@ -294,9 +297,9 @@ template <typename SchedulingStrategy = ,typename StealingStrategy = > class thr
     }
 
    
-    // send mostfree, for sure (while-loop as long as push ends successfully)
+    // send 
     template <typename F, typename... Args>
-    auto send_task_mostfree(F&& f, Args&&... args) -> std::future<decltype(f(args...))> {
+    auto send(F&& f, Args&&... args) -> std::future<decltype(f(args...))> {
         // wrap
         using return_type = decltype(f(args...));
         std::shared_ptr<std::packaged_task<return_type()>> ptr_task =
@@ -305,7 +308,7 @@ template <typename SchedulingStrategy = ,typename StealingStrategy = > class thr
         std::future<return_type> fut = ptr_task->get_future();
         job j = [ptr_task]() { (*ptr_task)(); };
 
-        int indx_worker = indx_most_free();
+        int indx_worker = schedule_policy_.pick(count_job_,n_worker_);
         std::unique_lock<std::mutex> lock(workers_[indx_worker]->get_loc());
         bool flag = workers_[indx_worker]->push_back(j);
         while (!flag) { flag = workers_[indx_worker]->push_back(j); }
@@ -315,60 +318,6 @@ template <typename SchedulingStrategy = ,typename StealingStrategy = > class thr
         return fut;
     };
 
-
-    // send round using struct indxw, for sure (while-loop as long as push ends successfully)
-    template <typename F, typename... Args>
-    auto send_task_round(F&& f, Args&&... args) -> std::future<decltype(f(args...))> {
-        // wrap
-        using return_type = decltype(f(args...));
-        std::shared_ptr<std::packaged_task<return_type()>> ptr_task =
-          std::make_shared<std::packaged_task<return_type()>>(
-            [fun = f, ... args_catturati = args]() mutable { return fun(args_catturati...); });
-        std::future<return_type> fut = ptr_task->get_future();
-        job j = [ptr_task]() { (*ptr_task)(); };
-
-        std::unique_lock<std::mutex> lock(workers_[indxw_.indx_]->get_loc());
-        bool flag = workers_[indxw_.indx_]->push_back(j);
-        while (!flag) { flag = workers_[indxw_.indx_]->push_back(j); }
-        count_job_[indxw_.indx_].fetch_add(1, std::memory_order_release);
-        lock.unlock();
-        indxw_.next(n_worker_);
-        workers_[indxw_.indx_]->cv_.notify_one();
-        return fut;
-    };
-
-    
-    // struct info_par {
-    //     int n_job;
-    //     int granularity;
-    //     int granularity_last;
-    // };
-    // info_par info_parallel(int range, int jpw) {
-    //     info_par ret;
-    //     int tot_job = jpw * n_worker_;
-    //     ret.granularity = std::max(range / tot_job, 1);
-    //     ret.granularity_last = ret.granularity;   // poi aggiornata se c'è resto di divisione
-    //     ret.n_job =
-    //       range / ret.granularity;   // cosi sicuro lasta job ha granularity miniore di granularity, però non più max
-    //                                  // jpw job per worker ma circa jpw job per worker. es: range=37, n_worker=10,
-    //                                  // jpw=1--> tot_job = 10, gran = 37/10 = 3, n_job=37/3 = 12 poi +1 per resto,
-    //                                  // quindi tutti worker 1 job, tranne primi 3 che ne hanno 2
-    //     // if(n_job % n_worker != 0){
-    //     //     granularity_last = range%granularity;
-    //     //     n_job ++;
-    //     // }else{
-    //     //     //spalma
-    //     //     /* bisognerebbe dare info che primi  range%granularity  job devono avere granularity+1
-    //     //         non è comodo da usare come info, quindi lascerei perdere questa ottimizzazione e
-    //     //         farei sempre granularity ultimo job =  range%granularity a prescindere se i worker hanno o meno già
-    //     //         tutti lo stesso numero di job */
-    //     // }
-    //     if (range % ret.granularity != 0) {
-    //         ret.granularity_last = range % ret.granularity;
-    //         ret.n_job++;
-    //     }
-    //     return ret;
-    // }
 
     // parallel_for //TODO: controllo start<end va aggiunto ?
     // OVERLOAD:
