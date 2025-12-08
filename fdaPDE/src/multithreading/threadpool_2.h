@@ -257,14 +257,9 @@ template <steal T> class threadpool {
         std::sort(indxs.begin(), indxs.end(), [](std::pair<int, int>& a, std::pair<int, int>& b) {
             return a.second > b.second;
         });
-        switch (size) {
-        case 1:
+        if(size < 4){
             return indxs[0].first;
-        case 2:
-            return indxs[0].first;
-        case 3:
-            return indxs[0].first;
-        default:
+        }else{
             return indxs[random_int(size / 2)].first;
         }
     }
