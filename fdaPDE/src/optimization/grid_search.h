@@ -130,7 +130,7 @@ template <int N> class GridSearch {
             double first = std::numeric_limits<double>::max();// inizializzato a massimo erch ein problema cerchiamo minimo
             vector_t second;
         };
-        int n_threads = Tp.get_n_worker();
+        int n_threads = Tp.n_workers();
         // vettore di (value,optimum) per ogni worker, alla fine ci saranno min,argmin trovati da ogni worker e poi reduce di questo vettore darà min argmin finali
         std::vector<AlignedPair> value_optimum_workers(n_threads); //inizializzato con n_thread elementi vuoti cosi da non riallocare ed essere threadsafe
         
@@ -142,7 +142,7 @@ template <int N> class GridSearch {
         int n_job = (granularity_last_job == 0) ? grid_.rows()/granularity : grid_.rows()/granularity +1 ;
         
         Tp.parallel_for(0,n_job, [&, this](int i){ //tutto tramite ref per occupare meno memoria ma piu lento
-            int index_worker = Tp.get_index_worker_from_thread(); //index di worker che esegue il job
+            int index_worker = Tp.index_worker(); //index di worker che esegue il job
             vector_t x_curr;
             double obj_curr =std::numeric_limits<double>::max();
             vector_t x;
@@ -236,7 +236,7 @@ template <int N> class GridSearch {
             vector_t second;
         };
         // vettore di (value,optimum) per ogni worker, alla fine ci saranno min,argmin trovati da ogni worker e poi reduce di questo vettore darà min argmin finali
-        std::vector<AlignedPair> value_optimum_workers(Tp.get_n_worker()); //inizializzato con n_thread elementi vuoti cosi da non riallocare ed essere threadsafe
+        std::vector<AlignedPair> value_optimum_workers(Tp.n_workers()); //inizializzato con n_thread elementi vuoti cosi da non riallocare ed essere threadsafe
 
         Tp.parallel_for(1,grid_.rows(),[&Tp, &grid_,&value_optimum_workers,&objective](int i,int index_w, vector_t& x_curr, double & obj_curr){ //tutto tramite ref per occupare meno memoria ma piu lento
             //int index_worker = Tp.get_index_worker_from_thread(); //problema è qui !!!!!!!!!!!!!!! perché chiama ad ogni iterazione il metodo che però è blocking quindi se aumento thread non scala (ora metto shared mutex e sistemo la scirttura in map e la lettura di map che avevo fatto veloce per test in cluster che faceva data race)
@@ -252,7 +252,7 @@ template <int N> class GridSearch {
         // reduce di value_optimum_workers[], minimo in value_ argmin in optimum_
         value_ = value_optimum_workers[0].first;
         optimum_ = value_optimum_workers[0].second;
-        for (int i = 1; i<Tp.get_n_worker(); i++){
+        for (int i = 1; i<Tp.n_workers(); i++){
             if(value_optimum_workers[i].first < value_){
                 value_ = value_optimum_workers[i].first;
                 optimum_ = value_optimum_workers[i].second;
