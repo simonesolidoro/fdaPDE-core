@@ -766,11 +766,8 @@ template <steal T> class threadpool {
     auto parallel_for_reduce_sum(int start, int end, F&& f, int granularity)
       -> std::invoke_result_t<F, int> {   // TODO cambiare granularity on
         using return_type = std::invoke_result_t<F, int>;
-        // range va da start a end-1--> end-start= dimensione range
         int range = (end - start);
-        int n = range / granularity;   // numero job con granularity iterazioni, se poi c'è resto le ultime iterazioni
-                                       // messe in ultimo job
-        // scelta valore ottimo di  se passato -1 (vedi parallel_for per sppiegazioe scelta 100)
+        int n = range / granularity;   
         if (granularity == -1) {
             granularity = range / n_worker_;
             if (granularity < 1) {   // less iteration than worker, so granularity = 1

@@ -50,7 +50,7 @@ struct max_load_stealing{
 
 struct random_stealing{
     std::deque<std::atomic<int>>* count_job_;
-    std::mt19937 gen_;
+    mutable std::mt19937 gen_;
     random_stealing():gen_(std::random_device {}()){};
     void init(std::deque<std::atomic<int>>& count_job_threadpool) {count_job_ = &count_job_threadpool; }
     // return random int in  [0, size-1]
@@ -79,7 +79,7 @@ struct random_stealing{
 };
 
 struct top_half_random_stealing{
-    std::mt19937 gen_;
+    mutable std::mt19937 gen_;
 
     top_half_random_stealing():gen_(std::random_device {}()){};
     
@@ -123,8 +123,8 @@ struct least_loaded_scheduling{
         int worker_indx = 0;
         int min_elem = count_job[0].load(std::memory_order_acquire);
         int current_el = 0;
-        for (int j = 1; j < n_worker_; j++) {
-            current_el = count_job_[j].load(std::memory_order_acquire);
+        for (int j = 1; j < n_worker; j++) {
+            current_el = count_job[j].load(std::memory_order_acquire);
             if (current_el < min_elem) {
                 worker_indx = j;
                 min_elem = current_el;
@@ -132,13 +132,13 @@ struct least_loaded_scheduling{
         }
         return worker_indx;
     };
-    }
 };
 
+
     
     
 
-template <typename SchedulingStrategy = ,typename StealingStrategy = > class threadpool {
+template <typename SchedulingStrategy = round_robin_scheduling,typename StealingStrategy = random_stealing> class threadpool {
     using job = std::function<void()>;
 
     
@@ -157,7 +157,7 @@ template <typename SchedulingStrategy = ,typename StealingStrategy = > class thr
             indx_(idx), sync_queue_(n), t_(worker_loop, Th, idx) {};
 
         // avoidable wraps, but use to make code clearer
-        std::unique_lock<std::mutex> get_loc() const {
+        std::unique_lock<std::mutex> get_lock() const {
             std::unique_lock<std::mutex> loc(m_);
             return loc;
         }
@@ -177,7 +177,6 @@ template <typename SchedulingStrategy = ,typename StealingStrategy = > class thr
     std::deque<std::atomic<int>> count_job_;         // deque because atomic<int> not movable
     int n_worker_;
     int queue_size_;
-    indx_worker indxw_;
     mutable std::shared_mutex m_threadpool_;   // mutable per tenere const get_indx_from_worker()
     std::condition_variable_any cv_threadpool_;
     bool active_ = false;
@@ -216,7 +215,7 @@ template <typename SchedulingStrategy = ,typename StealingStrategy = > class thr
         }
         // let's finish all worker_loop
         for (int j = 0; j < n_worker_; j++) {
-            std::unique_lock<std::mutex> loc(workers_[j]->get_loc());
+            std::unique_lock<std::mutex> loc(workers_[j]->get_lock());
             workers_[j]->stop();
             workers_[j]->notify();
         }
@@ -309,7 +308,7 @@ template <typename SchedulingStrategy = ,typename StealingStrategy = > class thr
         job j = [ptr_task]() { (*ptr_task)(); };
 
         int indx_worker = schedule_policy_.pick(count_job_,n_worker_);
-        std::unique_lock<std::mutex> lock(workers_[indx_worker]->get_loc());
+        std::unique_lock<std::mutex> lock(workers_[indx_worker]->get_lock());
         bool flag = workers_[indx_worker]->push_back(j);
         while (!flag) { flag = workers_[indx_worker]->push_back(j); }
         count_job_[indx_worker].fetch_add(1, std::memory_order_release);
@@ -334,7 +333,7 @@ template <typename SchedulingStrategy = ,typename StealingStrategy = > class thr
         using return_type = void;
         std::vector<std::future<return_type>> ret_fut;
         ret_fut.reserve(end - start);
-        for (int j = start; j < end; j++) { ret_fut.emplace_back(this->send_task_round(f, j)); }
+        for (int j = start; j < end; j++) { ret_fut.emplace_back(this->send(f, j)); }
         for (std::future<void>& fut : ret_fut) { fut.get(); }
         return;
     }
@@ -345,7 +344,7 @@ template <typename SchedulingStrategy = ,typename StealingStrategy = > class thr
         using return_type = void;
         std::vector<std::future<return_type>> ret_fut;
         ret_fut.reserve(end - start);
-        for (int j = start; j < end; j = incr(j)) { ret_fut.emplace_back(this->send_task_round(f, j)); }
+        for (int j = start; j < end; j = incr(j)) { ret_fut.emplace_back(this->send(f, j)); }
         for (std::future<void>& fut : ret_fut) { fut.get(); }
         return;
     }
@@ -370,7 +369,7 @@ template <typename SchedulingStrategy = ,typename StealingStrategy = > class thr
         std::vector<std::future<return_type>> ret_fut;
         ret_fut.reserve(vect_size);
         for (size_t j = 0; j < vect_size; j++) {
-            ret_fut.emplace_back(this->send_task_round([&seq, j, fun = f, ... args = args, this]() mutable {
+            ret_fut.emplace_back(this->send([&seq, j, fun = f, ... args = args, this]() mutable {
                 int index_worker = this->index_worker_from_thread();
                 for (int k = seq[j]; k < seq[j + 1]; k++) { fun(k, index_worker, args...); }
             }));
@@ -431,7 +430,7 @@ template <typename SchedulingStrategy = ,typename StealingStrategy = > class thr
         for (int j = 0; j < it_add.size(); j++) {
             stop_local += (granularity + it_add[j]);
             ret_fut.emplace_back(
-              this->send_task_round([start = start, stop = stop_local, j, fun = f, ... args = args, this]() mutable {
+              this->send([start = start, stop = stop_local, j, fun = f, ... args = args, this]() mutable {
                   int index_worker = this->index_worker_from_thread();
                   for (int k = start; k < stop; k++) {
                       fun(
@@ -448,7 +447,7 @@ template <typename SchedulingStrategy = ,typename StealingStrategy = > class thr
         }
         for (int j = it_add.size(); j < n_job - 1; j++) {
             stop_local = granularity + start;
-            ret_fut.emplace_back(this->send_task_round(
+            ret_fut.emplace_back(this->send(
               [start, stop = stop_local, fun = f, ... args = args,
                this]() mutable {   // usato resto_spalmato perché magari c'è resto ma non viene spalmato eviene inserito
                                    // in ultimo job e quindi qui le iterazioni vanno da j*granularity+start a
@@ -459,7 +458,7 @@ template <typename SchedulingStrategy = ,typename StealingStrategy = > class thr
             start = stop_local;
         }
         // last job (puo essere o gran_last o granularity normale) inviato separatamente per non dover fare if
-        ret_fut.emplace_back(this->send_task_round([start, end, fun = f, ... args = args, this]() mutable {
+        ret_fut.emplace_back(this->send([start, end, fun = f, ... args = args, this]() mutable {
             int index_worker = this->index_worker_from_thread();
             for (int k = start; k < end; k++) { fun(k, index_worker, args...); }
         }));
@@ -483,7 +482,7 @@ template <typename SchedulingStrategy = ,typename StealingStrategy = > class thr
         void parallel_for(It start, It end, F&& f) {
         using return_type = void;
         std::vector<std::future<return_type>> ret_fut;
-        for (It j = start; j != end; ++j) { ret_fut.emplace_back(this->send_task_round(f, j)); }
+        for (It j = start; j != end; ++j) { ret_fut.emplace_back(this->send(f, j)); }
         for (std::future<void>& fut : ret_fut) { fut.get(); }
         return;
     }
@@ -531,7 +530,7 @@ template <typename SchedulingStrategy = ,typename StealingStrategy = > class thr
         ret_fut.reserve(n_job);
 
         for (int j = 0; j < it_add.size(); j++) {
-            ret_fut.emplace_back(this->send_task_round(
+            ret_fut.emplace_back(this->send(
               [granularity = granularity + it_add[j], it = start, fun = f, ... args = args, this]() mutable {
                   int index_worker = this->index_worker_from_thread();
                   for (int k = 0; k < granularity; k++) {
@@ -551,7 +550,7 @@ template <typename SchedulingStrategy = ,typename StealingStrategy = > class thr
 
         for (int j = it_add.size(); j < n_job - 1; j++) {
             ret_fut.emplace_back(
-              this->send_task_round([granularity, it = start, fun = f, ... args = args, this]() mutable {
+              this->send([granularity, it = start, fun = f, ... args = args, this]() mutable {
                   int index_worker = this->index_worker_from_thread();
                   for (int k = 0; k < granularity; k++) {
                       fun(it, index_worker, args...);
@@ -560,7 +559,7 @@ template <typename SchedulingStrategy = ,typename StealingStrategy = > class thr
               }));
             start += granularity;   // manda avanti start
         }
-        ret_fut.emplace_back(this->send_task_round([start, end, fun = f, ... args = args, this]() mutable {
+        ret_fut.emplace_back(this->send([start, end, fun = f, ... args = args, this]() mutable {
             int index_worker = this->index_worker_from_thread();
             for (auto it = start; it != end; ++it) { fun(it, index_worker, args...); }
         }));
@@ -593,13 +592,13 @@ template <typename SchedulingStrategy = ,typename StealingStrategy = > class thr
         ret_fut.reserve(n_job);
         for (int j = 0; j < n_job - 1; j++) {
             ret_fut.emplace_back(
-              this->send_task_round([start = its[j], stop = its[j + 1], fun = f, ... args = args, this]() mutable {
+              this->send([start = its[j], stop = its[j + 1], fun = f, ... args = args, this]() mutable {
                   int index_worker = this->index_worker_from_thread();
                   for (auto it = start; it != stop; ++it) { fun(it, index_worker, args...); }
               }));
         }
         ret_fut.emplace_back(
-          this->send_task_round([start = its[n_job - 1], end, fun = f, ... args = args, this]() mutable {
+          this->send([start = its[n_job - 1], end, fun = f, ... args = args, this]() mutable {
               int index_worker = this->index_worker_from_thread();
               for (auto it = start; it != end; ++it) { fun(it, index_worker, args...); }
           }));
@@ -708,7 +707,7 @@ template <typename SchedulingStrategy = ,typename StealingStrategy = > class thr
 
         int j = 0;
         while (j < n) {
-            std::optional<std::future<void>> opt_fut = this->send_task_round(
+            std::optional<std::future<void>> opt_fut = this->send(
               [granularity, j, start, map_thread_worker_ = this->map_thread_worker_, fun = f, &sum_workers]() mutable {
                   int stop = (j + 1) * granularity + start;
                   int indx_worker_from_thread =
@@ -727,7 +726,7 @@ template <typename SchedulingStrategy = ,typename StealingStrategy = > class thr
             j = 0;
             while (j < 1) {
                 std::optional<std::future<void>> opt_fut =
-                  this->send_task_round([granularity, n, start, end, j, map_thread_worker_ = this->map_thread_worker_,
+                  this->send([granularity, n, start, end, j, map_thread_worker_ = this->map_thread_worker_,
                                          fun = f, &sum_workers]() mutable {   // j gia catturata in & credo non serve
                       int indx_worker_from_thread =
                         map_thread_worker_[std::this_thread::get_id()];   // per chiarezza non serve fare variabile
@@ -776,7 +775,7 @@ template <typename SchedulingStrategy = ,typename StealingStrategy = > class thr
 
         int j = 0;
         while (j < n) {
-            std::optional<std::future<void>> opt_fut = this->send_task_round(
+            std::optional<std::future<void>> opt_fut = this->send(
               [granularity, j, start, map_thread_worker_ = this->map_thread_worker_, fun = f, &dot_workers]() mutable {
                   int stop = (j + 1) * granularity + start;
                   int indx_worker_from_thread =
@@ -795,7 +794,7 @@ template <typename SchedulingStrategy = ,typename StealingStrategy = > class thr
             j = 0;
             while (j < 1) {
                 std::optional<std::future<void>> opt_fut =
-                  this->send_task_round([granularity, n, start, end, j, map_thread_worker_ = this->map_thread_worker_,
+                  this->send([granularity, n, start, end, j, map_thread_worker_ = this->map_thread_worker_,
                                          fun = f, &dot_workers]() mutable {   // j gia catturata in & credo non serve
                       int indx_worker_from_thread =
                         map_thread_worker_[std::this_thread::get_id()];   // per chiarezza non serve fare variabile
