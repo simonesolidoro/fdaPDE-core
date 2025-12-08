@@ -63,9 +63,10 @@ template <steal T> class threadpool {
             std::unique_lock<std::mutex> loc(m_);
             return loc;
         }
-        void notifica() const { cv_.notify_one(); }
-        void set_stop(bool s) { stop_ = s; }
-        void join_thread() { t_.join(); }
+        void notify() const { cv_.notify_one(); }
+        void stop() { stop_ = true; }
+        void start() { stop_ = false; }
+        void join() { t_.join(); }
         bool push_front(job& fun) {
             return sync_queue_.push_front(fun);
         };   // reference in input because is only a wrap-function (intermediate step), than synchro_queue store a copy
