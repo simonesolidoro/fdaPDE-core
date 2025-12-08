@@ -31,7 +31,7 @@ int main(int argc, char** argv){
     int n_thread = std::stoi(argv[2]);
     int size_coda = std::stoi(argv[3]);
     int n_gran = std::stoi(argv[4]); //granularity
-    fdapde::threadpool<fdapde::steal::most_busy> tp(size_coda,n_thread);
+    fdapde::threadpool<fdapde::round_robin_scheduling, fdapde::max_load_stealing> tp(size_coda,n_thread);
 
     std::vector<std::vector<int>> A;
     std::vector<std::vector<int>> B;
