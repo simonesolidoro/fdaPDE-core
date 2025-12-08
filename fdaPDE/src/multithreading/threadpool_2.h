@@ -237,19 +237,7 @@ template <typename SchedulingStrategy = round_robin_scheduling,typename Stealing
     int index_worker_from_thread() const {
         std::shared_lock<std::shared_mutex> loc(
           m_map_);   // aggiunto lock perché non saprei che altro possa causare errore out of range in cluster
-        std::thread::id id = std::this_thread::get_id();
-        try {
-            return map_thread_worker_.at(id);
-        } catch (const std::out_of_range& e) {
-            std::cerr << "il Thread con id: " << id << " non è stato trovato in map_thread_worker_ " << std::endl;
-            std::cerr << "elenco dei (in teoria) " << n_worker_
-                      << " worker presenti in threadpool, thrad_id e indx: " << std::endl;
-            for (auto it = map_thread_worker_.begin(); it != map_thread_worker_.end(); it++) {
-                std::cerr << "id : " << it->first << "; indx: " << it->second << std::endl;
-            }
-            std::terminate();   // termina tutto immediatamente
-        }
-        // return map_thread_worker_.at(std::this_thread::get_id());
+        return map_thread_worker_.at(std::this_thread::get_id());
     }
 
 
