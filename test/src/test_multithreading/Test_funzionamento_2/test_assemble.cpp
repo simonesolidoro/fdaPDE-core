@@ -6,7 +6,7 @@ int main(int argc, char** argv){
     int nodi = std::stoi(argv[1]);
     int workers = std::stoi(argv[2]);
     int kk = std::stoi(argv[3]);
-    fdapde::threadpool<fdapde::steal::random> Tp(1000,workers);
+    fdapde::threadpool Tp(1000,workers);
     Triangulation<2, 2> unit_square = Triangulation<2, 2>::UnitSquare(nodi);//cube
 
     FeSpace Vh(unit_square, P1<1>);
@@ -18,20 +18,14 @@ int main(int argc, char** argv){
 //cronometro assemblaggio non parallello
     auto start = std::chrono::high_resolution_clock::now();
 
-    Eigen::SparseMatrix<double> A = a.assemble_tempotriple();//(execution::par); // use parallel version
+    Eigen::SparseMatrix<double> A = a.assemble();//(execution::par); // use parallel version
 
     auto end = std::chrono::high_resolution_clock::now();
     auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start);  
     std::cout<<"tempo (microsec) assemblaggio non parallelo: "<<duration.count()<<std::endl; 
 //cronometro assemblaggio parallelo
     auto start2 = std::chrono::high_resolution_clock::now();
-    Eigen::SparseMatrix<double> A2 = b.assemble_graninput_tempotriple(execution::par,Tp,kk);
-    //Eigen::SparseMatrix<double> A2 = b.assemble_iterator_tempotriple(execution::par,Tp,kk);
-    //Eigen::SparseMatrix<double> A2 = b.assemble_lambda();
-    //Eigen::SparseMatrix<double> A2 = b.assemble(execution::par,Tp,kk); // use parallel version
-    //Eigen::SparseMatrix<double> A2 = b.assemble_unicamatrix(execution::par,Tp,kk); // use parallel version 
-    //Eigen::SparseMatrix<double> A2 = b.assemble_unica_tripla(execution::par,Tp,kk); // use parallel version 
-    //Eigen::SparseMatrix<double> A2 = b.assemble_lambda();
+    Eigen::SparseMatrix<double> A2 = b.assemble(execution::par,Tp,kk); // use parallel version
     auto end2 = std::chrono::high_resolution_clock::now();
     auto duration2 = std::chrono::duration_cast<std::chrono::microseconds>(end2 - start2);  
     std::cout<<"tempo (microsec) assemblaggio parallelo, thread: "<<workers<<" ,"<<duration2.count()<<std::endl;  

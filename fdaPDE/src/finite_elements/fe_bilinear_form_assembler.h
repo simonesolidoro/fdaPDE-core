@@ -222,7 +222,8 @@ class fe_bilinear_form_assembly_loop :
 
 //assemble parallelo con unico vettore di triple preallocato
 //assemble()
-Eigen::SparseMatrix<double> assemble(execution::execution_parallel, fdapde::threadpool<fdapde::steal::random>& Tp, int granularity = -1) const {
+template<typename Threadpool>
+Eigen::SparseMatrix<double> assemble(execution::execution_parallel, Threadpool& Tp, int granularity = -1) const {
         Eigen::SparseMatrix<double> assembled_mat(test_dof_handler()->n_dofs(), trial_dof_handler()->n_dofs());
         
         int n_cell = this->Base::dof_handler_->triangulation()->n_cells();
@@ -241,12 +242,13 @@ Eigen::SparseMatrix<double> assemble(execution::execution_parallel, fdapde::thre
 
     //overload che crea threadpool al posto di averla in input
     Eigen::SparseMatrix<double> assemble(execution::execution_parallel,int n_thread = std::thread::hardware_concurrency(),int size_queue = 1024, int granularity = -1) const { //int kk per il momento in input per fare test piu comodamente. OSS: per ora visto che kk=1 fino a kk=10 non c'è differenza. se troppo alto invece peggioramento evidente (es kk=100)
-        fdapde::threadpool<fdapde::steal::random> Tp(size_queue,n_thread);
+        fdapde::threadpool Tp(size_queue,n_thread);//default steal and schedule
         return assemble(execution::par,Tp,granularity);
     }
     
  //assemble(...) parallelo   
-    void assemble(std::vector<Eigen::Triplet<double>>& triplet_list,fdapde::threadpool<fdapde::steal::random> &Tp, int granularity) const {
+    template<typename Threadpool>
+    void assemble(std::vector<Eigen::Triplet<double>>& triplet_list, Threadpool &Tp, int granularity) const {
         using iterator = typename Base::fe_traits::dof_iterator;
         iterator begin(Base::begin_.index(), test_dof_handler(), Base::begin_.marker());
         iterator end  (Base::end_.index(),   test_dof_handler(), Base::end_.marker()  );
@@ -279,7 +281,7 @@ Eigen::SparseMatrix<double> assemble(execution::execution_parallel, fdapde::thre
         }
 
         //paralleliziamo con parallel_for con defaul granularity = 1 e creiamo da qui i mini_for (cosi ogni iterazione è minifor e quindi anche se un job= 1 iterazione ogni ojob sara un minifor)
-        int num_worker = Tp.get_n_worker();
+        int num_worker = Tp.n_workers();
         //numero celle
         int count = this->Base::dof_handler_->triangulation()->n_cells();
         //se defaul (input -1) allora messa granularity s.t. 1 job per worker (+1 job di resto ma con iterazioni < min(n_threads,granularity) quindi trascurabile)
