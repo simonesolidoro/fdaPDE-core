@@ -28,14 +28,93 @@ concept parallel_iterator = requires(It a, It b, int n) {
     { a - b } -> std::convertible_to<int>;
 };
 }   // namespace internals
-enum class steal {
-    no_steal,
-    random,
-    most_busy,
-    random_half_most_busy
+
+
+struct max_load_stealing{
+    
+    int pick(std::deque<std::atomic<int>>& count_job, int n_worker)const{
+        int worker_indx = 0;
+        int max_elem = count_job[0].load(std::memory_order_acquire);   // numero elementi in primo worker
+        int current_el = 0;
+        for (int j = 1; j < n_worker; j++) {
+            current_el = count_job[j].load(std::memory_order_acquire);
+            if (current_el > max_elem) {
+                worker_indx = j;
+                max_elem = current_el;
+            }
+        }
+        if (max_elem == 0) { return -1; }   // avoid steal of nullopt
+        return worker_indx;
+    };
 };
 
-template <steal T> class threadpool {
+struct random_stealing{
+    std::deque<std::atomic<int>>* count_job_;
+    std::mt19937 gen_;
+    random_stealing():gen_(std::random_device {}()){};
+    void init(std::deque<std::atomic<int>>& count_job_threadpool) {count_job_ = &count_job_threadpool; }
+    // return random int in  [0, size-1]
+    int random_int(int size) const {
+        std::uniform_int_distribution<> distrib(0, size - 1);
+        return distrib(gen_);
+    };
+    int pick(std::deque<std::atomic<int>>& count_job, int n_worker)const{
+        std::vector<int> indxs;   // vector of index of worker busy
+        for (int k = 0; k < n_worker; k++) {
+            // oss: not avoid himself, to avoid extra if() or split range(worker k find in
+            // (0,...,k-1,k+1,...,n_worker-1))
+            if (count_job[k].load(std::memory_order_acquire) > 0) { indxs.push_back(k); }
+        }
+        int size = indxs.size();
+        switch (size) {   // avoid random gen_eration if not need it
+        case 0:
+            return -1;
+        case 1:
+            return indxs[0];
+        default:
+            return indxs[random_int(size)];
+        }
+    };
+
+};
+
+struct top_half_random_stealing{
+    std::mt19937 gen_;
+
+    top_half_random_stealing():gen_(std::random_device {}()){};
+    
+    // return random int in  [0, size-1]
+    int random_int(int size) const {
+        std::uniform_int_distribution<> distrib(0, size - 1);
+        return distrib(gen_);
+    };
+    int pick(std::deque<std::atomic<int>>& count_job, int n_worker)const{
+        std::vector<std::pair<int, int>> indxs;   // vector of pair: (index worker busy, number of job in queue)
+        int tmp_count_job = 0;
+        for (int k = 0; k < n_worker; k++) {
+            tmp_count_job = count_job[k].load(std::memory_order_acquire);
+            if (tmp_count_job > 0) { indxs.emplace_back(k, tmp_count_job); }
+        }
+        int size = indxs.size();
+        if (size == 0) { return -1; }
+        // sort from mostbusy to least
+        std::sort(indxs.begin(), indxs.end(), [](std::pair<int, int>& a, std::pair<int, int>& b) {
+            return a.second > b.second;
+        });
+        if(size < 4){
+            return indxs[0].first;
+        }else{
+            return indxs[random_int(size / 2)].first;
+        }
+    };
+};
+
+
+
+    
+    
+
+template <typename SchedulingStrategy = ,typename StealingStrategy = > class threadpool {
     using job = std::function<void()>;
 
     struct indx_worker {
@@ -83,15 +162,16 @@ template <steal T> class threadpool {
     mutable std::shared_mutex m_threadpool_;   // mutable per tenere const get_indx_from_worker()
     std::condition_variable_any cv_threadpool_;
     bool active_ = false;
-    mutable std::mt19937 gen_;
+    
     std::unordered_map<std::thread::id, int>
       map_thread_worker_;   // map of : thread_ID of worker's thread, index of worker in workers_
     mutable std::shared_mutex m_map_;
+    StealingStrategy worker_stealer_;
    public:
     friend class worker;
     // n = size_synchro_queue, k = number of workers
     threadpool(int size_queue, int n_worker) :
-        n_worker_(n_worker), queue_size_(size_queue), gen_(std::random_device {}()) {
+        n_worker_(n_worker), queue_size_(size_queue) {
         std::unique_lock<std::shared_mutex> loc(m_threadpool_);
         workers_.reserve(n_worker);
         for (int i = 0; i < n_worker; i++) {
@@ -174,9 +254,7 @@ template <steal T> class threadpool {
                 continue;   // avoid lock mutex in the end
             }
             // try steal
-            if constexpr (T == steal::random) { indx_steal = indx_random_from_busy(); }
-            if constexpr (T == steal::most_busy) { indx_steal = indx_most_busy(); }
-            if constexpr (T == steal::random_half_most_busy) { indx_steal = indx_random_from_half_most_busy(); }
+            indx_steal = worker_stealer_.pick(count_job_,n_worker_); 
             if (indx_steal != -1) {
                 try_do(workers_[indx_steal]->pop_back(), indx_steal);
                 continue;
@@ -206,63 +284,8 @@ template <steal T> class threadpool {
         return worker_indx;
     };
 
-    int indx_most_busy() const {
-        int worker_indx = 0;
-        int max_elem = count_job_[0].load(std::memory_order_acquire);   // numero elementi in primo worker
-        int current_el = 0;
-        for (int j = 1; j < n_worker_; j++) {
-            current_el = count_job_[j].load(std::memory_order_acquire);
-            if (current_el > max_elem) {
-                worker_indx = j;
-                max_elem = current_el;
-            }
-        }
-        if (max_elem == 0) { return -1; }   // avoid steal of nullopt
-        return worker_indx;
-    }
-    // return random int in  [0, size-1]
-    int random_int(int size) const {
-        std::uniform_int_distribution<> distrib(0, size - 1);
-        return distrib(gen_);
-    }
 
-    int indx_random_from_busy() const {
-        std::vector<int> indxs;   // vector of index of worker busy
-        for (int k = 0; k < n_worker_; k++) {
-            // oss: not avoid himself, to avoid extra if() or split range(worker k find in
-            // (0,...,k-1,k+1,...,n_worker-1))
-            if (count_job_[k].load(std::memory_order_acquire) > 0) { indxs.push_back(k); }
-        }
-        int size = indxs.size();
-        switch (size) {   // avoid random gen_eration if not need it
-        case 0:
-            return -1;
-        case 1:
-            return indxs[0];
-        default:
-            return indxs[random_int(size)];
-        }
-    }
 
-    int indx_random_from_half_most_busy() const {
-        std::vector<std::pair<int, int>> indxs;   // vector of pair: (index worker busy, number of job in queue)
-        int tmp_count_job = 0;
-        for (int k = 0; k < n_worker_; k++) {
-            tmp_count_job = count_job_[k].load(std::memory_order_acquire);
-            if (tmp_count_job > 0) { indxs.emplace_back(k, tmp_count_job); }
-        }
-        int size = indxs.size();
-        if (size == 0) { return -1; }
-        // sort from mostbusy to least
-        std::sort(indxs.begin(), indxs.end(), [](std::pair<int, int>& a, std::pair<int, int>& b) {
-            return a.second > b.second;
-        });
-        if(size < 4){
-            return indxs[0].first;
-        }else{
-            return indxs[random_int(size / 2)].first;
-        }
-    }
 
     int n_jobs() const {
         int somma = 0;
