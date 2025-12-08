@@ -110,22 +110,22 @@ template <steal T> class threadpool {
     threadpool() : threadpool(256) { }
 
     ~threadpool() {
-        while (get_count_all_job() > 0) { std::this_thread::yield(); };
+        while (n_jobs() > 0) { std::this_thread::yield(); };
         for (int i = 0; i < n_worker_; i++) {
             while (!workers_[i]->sync_queue_.empty()) { }
         }
         // let's finish all worker_loop
         for (int j = 0; j < n_worker_; j++) {
             std::unique_lock<std::mutex> loc(workers_[j]->get_loc());
-            workers_[j]->set_stop(true);
-            workers_[j]->notifica();
+            workers_[j]->stop();
+            workers_[j]->notify();
         }
-        for (int j = 0; j < n_worker_; j++) { workers_[j]->join_thread(); }
+        for (int j = 0; j < n_worker_; j++) { workers_[j]->join(); }
     }
 
     // getter
-    int get_n_worker() const { return n_worker_; };
-    int get_index_worker_from_thread() const {
+    int n_worker() const { return n_worker_; };
+    int index_worker_from_thread() const {
         std::shared_lock<std::shared_mutex> loc(
           m_map_);   // aggiunto lock perché non saprei che altro possa causare errore out of range in cluster
         std::thread::id id = std::this_thread::get_id();
@@ -184,7 +184,7 @@ template <steal T> class threadpool {
             // chek for job whit mutex lock, eventualy go to sleep
             std::unique_lock<std::mutex> loc(workers_[i]->m_);
             workers_[i]->cv_.wait(loc, [&]() {
-                return count_job_[i].load(std::memory_order_acquire) > 0 || get_count_all_job() > 0 ||
+                return count_job_[i].load(std::memory_order_acquire) > 0 || n_jobs() > 0 ||
                        workers_[i]->stop_;
             });
             loc.unlock();
@@ -269,7 +269,7 @@ template <steal T> class threadpool {
         }
     }
 
-    int get_count_all_job() const {
+    int n_jobs() const {
         int somma = 0;
         for (int i = 0; i < n_worker_; i++) somma += count_job_[i].load(std::memory_order_acquire);
         return somma;
@@ -449,7 +449,7 @@ template <steal T> class threadpool {
         ret_fut.reserve(vect_size);
         for (size_t j = 0; j < vect_size; j++) {
             ret_fut.emplace_back(this->send_task_round([&seq, j, fun = f, ... args = args, this]() mutable {
-                int index_worker = this->get_index_worker_from_thread();
+                int index_worker = this->index_worker_from_thread();
                 for (int k = seq[j]; k < seq[j + 1]; k++) { fun(k, index_worker, args...); }
             }));
         }
@@ -510,7 +510,7 @@ template <steal T> class threadpool {
             stop_local += (granularity + it_add[j]);
             ret_fut.emplace_back(
               this->send_task_round([start = start, stop = stop_local, j, fun = f, ... args = args, this]() mutable {
-                  int index_worker = this->get_index_worker_from_thread();
+                  int index_worker = this->index_worker_from_thread();
                   for (int k = start; k < stop; k++) {
                       fun(
                         k, index_worker,
@@ -531,14 +531,14 @@ template <steal T> class threadpool {
                this]() mutable {   // usato resto_spalmato perché magari c'è resto ma non viene spalmato eviene inserito
                                    // in ultimo job e quindi qui le iterazioni vanno da j*granularity+start a
                                    // (j+1)*granularity+start
-                  int index_worker = this->get_index_worker_from_thread();
+                  int index_worker = this->index_worker_from_thread();
                   for (int k = start; k < stop; k++) { fun(k, index_worker, args...); }
               }));
             start = stop_local;
         }
         // last job (puo essere o gran_last o granularity normale) inviato separatamente per non dover fare if
         ret_fut.emplace_back(this->send_task_round([start, end, fun = f, ... args = args, this]() mutable {
-            int index_worker = this->get_index_worker_from_thread();
+            int index_worker = this->index_worker_from_thread();
             for (int k = start; k < end; k++) { fun(k, index_worker, args...); }
         }));
 
@@ -611,7 +611,7 @@ template <steal T> class threadpool {
         for (int j = 0; j < it_add.size(); j++) {
             ret_fut.emplace_back(this->send_task_round(
               [granularity = granularity + it_add[j], it = start, fun = f, ... args = args, this]() mutable {
-                  int index_worker = this->get_index_worker_from_thread();
+                  int index_worker = this->index_worker_from_thread();
                   for (int k = 0; k < granularity; k++) {
                       fun(it, index_worker, args...);
                       ++it;
@@ -630,7 +630,7 @@ template <steal T> class threadpool {
         for (int j = it_add.size(); j < n_job - 1; j++) {
             ret_fut.emplace_back(
               this->send_task_round([granularity, it = start, fun = f, ... args = args, this]() mutable {
-                  int index_worker = this->get_index_worker_from_thread();
+                  int index_worker = this->index_worker_from_thread();
                   for (int k = 0; k < granularity; k++) {
                       fun(it, index_worker, args...);
                       ++it;
@@ -639,7 +639,7 @@ template <steal T> class threadpool {
             start += granularity;   // manda avanti start
         }
         ret_fut.emplace_back(this->send_task_round([start, end, fun = f, ... args = args, this]() mutable {
-            int index_worker = this->get_index_worker_from_thread();
+            int index_worker = this->index_worker_from_thread();
             for (auto it = start; it != end; ++it) { fun(it, index_worker, args...); }
         }));
         for (std::future<void>& fut : ret_fut) { fut.get(); }
@@ -672,13 +672,13 @@ template <steal T> class threadpool {
         for (int j = 0; j < n_job - 1; j++) {
             ret_fut.emplace_back(
               this->send_task_round([start = its[j], stop = its[j + 1], fun = f, ... args = args, this]() mutable {
-                  int index_worker = this->get_index_worker_from_thread();
+                  int index_worker = this->index_worker_from_thread();
                   for (auto it = start; it != stop; ++it) { fun(it, index_worker, args...); }
               }));
         }
         ret_fut.emplace_back(
           this->send_task_round([start = its[n_job - 1], end, fun = f, ... args = args, this]() mutable {
-              int index_worker = this->get_index_worker_from_thread();
+              int index_worker = this->index_worker_from_thread();
               for (auto it = start; it != end; ++it) { fun(it, index_worker, args...); }
           }));
         for (std::future<void>& fut : ret_fut) { fut.get(); }
