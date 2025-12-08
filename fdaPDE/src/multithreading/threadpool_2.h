@@ -275,29 +275,7 @@ template <steal T> class threadpool {
         return somma;
     }
 
-    // send_task_mostfree
-    template <typename F, typename... Args>
-    auto send_task_mostfree_weak(F&& f, Args&&... args) -> std::optional<std::future<decltype(f(args...))>> {
-        // wrap
-        using return_type = decltype(f(args...));
-        std::shared_ptr<std::packaged_task<return_type()>> ptr_task =
-          std::make_shared<std::packaged_task<return_type()>>(
-            [fun = f, ... args_catturati = args]() mutable { return fun(args_catturati...); });
-        std::future<return_type> fut = ptr_task->get_future();
-        job j = [ptr_task]() { (*ptr_task)(); };
-
-        int indx_worker = indx_most_free();
-        std::unique_lock<std::mutex> lock(workers_[indx_worker]->get_loc());
-        bool flag = workers_[indx_worker]->push_back(j);
-        if (flag) {
-            count_job_[indx_worker].fetch_add(1, std::memory_order_release);
-            lock.unlock();
-            workers_[indx_worker]->cv_.notify_one();
-            return fut;
-        }
-        lock.unlock();
-        return std::nullopt;
-    };
+   
     // send mostfree, for sure (while-loop as long as push ends successfully)
     template <typename F, typename... Args>
     auto send_task_mostfree(F&& f, Args&&... args) -> std::future<decltype(f(args...))> {
@@ -319,29 +297,6 @@ template <steal T> class threadpool {
         return fut;
     };
 
-    // send round using struct indxw
-    template <typename F, typename... Args>
-    auto send_task_round_weak(F&& f, Args&&... args) -> std::optional<std::future<decltype(f(args...))>> {
-        // wrap
-        using return_type = decltype(f(args...));
-        std::shared_ptr<std::packaged_task<return_type()>> ptr_task =
-          std::make_shared<std::packaged_task<return_type()>>(
-            [fun = f, ... args_catturati = args]() mutable { return fun(args_catturati...); });
-        std::future<return_type> fut = ptr_task->get_future();
-        job j = [ptr_task]() { (*ptr_task)(); };
-
-        std::unique_lock<std::mutex> lock(workers_[indxw_.indx_]->get_loc());
-        bool flag = workers_[indxw_.indx_]->push_back(j);
-        if (flag) {
-            count_job_[indxw_.indx_].fetch_add(1, std::memory_order_release);
-            lock.unlock();
-            indxw_.next(n_worker_);
-            workers_[indxw_.indx_]->cv_.notify_one();
-            return fut;
-        }
-        lock.unlock();
-        return std::nullopt;
-    };
 
     // send round using struct indxw, for sure (while-loop as long as push ends successfully)
     template <typename F, typename... Args>
