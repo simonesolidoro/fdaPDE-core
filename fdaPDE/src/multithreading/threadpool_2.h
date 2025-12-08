@@ -186,6 +186,16 @@ template <typename SchedulingStrategy = round_robin_scheduling,typename Stealing
     mutable std::shared_mutex m_map_;
     StealingStrategy steal_policy_;
     SchedulingStrategy schedule_policy_;
+
+    //helper function per workerloop. indx = index of the worker from whom the job j was taken
+    bool try_do_(std::optional<job> j, int indx) {
+        if (j) {
+            (j.value())();
+            count_job_[indx].fetch_sub(1, std::memory_order_release);
+            return true;
+        }
+        return false;
+    }
    public:
     friend class worker;
     // n = size_synchro_queue, k = number of workers
@@ -242,15 +252,6 @@ template <typename SchedulingStrategy = round_robin_scheduling,typename Stealing
         // return map_thread_worker_.at(std::this_thread::get_id());
     }
 
-    // indx = index of the worker from whom the job j was taken
-    bool try_do(std::optional<job> j, int indx) {
-        if (j) {
-            (j.value())();
-            count_job_[indx].fetch_sub(1, std::memory_order_release);
-            return true;
-        }
-        return false;
-    }
 
     void worker_loop(int i) {   // i = index of worker in workers_
 
@@ -265,17 +266,16 @@ template <typename SchedulingStrategy = round_robin_scheduling,typename Stealing
         map_thread_worker_[std::this_thread::get_id()] = i;
         loc_map.unlock();
 
-        bool done_own_job = true;
         int indx_steal = -1;   // index to steal from
         while (!workers_[i]->stop_) {
-            done_own_job = try_do(workers_[i]->pop_front(), i);
-            if (done_own_job) {
+
+            if (try_do_(workers_[i]->pop_front(), i)) {
                 continue;   // avoid lock mutex in the end
             }
             // try steal
             indx_steal = steal_policy_.pick(count_job_,n_worker_); 
             if (indx_steal != -1) {
-                try_do(workers_[indx_steal]->pop_back(), indx_steal);
+                try_do_(workers_[indx_steal]->pop_back(), indx_steal);
                 continue;
             }
             // chek for job whit mutex lock, eventualy go to sleep
