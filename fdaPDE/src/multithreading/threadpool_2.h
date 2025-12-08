@@ -234,7 +234,7 @@ template <typename SchedulingStrategy = round_robin_scheduling,typename Stealing
 
     // getter
     int n_worker() const { return n_worker_; };
-    int index_worker_from_thread() const {
+    int index_worker() const {
         std::shared_lock<std::shared_mutex> loc(
           m_map_);   // aggiunto lock perché non saprei che altro possa causare errore out of range in cluster
         return map_thread_worker_.at(std::this_thread::get_id());
@@ -358,7 +358,7 @@ template <typename SchedulingStrategy = round_robin_scheduling,typename Stealing
         ret_fut.reserve(vect_size);
         for (size_t j = 0; j < vect_size; j++) {
             ret_fut.emplace_back(this->send([&seq, j, fun = f, ... args = args, this]() mutable {
-                int index_worker = this->index_worker_from_thread();
+                int index_worker = this->index_worker();
                 for (int k = seq[j]; k < seq[j + 1]; k++) { fun(k, index_worker, args...); }
             }));
         }
@@ -419,7 +419,7 @@ template <typename SchedulingStrategy = round_robin_scheduling,typename Stealing
             stop_local += (granularity + it_add[j]);
             ret_fut.emplace_back(
               this->send([start = start, stop = stop_local, j, fun = f, ... args = args, this]() mutable {
-                  int index_worker = this->index_worker_from_thread();
+                  int index_worker = this->index_worker();
                   for (int k = start; k < stop; k++) {
                       fun(
                         k, index_worker,
@@ -440,14 +440,14 @@ template <typename SchedulingStrategy = round_robin_scheduling,typename Stealing
                this]() mutable {   // usato resto_spalmato perché magari c'è resto ma non viene spalmato eviene inserito
                                    // in ultimo job e quindi qui le iterazioni vanno da j*granularity+start a
                                    // (j+1)*granularity+start
-                  int index_worker = this->index_worker_from_thread();
+                  int index_worker = this->index_worker();
                   for (int k = start; k < stop; k++) { fun(k, index_worker, args...); }
               }));
             start = stop_local;
         }
         // last job (puo essere o gran_last o granularity normale) inviato separatamente per non dover fare if
         ret_fut.emplace_back(this->send([start, end, fun = f, ... args = args, this]() mutable {
-            int index_worker = this->index_worker_from_thread();
+            int index_worker = this->index_worker();
             for (int k = start; k < end; k++) { fun(k, index_worker, args...); }
         }));
 
@@ -520,7 +520,7 @@ template <typename SchedulingStrategy = round_robin_scheduling,typename Stealing
         for (int j = 0; j < it_add.size(); j++) {
             ret_fut.emplace_back(this->send(
               [granularity = granularity + it_add[j], it = start, fun = f, ... args = args, this]() mutable {
-                  int index_worker = this->index_worker_from_thread();
+                  int index_worker = this->index_worker();
                   for (int k = 0; k < granularity; k++) {
                       fun(it, index_worker, args...);
                       ++it;
@@ -539,7 +539,7 @@ template <typename SchedulingStrategy = round_robin_scheduling,typename Stealing
         for (int j = it_add.size(); j < n_job - 1; j++) {
             ret_fut.emplace_back(
               this->send([granularity, it = start, fun = f, ... args = args, this]() mutable {
-                  int index_worker = this->index_worker_from_thread();
+                  int index_worker = this->index_worker();
                   for (int k = 0; k < granularity; k++) {
                       fun(it, index_worker, args...);
                       ++it;
@@ -548,7 +548,7 @@ template <typename SchedulingStrategy = round_robin_scheduling,typename Stealing
             start += granularity;   // manda avanti start
         }
         ret_fut.emplace_back(this->send([start, end, fun = f, ... args = args, this]() mutable {
-            int index_worker = this->index_worker_from_thread();
+            int index_worker = this->index_worker();
             for (auto it = start; it != end; ++it) { fun(it, index_worker, args...); }
         }));
         for (std::future<void>& fut : ret_fut) { fut.get(); }
@@ -581,13 +581,13 @@ template <typename SchedulingStrategy = round_robin_scheduling,typename Stealing
         for (int j = 0; j < n_job - 1; j++) {
             ret_fut.emplace_back(
               this->send([start = its[j], stop = its[j + 1], fun = f, ... args = args, this]() mutable {
-                  int index_worker = this->index_worker_from_thread();
+                  int index_worker = this->index_worker();
                   for (auto it = start; it != stop; ++it) { fun(it, index_worker, args...); }
               }));
         }
         ret_fut.emplace_back(
           this->send([start = its[n_job - 1], end, fun = f, ... args = args, this]() mutable {
-              int index_worker = this->index_worker_from_thread();
+              int index_worker = this->index_worker();
               for (auto it = start; it != end; ++it) { fun(it, index_worker, args...); }
           }));
         for (std::future<void>& fut : ret_fut) { fut.get(); }
