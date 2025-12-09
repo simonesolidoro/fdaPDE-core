@@ -238,7 +238,8 @@ template <int N> class GridSearch {
         // vettore di (value,optimum) per ogni worker, alla fine ci saranno min,argmin trovati da ogni worker e poi reduce di questo vettore darà min argmin finali
         std::vector<AlignedPair> value_optimum_workers(Tp.n_workers()); //inizializzato con n_thread elementi vuoti cosi da non riallocare ed essere threadsafe
 
-        Tp.parallel_for(1,grid_.rows(),[&Tp, &grid_,&value_optimum_workers,&objective](int i,int index_w, vector_t& x_curr, double & obj_curr){ //tutto tramite ref per occupare meno memoria ma piu lento
+        long unsigned int start = 1;
+        Tp.parallel_for(start,grid_.rows(),[&Tp, &grid_,&value_optimum_workers,&objective](long unsigned int i,int index_w, vector_t& x_curr, double & obj_curr){ //tutto tramite ref per occupare meno memoria ma piu lento
             //int index_worker = Tp.get_index_worker_from_thread(); //problema è qui !!!!!!!!!!!!!!! perché chiama ad ogni iterazione il metodo che però è blocking quindi se aumento thread non scala (ora metto shared mutex e sistemo la scirttura in map e la lettura di map che avevo fatto veloce per test in cluster che faceva data race)
             grid_.row(i).assign_to(x_curr.transpose()); 
             obj_curr = objective(x_curr);
