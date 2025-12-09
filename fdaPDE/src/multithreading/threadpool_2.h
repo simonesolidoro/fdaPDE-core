@@ -59,12 +59,10 @@ struct random_stealing{
     int pick(std::deque<std::atomic<int>>& count_job, int n_worker)const{
         std::vector<int> indxs;   // vector of index of worker busy
         for (int k = 0; k < n_worker; k++) {
-            // oss: not avoid himself, to avoid extra if() or split range(worker k find in
-            // (0,...,k-1,k+1,...,n_worker-1))
             if (count_job[k].load(std::memory_order_acquire) > 0) { indxs.push_back(k); }
         }
         int size = indxs.size();
-        switch (size) {   // avoid random gen_eration if not need it
+        switch (size) {   // avoid random generation if not need it
         case 0:
             return -1;
         case 1:
@@ -87,7 +85,7 @@ struct top_half_random_stealing{
         return distrib(gen_);
     };
     int pick(std::deque<std::atomic<int>>& count_job, int n_worker)const{
-        std::vector<std::pair<int, int>> indxs;   // vector of pair: (index worker busy, number of job in queue)
+        std::vector<std::pair<int, int>> indxs;   // vector of pair: (index worker busy, number of job its queue)
         int tmp_count_job = 0;
         for (int k = 0; k < n_worker; k++) {
             tmp_count_job = count_job[k].load(std::memory_order_acquire);
@@ -152,7 +150,7 @@ template <typename SchedulingStrategy = round_robin_scheduling,typename Stealing
         worker(int n, void (threadpool::*worker_loop)(int), threadpool* Th, int idx) :
             indx_(idx), sync_queue_(n), t_(worker_loop, Th, idx) {};
 
-        // avoidable wraps, but use to make code clearer
+        //wraps
         std::unique_lock<std::mutex> get_lock() const {
             std::unique_lock<std::mutex> loc(m_);
             return loc;
@@ -163,7 +161,7 @@ template <typename SchedulingStrategy = round_robin_scheduling,typename Stealing
         void join() { t_.join(); }
         bool push_front(job& fun) {
             return sync_queue_.push_front(fun);
-        };   // reference in input because is only a wrap-function (intermediate step), than synchro_queue store a copy
+        };   //note: reference in input because is only a wrap-function (intermediate step), than synchro_queue store a copy
         bool push_back(job& fun) { return sync_queue_.push_back(fun); };
         std::optional<job> pop_front() { return sync_queue_.pop_front(); };
         std::optional<job> pop_back() { return sync_queue_.pop_back(); };
@@ -173,7 +171,7 @@ template <typename SchedulingStrategy = round_robin_scheduling,typename Stealing
     std::deque<std::atomic<int>> count_job_;         // deque because atomic<int> not movable
     int n_worker_;
     int queue_size_;
-    mutable std::shared_mutex m_threadpool_;   // mutable per tenere const get_indx_from_worker()
+    mutable std::shared_mutex m_threadpool_;   
     std::condition_variable_any cv_threadpool_;
     bool active_ = false;
     
@@ -183,7 +181,7 @@ template <typename SchedulingStrategy = round_robin_scheduling,typename Stealing
     StealingStrategy steal_policy_;
     SchedulingStrategy schedule_policy_;
 
-    //helper function per workerloop. indx = index of the worker from whom the job j was taken
+    //helper function uses in workerloop. indx = index of the worker from whom the job j was taken
     bool try_do_(std::optional<job> j, int indx) {
         if (j) {
             (j.value())();
@@ -232,7 +230,7 @@ template <typename SchedulingStrategy = round_robin_scheduling,typename Stealing
     int n_workers() const { return n_worker_; };
     int index_worker() const {
         std::shared_lock<std::shared_mutex> loc(
-          m_map_);   // aggiunto lock perché non saprei che altro possa causare errore out of range in cluster
+          m_map_);   // lock to avoid data race causes by write at the beginning of workerloop() 
         return map_thread_worker_.at(std::this_thread::get_id());
     }
 
@@ -578,6 +576,25 @@ template <typename SchedulingStrategy = round_robin_scheduling,typename Stealing
         return;
     }
 
+    //reduce. //TODO: aligned pair per evitare false-sharing
+    template<typename Iterator,typename Value_type>
+    Value_type reduce(Iterator start, Iterator begin, std::function<Value_type(Value_type,Value_type)> operation){
+        struct alignas(64) AlignedValue_type {
+            Value_type value;
+        };
+        std::vector<AlignedValue_type> worker_partial_result(n_workers_);//problema inizializzazione dipende da operation !!!!!!!!
+        this->parallel_for(start, end,
+          [&operation, &worker_partial_result](Iterator i, int index_worker) {
+              worker_partial_result[index_worker].value = operation(worker_partial_result[index_worker].value,*i); 
+          },
+          granularity);
+        // final reduce
+        Value_type ret = worker_partial_result[0].value;
+        for (int i = 1; i<n_workers_; i++){
+            ret = operation(ret,worker_partial_result[i].value);
+        }
+        return ret;
+    }
 };
 }   // namespace fdapde
 #endif
