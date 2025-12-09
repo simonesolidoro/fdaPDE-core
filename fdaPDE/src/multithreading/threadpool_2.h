@@ -300,7 +300,7 @@ template <typename SchedulingStrategy = round_robin_scheduling,typename Stealing
     };
 
 
-    // parallel_for //TODO: controllo start<end va aggiunto ?
+    
     // OVERLOAD:
     //  parallel_for(int,int,F&&) --> granularity = 1
     //  parallel_for(int,int,F&&,function<int(int)> incr) --> custom increment to scroll range, granularity = 1
@@ -308,176 +308,25 @@ template <typename SchedulingStrategy = round_robin_scheduling,typename Stealing
     //  defaul-granularity. default-granularity is s.t. every worker receives about 1 job
     //  parallel_for(int,int,F&&,vector<int>) --> divide range in vect.size() block, granularity of block j = vect[j]
 
-    // gran1. F = body_function, firm of F: void (int i)
-    template <typename F>
-        requires std::is_same_v<std::invoke_result_t<F, int>, void>
-    void parallel_for(int start, int end, F&& f) {
+
+
+
+    // F = body_function, firm of F: void (int/iterator i)
+    template <typename F, typename Index>
+        requires std::is_same_v<std::invoke_result_t<F, Index>, void>
+    void parallel_for(Index start, Index end, F&& f) {
         using return_type = void;
         std::vector<std::future<return_type>> ret_fut;
-        ret_fut.reserve(end - start);
-        for (int j = start; j < end; j++) { ret_fut.emplace_back(this->send(f, j)); }
+        if constexpr(std::is_integral_v<Index>) {ret_fut.reserve(end - start);}//evita dare errore se Index è iterator senza metod -
+        for (Index j = start; j != end; ++j) { ret_fut.emplace_back(this->send(f, j)); }
         for (std::future<void>& fut : ret_fut) { fut.get(); }
         return;
     }
 
-    // gran1. F = body_function, firm of F: void (iteartor i)
-    template <typename F, typename It>
-        requires std::is_same_v<std::invoke_result_t<F, It>, void> &&
-                 std::input_or_output_iterator<It>   
-        void parallel_for(It start, It end, F&& f) {
-        using return_type = void;
-        std::vector<std::future<return_type>> ret_fut;
-        for (It j = start; j != end; ++j) { ret_fut.emplace_back(this->send(f, j)); }
-        for (std::future<void>& fut : ret_fut) { fut.get(); }
-        return;
-    }
-
-// merge di gran1 int ed iteartor
-    //     // F = body_function, firm of F: void (int/iterator i)
-    // template <typename F, typename Index>
-    //     requires std::is_same_v<std::invoke_result_t<F, Index>, void>
-    // void parallel_for(Index start, Index end, F&& f) {
-    //     using return_type = void;
-    //     std::vector<std::future<return_type>> ret_fut;
-    //     if constexpr(std::is_integral_v<Index>) {ret_fut.reserve(end - start);}
-    //     for (Index j = start; j != end; ++j) { ret_fut.emplace_back(this->send(f, j)); }
-    //     for (std::future<void>& fut : ret_fut) { fut.get(); }
-    //     return;
-    // }
-
-    //gran1 incremento personalizzato.
-    template <typename F>
-        requires std::is_same_v<std::invoke_result_t<F, int>, void>
-    void parallel_for(int start, int end, F&& f, std::function<int(int)> incr) {
-        using return_type = void;
-        std::vector<std::future<return_type>> ret_fut;
-        ret_fut.reserve(end - start);
-        for (int j = start; j < end; j = incr(j)) { ret_fut.emplace_back(this->send(f, j)); }
-        for (std::future<void>& fut : ret_fut) { fut.get(); }
-        return;
-    }
-
-    //vettroe di granularity
-    template <typename F, typename... Args>
-        requires std::is_same_v<std::invoke_result_t<F, int, int, Args&...>, void>
-    void parallel_for(
-      int start, int end, F&& f, std::vector<int> granularities,
-      Args... args) {   // copia di vettore gran è più sicuro in multithreading
-        using return_type = void;
-        if (std::reduce(granularities.cbegin(), granularities.cend(), 0) != (end - start)) {
-            std::cerr << "somma di elem in granularities deve essere uguale a range (end-start)" << std::endl;
-            return;
-        }
-        std::vector<int> seq = {start};   // seq vettore di somme parziali (es np.cumsum)
-        int sum_seq = start;
-        size_t vect_size = granularities.size();
-        for (size_t l = 0; l < vect_size; l++) {
-            sum_seq += granularities[l];
-            seq.push_back(sum_seq);
-        }
-        std::vector<std::future<return_type>> ret_fut;
-        ret_fut.reserve(vect_size);
-        for (size_t j = 0; j < vect_size; j++) {
-            ret_fut.emplace_back(this->send([&seq, j, fun = f, ... args = args, this]() mutable {
-                int index_worker = this->index_worker();
-                for (int k = seq[j]; k < seq[j + 1]; k++) { fun(k, index_worker, args...); }
-            }));
-        }
-        for (std::future<void>& fut : ret_fut) { fut.get(); }
-        return;
-    }
-
-
-// gran input int
-    template <typename F, typename... Args>
-        requires std::is_same_v<
-          std::invoke_result_t<F, int, int, Args&...>,
-          void>   // F in input ha: int i (loop index), index worker,  reference a  Args (tmp ogetti copie per ogni
-                  // job), però Args non reference perché in lambda che viene inviata alla threadpool si deve copiare
-                  // oggetto non reference ad oggetto
-                  void parallel_for(
-                    int start, int end, F&& f, int granularity,
-                    Args... args) {   
-        using return_type = void;
-        int range = (end - start);
-        if (granularity > range) {
-            granularity = range;
-        }
-        int n_job = range / std::max(1, granularity);  
-        if (granularity <= 0) {   
-            if (range < n_worker_) {
-                granularity = 1;
-                n_job = range;
-            } else {
-                granularity = range / n_worker_;
-                n_job = n_worker_;
-            }
-        }
-        std::vector<int> it_add;   // vettore di iterazioni aggiuntive al primo job di ogni worker
-        int resto = range % granularity;
-        if (resto > 0) {
-            if ((n_job % n_worker_) != 0) {
-                n_job++;
-            } else {   // spalma perché fare un ultimo job con iterazioni di resto sbilancia
-                int iter_add = resto / n_worker_;
-                int resto_di_resto = resto % n_worker_;   // tutti i worker si prendono iter_add iterazioni extra e
-                                                          // quello che rimane dato +1 ai primi resto_di_resto worker
-                for (int w = 0; w < resto_di_resto; w++) { it_add.push_back(iter_add + 1); }
-                for (int w = resto_di_resto; w < n_worker_; w++) { it_add.push_back(iter_add); }
-            }
-        }
-        std::vector<std::future<return_type>> ret_fut;
-        ret_fut.reserve(n_job);
-        // se non ha spalmato allora it_add.size() == 0 e questo for lo salta
-        // primi job con eventuale itrazioni aggiuntive rispetto granularity
-        int stop_local = start;
-        for (int j = 0; j < it_add.size(); j++) {
-            stop_local += (granularity + it_add[j]);
-            ret_fut.emplace_back(
-              this->send([start = start, stop = stop_local, j, fun = f, ... args = args, this]() mutable {
-                  int index_worker = this->index_worker();
-                  for (int k = start; k < stop; k++) {
-                      fun(
-                        k, index_worker,
-                        args...);   // f deve prendere in input reference a variadic template altrimenti tutto inutile
-                  }
-              }));
-            start = stop_local;   // job successivo parte da fine di precedente
-        }
-        if (it_add.size() == n_job) {   // per evitare di arrivare a send di last job con gran_last.
-            // get futures
-            for (std::future<void>& fut : ret_fut) { fut.get(); }
-            return;
-        }
-        for (int j = it_add.size(); j < n_job - 1; j++) {
-            stop_local = granularity + start;
-            ret_fut.emplace_back(this->send(
-              [start, stop = stop_local, fun = f, ... args = args,
-               this]() mutable {   // usato resto_spalmato perché magari c'è resto ma non viene spalmato eviene inserito
-                                   // in ultimo job e quindi qui le iterazioni vanno da j*granularity+start a
-                                   // (j+1)*granularity+start
-                  int index_worker = this->index_worker();
-                  for (int k = start; k < stop; k++) { fun(k, index_worker, args...); }
-              }));
-            start = stop_local;
-        }
-        // last job (puo essere o gran_last o granularity normale) inviato separatamente per non dover fare if
-        ret_fut.emplace_back(this->send([start, end, fun = f, ... args = args, this]() mutable {
-            int index_worker = this->index_worker();
-            for (int k = start; k < end; k++) { fun(k, index_worker, args...); }
-        }));
-
-        // get futures
-        for (std::future<void>& fut : ret_fut) { fut.get(); }
-        return;
-    }
-
-// gran_input iterator "parallel_iterator"
-    template <typename F, typename It, typename... Args>
-        requires std::is_same_v<std::invoke_result_t<F, It, int, Args&...>, void> &&
-                 internals::parallel_iterator<
-                   It>// require non più random access ma solo +=,- (concept definito inizio file: parallel_iterator)   
-    void parallel_for(It start, It end, F&& f, int granularity, Args... args) {
+    template <typename F,typename Index, typename... Args>
+        requires std::is_same_v<std::invoke_result_t<F, Index, int, Args&...>, void> &&
+                 (std::is_integral_v<Index> || internals::parallel_iterator<Index>)
+    void parallel_for(Index start, Index end, F&& f, int granularity, Args... args) {
         using return_type = void;
         int range = (end - start);
         if (granularity > range) {
@@ -509,45 +358,77 @@ template <typename SchedulingStrategy = round_robin_scheduling,typename Stealing
         std::vector<std::future<return_type>> ret_fut;
         ret_fut.reserve(n_job);
 
+        Index stop_local = start;
         for (int j = 0; j < it_add.size(); j++) {
+            stop_local += (granularity + it_add[j]);
             ret_fut.emplace_back(this->send(
-              [granularity = granularity + it_add[j], it = start, fun = f, ... args = args, this]() mutable {
+              [start,stop = stop_local, fun = f, ... args = args, this]() mutable {
                   int index_worker = this->index_worker();
-                  for (int k = 0; k < granularity; k++) {
-                      fun(it, index_worker, args...);
-                      ++it;
+                  for (Index k = start; k != stop; ++k) {
+                      fun(k, index_worker, args...);
                   }
               }));
-            start += (granularity + it_add[j]);   // manda avanti start
+            start = stop_local;   // manda avanti start
         }
-        if (start == end) {   // per evitare di andare avanti. senza andrebbe avanti e salterebbe il secondo for ma poi
-                              // invierebbe un ultimo job vuoto (perché it = start = end subito) ma che aumenta
-                              // contatore di indx_worker per niente.
+        if (it_add.size() == n_job) {
             // get futures
             for (std::future<void>& fut : ret_fut) { fut.get(); }
             return;
         }
 
         for (int j = it_add.size(); j < n_job - 1; j++) {
-            ret_fut.emplace_back(
-              this->send([granularity, it = start, fun = f, ... args = args, this]() mutable {
+            stop_local = granularity + start;
+            ret_fut.emplace_back(this->send(
+                [start, stop = stop_local, fun = f, ... args = args, this]() mutable {
                   int index_worker = this->index_worker();
-                  for (int k = 0; k < granularity; k++) {
-                      fun(it, index_worker, args...);
-                      ++it;
+                  for (Index k = start; k != stop ; ++k) {
+                      fun(k, index_worker, args...);
                   }
               }));
-            start += granularity;   // manda avanti start
+            start = stop_local;   // manda avanti start
         }
         ret_fut.emplace_back(this->send([start, end, fun = f, ... args = args, this]() mutable {
             int index_worker = this->index_worker();
-            for (auto it = start; it != end; ++it) { fun(it, index_worker, args...); }
+            for (Index it = start; it != end; ++it) { fun(it, index_worker, args...); }
         }));
         for (std::future<void>& fut : ret_fut) { fut.get(); }
         return;
     }
 
 
+
+
+    //vettroe di granularity
+    template <typename F, typename... Args>
+        requires std::is_same_v<std::invoke_result_t<F, int, int, Args&...>, void>
+    void parallel_for(
+      int start, int end, F&& f, std::vector<int> granularities,
+      Args... args) {   // copia di vettore gran è più sicuro in multithreading
+        using return_type = void;
+        if (std::reduce(granularities.cbegin(), granularities.cend(), 0) != (end - start)) {
+            std::cerr << "somma di elem in granularities deve essere uguale a range (end-start)" << std::endl;
+            return;
+        }
+        std::vector<int> seq = {start};   // seq vettore di somme parziali (es np.cumsum)
+        int sum_seq = start;
+        size_t vect_size = granularities.size();
+        for (size_t l = 0; l < vect_size; l++) {
+            sum_seq += granularities[l];
+            seq.push_back(sum_seq);
+        }
+        std::vector<std::future<return_type>> ret_fut;
+        ret_fut.reserve(vect_size);
+        for (size_t j = 0; j < vect_size; j++) {
+            ret_fut.emplace_back(this->send([&seq, j, fun = f, ... args = args, this]() mutable {
+                int index_worker = this->index_worker();
+                for (int k = seq[j]; k < seq[j + 1]; k++) { fun(k, index_worker, args...); }
+            }));
+        }
+        for (std::future<void>& fut : ret_fut) { fut.get(); }
+        return;
+    }
+
+    //non parallel_iterator 
     template <typename F, typename It, typename... Args>
         requires std::is_same_v<std::invoke_result_t<F, It, int, Args&...>, void> && (!internals::parallel_iterator<It>)
     void parallel_for(It start, It end, F&& f, int granularity, Args... args) {
