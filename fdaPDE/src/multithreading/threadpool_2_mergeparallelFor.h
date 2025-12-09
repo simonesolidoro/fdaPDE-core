@@ -310,14 +310,14 @@ template <typename SchedulingStrategy = round_robin_scheduling,typename Stealing
     //  defaul-granularity. default-granularity is s.t. every worker receives about 1 job
     //  parallel_for(int,int,F&&,vector<int>) --> divide range in vect.size() block, granularity of block j = vect[j]
 
-    // F = body_function, firm of F: void (int i)
+    // F = body_function, firm of F: void (int/iterator i)
     template <typename F, typename Index>
         requires std::is_same_v<std::invoke_result_t<F, Index>, void>
     void parallel_for(Index start, Index end, F&& f) {
         using return_type = void;
         std::vector<std::future<return_type>> ret_fut;
         if constexpr(std::is_integral_v<Index>) {ret_fut.reserve(end - start);}
-        for (int j = start; j != end; j++) { ret_fut.emplace_back(this->send(f, j)); }
+        for (Index j = start; j != end; ++j) { ret_fut.emplace_back(this->send(f, j)); }
         for (std::future<void>& fut : ret_fut) { fut.get(); }
         return;
     }
