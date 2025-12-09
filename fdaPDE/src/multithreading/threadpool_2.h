@@ -576,28 +576,73 @@ template <typename SchedulingStrategy = round_robin_scheduling,typename Stealing
         return;
     }
 
-    //reduce. //TODO: aligned pair per evitare false-sharing
-    template<typename Iterator,typename F>
-    auto reduce(Iterator begin, Iterator end, F&& operation, int granularity = -1){
-        using Value_type = decltype(operation(*begin, *begin));
+    // //reduce
+    // template<typename Iterator,typename F> //F operazione binaria (sum,min,max,dot)
+    // auto reduce(Iterator begin, Iterator end, F&& operation, int granularity = -1){
+    //     using Value_type = decltype(operation(*begin, *begin));
+    //     struct alignas(64) AlignedValue_type {
+    //         Value_type value;
+    //     };
+    //     std::vector<AlignedValue_type> worker_partial_result(n_worker_);
+    //     //inizializzazione worker_partial_result[i].value con primi elementi di range
+    //     int range = end-begin;
+    //     int stop_inizialization = std::min(n_worker_,range);
+    //     for (int i = 0; i<stop_inizialization; ++i){
+    //         worker_partial_result[i].value = *begin;
+    //         ++begin;
+    //     }
+
+    //     //parallelizza range restante dopo inizializzazione (begin ora è uguale a begin_inziale+stop_inizialization)
+    //     this->parallel_for(begin, end,
+    //       [&operation, &worker_partial_result](Iterator i, int index_worker) {
+    //           worker_partial_result[index_worker].value = operation(worker_partial_result[index_worker].value,*i); 
+    //       },
+    //       granularity);
+    //     // final reduce
+    //     Value_type ret = worker_partial_result[0].value;
+    //     for (int i = 1; i<n_worker_; i++){
+    //         ret = operation(ret,worker_partial_result[i].value);
+    //     }
+    //     return ret;
+    // }
+
+        //reduce paralle wrap di std::reduce
+    template<typename Iterator,typename Value_type, typename F> //F operazione binaria (sum,min,max,dot)
+    Value_type reduce(Iterator begin, Iterator end, Value_type init, F&& operation){
+        
         struct alignas(64) AlignedValue_type {
+            AlignedValue_type(Value_type v):value(v){};
             Value_type value;
         };
-        std::vector<AlignedValue_type> worker_partial_result(n_worker_);
-        //inizializzazione worker_partial_result[i].value con primi elementi di range
-        int range = end-begin;
-        int stop_inizialization = std::min(n_worker_,range);
-        for (int i = 0; i<stop_inizialization; ++i){
-            worker_partial_result[i].value = *begin;
-            ++begin;
+        std::vector<AlignedValue_type> worker_partial_result(n_worker_,init);
+
+        int range = (end - begin);
+        int granularity = range / n_worker_;
+        int plusone = range % n_worker_;
+        
+        std::vector<std::future<void>> ret_fut;
+        ret_fut.reserve(n_worker_);
+
+        for(int i = 0; i<plusone; i++){
+            ret_fut.emplace_back(
+                this -> send([&worker_partial_result,init,operation,i, granularity = granularity+1](Iterator begin_local){
+                        Iterator end_local = begin_local + granularity;
+                        worker_partial_result[i].value = std::reduce(begin_local,end_local,init,operation);
+                    },begin)
+            );
+            begin += (granularity+1);    
+        }
+        for(int i = plusone; i<n_worker_; i++){
+            ret_fut.emplace_back(
+                this -> send([&worker_partial_result,init,operation,i, granularity ](Iterator begin_local){
+                        Iterator end_local = begin_local + granularity;
+                        worker_partial_result[i].value = std::reduce(begin_local,end_local,init,operation);
+                    },begin)
+            );
+            begin += granularity;    
         }
 
-        //parallelizza range restante dopo inizializzazione (begin ora è uguale a begin inziale+stop_inizialization)
-        this->parallel_for(begin, end,
-          [&operation, &worker_partial_result](Iterator i, int index_worker) {
-              worker_partial_result[index_worker].value = operation(worker_partial_result[index_worker].value,*i); 
-          },
-          granularity);
+        for (std::future<void>& fut : ret_fut) { fut.get(); }
         // final reduce
         Value_type ret = worker_partial_result[0].value;
         for (int i = 1; i<n_worker_; i++){
