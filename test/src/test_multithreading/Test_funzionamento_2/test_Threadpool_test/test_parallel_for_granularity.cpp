@@ -28,13 +28,7 @@ int main(int argc,char** argv)
     auto start3 = std::chrono::high_resolution_clock::now();
 
     tp.parallel_for(0,1000,[&](int i, int worker_index){a++;
-        //std::cout<<i<<" da thread: "<<std::this_thread::get_id()<<std::endl;
-        std::this_thread::sleep_for(std::chrono::milliseconds(1));
-        /*for (int j =0; j<10000; j++){
-            int b = 6;
-            b++;
-        }*/
-       
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));       
     },n_it);
     
     auto end3 = std::chrono::high_resolution_clock::now(); 

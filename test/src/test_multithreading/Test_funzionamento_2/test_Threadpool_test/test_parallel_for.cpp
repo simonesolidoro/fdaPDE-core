@@ -22,14 +22,14 @@ int main(int argc,char** argv)
     fdapde::threadpool<fdapde::round_robin_scheduling, fdapde::random_stealing> tp(2048,8);
     
 {// parallel_for  gran1 int
-    int end = 10000;
-    int start = 0;
+    int end = 1001;
+    int start = 10;
     std::vector<int> seq;
     for(size_t i = start; i<end; i++){
         seq.push_back(i);
     } 
     std::vector<int> par(end-start);
-    tp.parallel_for(start,end,[&](int i){
+    tp.parallel_for_merge(start,end,[&](int i){
         par[i-start] = i;
     });
 

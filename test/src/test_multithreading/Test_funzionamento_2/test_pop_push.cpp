@@ -19,13 +19,7 @@
  int main(){
 
 {//relaxed_owait
-    std::cout<<"---------------------------------test pop push con relaxed_nowait---------------------------------"<<std::endl;
-    std::vector<int> test = {1,2,3,4,5,6};
-
-    fdapde::synchro_queue<int,fdapde::relaxed> q1(test.begin(),test.end());
-
-    q1.print();
-
+    std::cout<<"---------------------------------test pop push con relaxed---------------------------------"<<std::endl;
     fdapde::synchro_queue<int,fdapde::relaxed> q(10);
 
     //push_front()
@@ -62,11 +56,6 @@
 
 {//deferred
     std::cout<<"---------------------------------test pop push con deferred---------------------------------"<<std::endl;
-    std::vector<int> test = {1,2,3,4,5,6};
-
-    fdapde::synchro_queue<int,fdapde::deferred> q1(test.begin(),test.end());
-
-    q1.print();
 
     fdapde::synchro_queue<int,fdapde::deferred> q(10);
 
@@ -97,14 +86,8 @@
     q.print();
 }
 
-{//relaxed_wait
+{
     std::cout<<"---------------------------------test pop push con blocking---------------------------------"<<std::endl;
-    std::vector<int> test = {1,2,3,4,5,6};
-
-    fdapde::synchro_queue<int,fdapde::blocking> q1(test.begin(),test.end());
-
-    q1.print();
-
     fdapde::synchro_queue<int,fdapde::blocking> q(10);
 
     //push_front()

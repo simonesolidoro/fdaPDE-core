@@ -28,23 +28,6 @@ int main(){
     int size_coda=30;
     fdapde::synchro_queue<int,fdapde::relaxed> q1(size_coda);
     
-/*
-    // push_back concorrente semplice
-    int a=3;
-    int b=2;
-    std::thread t1([&](){q1.push_back(a);});
-    std::thread t2([&](){q1.push_back(b);});
-    t1.join();
-    t2.join();
-    q1.print();
-
-    // pop_back concorrente semplice
-    std::thread t3([&q1](){q1.pop_back();});
-    std::thread t4([&q1](){q1.pop_back();});
-    t3.join();
-    t4.join();
-    q1.print();
-*/
     std::vector<int> v;
     for (int i=0; i<size_coda; i++){
         v.push_back(i+1);

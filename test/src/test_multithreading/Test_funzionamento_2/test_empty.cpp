@@ -21,7 +21,7 @@
  }
 
  int main(){
-{ std::cout<<"--------------------------------RELAXedrelaxed_NOWAIT--------------------------------"<<std::endl;
+{ std::cout<<"--------------------------------RELAXED--------------------------------"<<std::endl;
     fdapde::synchro_queue<int,fdapde::relaxed> q(10);
  
     std::vector<std::thread> pool;
