@@ -312,7 +312,7 @@ template <typename SchedulingStrategy = round_robin_scheduling,typename Stealing
     //  parallel_for(Iterator,Iterator,F&&,granularity) --> parallel_for con input granularity ma iterator non parallel_iterator
 
 
-    // F = body_function, firm of F: void (int/iterator i)
+    // gran1 int/iterator
     template <typename F, typename Index>
         requires std::is_same_v<std::invoke_result_t<F, Index>, void>
     void parallel_for(Index start, Index end, F&& f) {
@@ -324,17 +324,7 @@ template <typename SchedulingStrategy = round_robin_scheduling,typename Stealing
         return;
     }
 
-   template <typename F>
-        requires std::is_same_v<std::invoke_result_t<F, int>, void>
-    void parallel_for(int start, int end, F&& f, std::function<int(int)> incr) {
-        using return_type = void;
-        std::vector<std::future<return_type>> ret_fut;
-        ret_fut.reserve(end - start);
-        for (int j = start; j < end; j = incr(j)) { ret_fut.emplace_back(this->send(f, j)); }
-        for (std::future<void>& fut : ret_fut) { fut.get(); }
-        return;
-    }
-
+    //gran_input int/iterator_parallel
     template <typename F,typename Index, typename... Args>
         requires std::is_same_v<std::invoke_result_t<F, Index, int, Args&...>, void> && (std::is_integral_v<Index> || internals::parallel_iterator<Index>)
     void parallel_for(Index start, Index end, F&& f, int granularity, Args... args) {
@@ -407,8 +397,18 @@ template <typename SchedulingStrategy = round_robin_scheduling,typename Stealing
     }
 
 
-
-
+    //gran1 incrmento personalizzato
+   template <typename F>
+        requires std::is_same_v<std::invoke_result_t<F, int>, void>
+    void parallel_for(int start, int end, F&& f, std::function<int(int)> incr) {
+        using return_type = void;
+        std::vector<std::future<return_type>> ret_fut;
+        ret_fut.reserve(end - start);
+        for (int j = start; j < end; j = incr(j)) { ret_fut.emplace_back(this->send(f, j)); }
+        for (std::future<void>& fut : ret_fut) { fut.get(); }
+        return;
+    }
+    
     //vettroe di granularity
     template <typename F, typename... Args>
         requires std::is_same_v<std::invoke_result_t<F, int, int, Args&...>, void>
