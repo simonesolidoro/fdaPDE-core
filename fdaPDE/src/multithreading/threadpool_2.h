@@ -420,20 +420,19 @@ template <typename SchedulingStrategy = round_robin_scheduling,typename Stealing
             std::cerr << "somma di elem in granularities deve essere uguale a range (end-start)" << std::endl;
             return;
         }
-        std::vector<int> seq = {start};   // seq vettore di somme parziali (es np.cumsum)
-        int sum_seq = start;
+        
+        int stop_local = start;
         size_t vect_size = granularities.size();
-        for (size_t l = 0; l < vect_size; l++) {
-            sum_seq += granularities[l];
-            seq.push_back(sum_seq);
-        }
+        
         std::vector<std::future<return_type>> ret_fut;
         ret_fut.reserve(vect_size);
         for (size_t j = 0; j < vect_size; j++) {
-            ret_fut.emplace_back(this->send([&seq, j, fun = f, ... args = args, this]() mutable {
+            stop_local += granularities[j]; 
+            ret_fut.emplace_back(this->send([start,stop=stop_local, fun = f, ... args = args, this]() mutable {
                 int index_worker = this->index_worker();
-                for (int k = seq[j]; k < seq[j + 1]; k++) { fun(k, index_worker, args...); }
+                for (int k = start; k < stop; k++) { fun(k, index_worker, args...); }
             }));
+            start = stop_local;
         }
         for (std::future<void>& fut : ret_fut) { fut.get(); }
         return;
