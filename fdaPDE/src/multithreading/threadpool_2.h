@@ -324,9 +324,19 @@ template <typename SchedulingStrategy = round_robin_scheduling,typename Stealing
         return;
     }
 
+   template <typename F>
+        requires std::is_same_v<std::invoke_result_t<F, int>, void>
+    void parallel_for(int start, int end, F&& f, std::function<int(int)> incr) {
+        using return_type = void;
+        std::vector<std::future<return_type>> ret_fut;
+        ret_fut.reserve(end - start);
+        for (int j = start; j < end; j = incr(j)) { ret_fut.emplace_back(this->send(f, j)); }
+        for (std::future<void>& fut : ret_fut) { fut.get(); }
+        return;
+    }
+
     template <typename F,typename Index, typename... Args>
-        requires std::is_same_v<std::invoke_result_t<F, Index, int, Args&...>, void> &&
-                 (std::is_integral_v<Index> || internals::parallel_iterator<Index>)
+        requires std::is_same_v<std::invoke_result_t<F, Index, int, Args&...>, void> && (std::is_integral_v<Index> || internals::parallel_iterator<Index>)
     void parallel_for(Index start, Index end, F&& f, int granularity, Args... args) {
         using return_type = void;
         int range = (end - start);
