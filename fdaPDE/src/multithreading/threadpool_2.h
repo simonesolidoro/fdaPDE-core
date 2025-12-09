@@ -308,7 +308,7 @@ template <typename SchedulingStrategy = round_robin_scheduling,typename Stealing
     //  defaul-granularity. default-granularity is s.t. every worker receives about 1 job
     //  parallel_for(int,int,F&&,vector<int>) --> divide range in vect.size() block, granularity of block j = vect[j]
 
-    // F = body_function, firm of F: void (int i)
+    // gran1. F = body_function, firm of F: void (int i)
     template <typename F>
         requires std::is_same_v<std::invoke_result_t<F, int>, void>
     void parallel_for(int start, int end, F&& f) {
@@ -320,6 +320,32 @@ template <typename SchedulingStrategy = round_robin_scheduling,typename Stealing
         return;
     }
 
+    // gran1. F = body_function, firm of F: void (iteartor i)
+    template <typename F, typename It>
+        requires std::is_same_v<std::invoke_result_t<F, It>, void> &&
+                 std::input_or_output_iterator<It>   
+        void parallel_for(It start, It end, F&& f) {
+        using return_type = void;
+        std::vector<std::future<return_type>> ret_fut;
+        for (It j = start; j != end; ++j) { ret_fut.emplace_back(this->send(f, j)); }
+        for (std::future<void>& fut : ret_fut) { fut.get(); }
+        return;
+    }
+
+// merge di gran1 int ed iteartor
+    //     // F = body_function, firm of F: void (int/iterator i)
+    // template <typename F, typename Index>
+    //     requires std::is_same_v<std::invoke_result_t<F, Index>, void>
+    // void parallel_for(Index start, Index end, F&& f) {
+    //     using return_type = void;
+    //     std::vector<std::future<return_type>> ret_fut;
+    //     if constexpr(std::is_integral_v<Index>) {ret_fut.reserve(end - start);}
+    //     for (Index j = start; j != end; ++j) { ret_fut.emplace_back(this->send(f, j)); }
+    //     for (std::future<void>& fut : ret_fut) { fut.get(); }
+    //     return;
+    // }
+
+    //gran1 incremento personalizzato.
     template <typename F>
         requires std::is_same_v<std::invoke_result_t<F, int>, void>
     void parallel_for(int start, int end, F&& f, std::function<int(int)> incr) {
@@ -331,6 +357,7 @@ template <typename SchedulingStrategy = round_robin_scheduling,typename Stealing
         return;
     }
 
+    //vettroe di granularity
     template <typename F, typename... Args>
         requires std::is_same_v<std::invoke_result_t<F, int, int, Args&...>, void>
     void parallel_for(
@@ -360,6 +387,8 @@ template <typename SchedulingStrategy = round_robin_scheduling,typename Stealing
         return;
     }
 
+
+// gran input int
     template <typename F, typename... Args>
         requires std::is_same_v<
           std::invoke_result_t<F, int, int, Args&...>,
@@ -443,27 +472,7 @@ template <typename SchedulingStrategy = round_robin_scheduling,typename Stealing
         return;
     }
 
-    // PARALLEL_FOR_ITERATOR:
-    // body_function f = void(iterator)
-    // 1)void parallel_for_iterator(It start, It end, F&& f)                     per tutti i container, =1 default
-    // 2)void parallel_for_iterator(It start, It end, F&& f,int granularity)    per random acces container,  come input
-    // 3)void parallel_for_iterator(It start, It end, F&& f,int granularity)    per NON random acces container,  come
-    // input
-
-    // 1
-    template <typename F, typename It>
-        requires std::is_same_v<std::invoke_result_t<F, It>, void> &&
-                 std::input_or_output_iterator<It>   
-        void parallel_for(It start, It end, F&& f) {
-        using return_type = void;
-        std::vector<std::future<return_type>> ret_fut;
-        for (It j = start; j != end; ++j) { ret_fut.emplace_back(this->send(f, j)); }
-        for (std::future<void>& fut : ret_fut) { fut.get(); }
-        return;
-    }
-
-    
-    // 2 (it+n ok)
+// gran_input iterator "parallel_iterator"
     template <typename F, typename It, typename... Args>
         requires std::is_same_v<std::invoke_result_t<F, It, int, Args&...>, void> &&
                  internals::parallel_iterator<
@@ -538,8 +547,7 @@ template <typename SchedulingStrategy = round_robin_scheduling,typename Stealing
         return;
     }
 
-    // no default granularity. 
-    // //3 (it+n NONok)
+
     template <typename F, typename It, typename... Args>
         requires std::is_same_v<std::invoke_result_t<F, It, int, Args&...>, void> && (!internals::parallel_iterator<It>)
     void parallel_for(It start, It end, F&& f, int granularity, Args... args) {
