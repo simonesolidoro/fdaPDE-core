@@ -375,12 +375,9 @@ template <typename SchedulingStrategy = round_robin_scheduling,typename Stealing
         int range = (end - start);
         if (granularity > range) {
             granularity = range;
-        }   ////oss: se granularity > range allora tutto range fatto da unico worker, messo granularity=range per
-            ///evitare errori poi.
-        int n_job = range / std::max(1, granularity);   // se gran non valida (= 0) non da errore
-        // default gran se mandato valore non valido, non più solo -1. cosi evitiamo controllo se granularity valida
-        if (granularity <= 0) {   // 1 job per worker max (quindi resto spalmato), se range<n_worker allora n_job =
-                                  // range
+        }
+        int n_job = range / std::max(1, granularity);  
+        if (granularity <= 0) {   
             if (range < n_worker_) {
                 granularity = 1;
                 n_job = range;
@@ -474,17 +471,13 @@ template <typename SchedulingStrategy = round_robin_scheduling,typename Stealing
                  internals::parallel_iterator<
                    It>// require non più random access ma solo +=,- (concept definito inizio file: parallel_iterator)   
     void parallel_for(It start, It end, F&& f, int granularity, Args... args) {
-        // std::cout<<"usato random access"<<std::endl;
         using return_type = void;
         int range = (end - start);
         if (granularity > range) {
             granularity = range;
-        }   ////oss: se granularity > range allora tutto range fatto da unico worker, messo granularity=range per
-            ///evitare errori poi. 
-        int n_job = range / std::max(1, granularity);   // se gran non valida (= 0) non da errore
-        // default gran se mandato valore non valido, non più solo -1. cosi evitiamo controllo se granularity valida
-        if (granularity <= 0) {   // 1 job per worker max (quindi resto spalmato), se range<n_worker allora n_job =
-                                  // range
+        }    
+        int n_job = range / std::max(1, granularity);   
+        if (granularity <= 0) {
             if (range < n_worker_) {
                 granularity = 1;
                 n_job = range;
