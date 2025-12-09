@@ -40,13 +40,13 @@ template <typename value_type, typename access_model> class synchro_queue;
 template <typename value_type> class synchro_queue<value_type, relaxed> {
    public:
     // enumerator state of elem.
-    static constexpr int Empty = 1;   // true 1
+    static constexpr int Empty = 1;   
     static constexpr int Busy = 2;
-    static constexpr int Full = 0;   // false 0
-    // elem relax. //oss: public per poter usarlo in helper function che fa effettivo push/pop come input, alternativa
-    // rendere friend anche la helper function dei pop/push (come quelle di index) e mettere privata
+    static constexpr int Full = 0;   
+
+    // elem relaxed
     struct elem {
-        std::atomic<int> state_ = Empty;   // synchro_queue<value_type,relax>::Empty;
+        std::atomic<int> state_ = Empty;
         std::optional<value_type> v_;
     };
    private:
@@ -109,57 +109,61 @@ template <typename value_type> class synchro_queue<value_type, relaxed> {
         std::cout << std::endl;
     }
 
+    // Try to insert val in the position before the one pointed by head and decrement head
     bool push_front(value_type val) {
         std::unique_lock<std::mutex> loc(m_);
-        int new_head = (head_ == 0) ? (size_ - 1) : (head_ - 1);
-        if (queue_[new_head].state_.load(std::memory_order_acquire) != Empty) return false;
-        queue_[new_head].state_.store(Busy, std::memory_order_relaxed);
-        head_ = new_head;
+        int new_head = (head_ == 0) ? (size_ - 1) : (head_ - 1); // index where we want to insert val
+        if (queue_[new_head].state_.load(std::memory_order_acquire) != Empty) return false; // if element Full or Busy, abort
+        queue_[new_head].state_.store(Busy, std::memory_order_relaxed); // from Empty to Busy
+        head_ = new_head; // update head_
         loc.unlock();
-        // push
+        // actual push
         queue_[new_head].v_ = std::move(val);
-        queue_[new_head].state_.store(Full, std::memory_order_release);
+        queue_[new_head].state_.store(Full, std::memory_order_release); // from Busy to Full
         return true;
     }
 
+    // Try to remove value of element in the position pointed by head and increment head
     std::optional<value_type> pop_front() {
         std::unique_lock<std::mutex> loc(m_);
-        int h = head_;
-        if (queue_[h].state_.load(std::memory_order_acquire) != Full) return std::nullopt;
-        queue_[h].state_.store(Busy, std::memory_order_relaxed);
-        head_ = (head_ == size_ - 1) ? (0) : (head_ + 1);
+        int h = head_; // index where we want to pop
+        if (queue_[h].state_.load(std::memory_order_acquire) != Full) return std::nullopt; // if element Empty or Busy, abort
+        queue_[h].state_.store(Busy, std::memory_order_relaxed); // from Full to Busy
+        head_ = (head_ == size_ - 1) ? (0) : (head_ + 1); // update head_
         loc.unlock();
-        // pop
+        // actual pop
         value_type ret = std::move(queue_[h].v_.value());
         queue_[h].v_ = std::nullopt;
-        queue_[h].state_.store(Empty, std::memory_order_release);
+        queue_[h].state_.store(Empty, std::memory_order_release); // from Busy to Empty
         return ret;
     }
 
+    // Try to insert val in the position pointed by tail_ and increment tail_
     bool push_back(value_type val) {
         std::unique_lock<std::mutex> loc(m_);
-        int t = tail_;
-        if (queue_[t].state_.load(std::memory_order_acquire) != Empty) return false;
-        queue_[t].state_.store(Busy, std::memory_order_relaxed);
-        tail_ = (tail_ == size_ - 1) ? (0) : (tail_ + 1);   // tail_++
+        int t = tail_; // index where we want to push
+        if (queue_[t].state_.load(std::memory_order_acquire) != Empty) return false; // if element Full or Busy, abort
+        queue_[t].state_.store(Busy, std::memory_order_relaxed); // from Empty to Busy
+        tail_ = (tail_ == size_ - 1) ? (0) : (tail_ + 1); // update tail_
         loc.unlock();
-        // push
+        // actual push
         queue_[t].v_ = std::move(val);
-        queue_[t].state_.store(Full, std::memory_order_release);
+        queue_[t].state_.store(Full, std::memory_order_release); // from Busy to Full
         return true;
     }
 
+    // Try to remove value of element in the position before the one pointed by tail_
     std::optional<value_type> pop_back() {
         std::unique_lock<std::mutex> loc(m_);
-        int new_tail = (tail_ == 0) ? (size_ - 1) : (tail_ - 1);
-        if (queue_[new_tail].state_.load(std::memory_order_acquire) != Full) return std::nullopt;
-        queue_[new_tail].state_.store(Busy, std::memory_order_relaxed);
-        tail_ = new_tail;
+        int new_tail = (tail_ == 0) ? (size_ - 1) : (tail_ - 1); // index to pop
+        if (queue_[new_tail].state_.load(std::memory_order_acquire) != Full) return std::nullopt; // if element Empty or Busy, abort
+        queue_[new_tail].state_.store(Busy, std::memory_order_relaxed); // from Full to Busy
+        tail_ = new_tail; // update tail_
         loc.unlock();
-        // pop
+        // actual pop
         value_type ret = std::move(queue_[new_tail].v_.value());
         queue_[new_tail].v_ = std::nullopt;
-        queue_[new_tail].state_.store(Empty, std::memory_order_release);
+        queue_[new_tail].state_.store(Empty, std::memory_order_release); // from Busy to Empty
         return ret;
     }
 
