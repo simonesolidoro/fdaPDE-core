@@ -30,8 +30,7 @@ concept parallel_iterator = requires(It a, It b, int n) {
 }   // namespace internals
 
 
-struct max_load_stealing{
-    
+struct max_load_stealing{   
     int pick(std::deque<std::atomic<int>>& count_job, int n_worker)const{
         int worker_indx = 0;
         int max_elem = count_job[0].load(std::memory_order_acquire);   // numero elementi in primo worker
@@ -49,10 +48,9 @@ struct max_load_stealing{
 };
 
 struct random_stealing{
-    std::deque<std::atomic<int>>* count_job_;
     mutable std::mt19937 gen_;
     random_stealing():gen_(std::random_device {}()){};
-    void init(std::deque<std::atomic<int>>& count_job_threadpool) {count_job_ = &count_job_threadpool; }
+
     // return random int in  [0, size-1]
     int random_int(int size) const {
         std::uniform_int_distribution<> distrib(0, size - 1);
@@ -140,8 +138,6 @@ struct least_loaded_scheduling{
 
 template <typename SchedulingStrategy = round_robin_scheduling,typename StealingStrategy = random_stealing> class threadpool {
     using job = std::function<void()>;
-
-    
    public:
     class worker {
        private:
@@ -310,7 +306,7 @@ template <typename SchedulingStrategy = round_robin_scheduling,typename Stealing
     // OVERLOAD:
     //  parallel_for(int,int,F&&) --> granularity = 1
     //  parallel_for(int,int,F&&,function<int(int)> incr) --> custom increment to scroll range, granularity = 1
-    //  parallel_for(int,int,F&&,granularity) --> parallel_for whit granularity in input. if granularuty == -1 use
+    //  parallel_for(int,int,F&&,granularity) --> parallel_for whit granularity in input. if granularuty <= 0 use
     //  defaul-granularity. default-granularity is s.t. every worker receives about 1 job
     //  parallel_for(int,int,F&&,vector<int>) --> divide range in vect.size() block, granularity of block j = vect[j]
 
@@ -372,19 +368,15 @@ template <typename SchedulingStrategy = round_robin_scheduling,typename Stealing
           void>   // F in input ha: int i (loop index), index worker,  reference a  Args (tmp ogetti copie per ogni
                   // job), però Args non reference perché in lambda che viene inviata alla threadpool si deve copiare
                   // oggetto non reference ad oggetto
-                  // TODO: capire come forzare F a prende in input solo reference di Args, perché se body_function prede
-                  // in input copia ricrea tmp ad ogni iterazione e siamo punto e a capo. vogliamo un solo tmp per job e
-                  // body_function che prendere reference a copia tmp di job
                   void parallel_for(
                     int start, int end, F&& f, int granularity,
-                    Args... args) {   // non universal reference per Args perché ne voglio una copia per ogni job
+                    Args... args) {   
         using return_type = void;
-        // range: [start, end) --> end-start= dim range
         int range = (end - start);
         if (granularity > range) {
             granularity = range;
         }   ////oss: se granularity > range allora tutto range fatto da unico worker, messo granularity=range per
-            ///evitare errori poi. magari mettere un warning ???
+            ///evitare errori poi.
         int n_job = range / std::max(1, granularity);   // se gran non valida (= 0) non da errore
         // default gran se mandato valore non valido, non più solo -1. cosi evitiamo controllo se granularity valida
         if (granularity <= 0) {   // 1 job per worker max (quindi resto spalmato), se range<n_worker allora n_job =
@@ -488,7 +480,7 @@ template <typename SchedulingStrategy = round_robin_scheduling,typename Stealing
         if (granularity > range) {
             granularity = range;
         }   ////oss: se granularity > range allora tutto range fatto da unico worker, messo granularity=range per
-            ///evitare errori poi. magari mettere un warning ???
+            ///evitare errori poi. 
         int n_job = range / std::max(1, granularity);   // se gran non valida (= 0) non da errore
         // default gran se mandato valore non valido, non più solo -1. cosi evitiamo controllo se granularity valida
         if (granularity <= 0) {   // 1 job per worker max (quindi resto spalmato), se range<n_worker allora n_job =
@@ -561,7 +553,6 @@ template <typename SchedulingStrategy = round_robin_scheduling,typename Stealing
         requires std::is_same_v<std::invoke_result_t<F, It, int, Args&...>, void> && (!internals::parallel_iterator<It>)
     void parallel_for(It start, It end, F&& f, int granularity, Args... args) {
         using return_type = void;
-        std::cout << "usato parallel_for iterator NON random acc granularity" << std::endl;
         if (granularity <= 0) {
             std::cerr << "granularity must be positive";
             return;
@@ -594,216 +585,6 @@ template <typename SchedulingStrategy = round_robin_scheduling,typename Stealing
         return;
     }
 
-    // PARALLEL_FOR_REDUCE (versione simile a #pragma omp parallel for reduction)
-    // pair<minimo,argmin> parallel_for_reduce_min/max(int start, int end, F&& f,int granularity)   F =
-    // return_type(int), ogni body function ritorna un valore e in parallelo ogni worker calcola il minimo tra tutti i
-    // job che ha eseguito. poi sequenziale calcolo minimo tra minimi di worker
-
-    enum class reduceOp {
-        min,
-        max,
-        sum,
-        dot,
-    };
-    // min e max reduce
-    template <typename type, reduceOp op> struct alignas(64) AlignedPair { };
-
-    template <typename type> struct alignas(64) AlignedPair<type, reduceOp::min> {
-        double first = std::numeric_limits<type>::max();
-        int second = std::numeric_limits<int>::quiet_NaN();   // int perché int scorre range in parallel_for
-    };
-
-    template <typename type> struct alignas(64) AlignedPair<type, reduceOp::max> {
-        double first = std::numeric_limits<type>::min();
-        int second = std::numeric_limits<int>::quiet_NaN();
-    };
-
-    template <reduceOp op, typename F, typename... Args>
-        requires(!std::is_same_v<std::invoke_result_t<F, int, Args&...>, void>) &&
-                  (op == reduceOp::min || op == reduceOp::max)
-    auto parallel_for_reduce(int start, int end, F&& f, int granularity, Args... args)
-      -> std::pair<std::invoke_result_t<F, int, Args&...>, int> {
-        using return_type = std::invoke_result_t<F, int, Args&...>;
-        std::vector<AlignedPair<return_type, op>> pair_workers(n_worker_);
-        return_type m; // min o max
-        if constexpr (op == reduceOp::min) {
-            m = std::numeric_limits<return_type>::max();
-        } else {
-            m = std::numeric_limits<return_type>::min();
-        }
-        this->parallel_for(
-          start, end,
-          [fun = f, &pair_workers](int i, int index_worker, return_type& m_job, Args&... args) {
-              m_job = fun(i, args...);
-              if constexpr (op == reduceOp::min) {
-                  if (m_job < pair_workers[index_worker].first) {
-                      pair_workers[index_worker].first = m_job;
-                      pair_workers[index_worker].second = i;
-                  }
-              } else {
-                  if (m_job > pair_workers[index_worker].first) {
-                      pair_workers[index_worker].first = m_job;
-                      pair_workers[index_worker].second = i;
-                  }
-              }
-          },
-          granularity, m, args...);
-        // final reduce 
-        m = pair_workers[0].first;
-        int indx_best_in_pair_workers = 0;
-        for (size_t k = 1; k < n_worker_; k++) {
-            if constexpr (op == reduceOp::min) {
-                if (pair_workers[k].first < m) {
-                    indx_best_in_pair_workers = k;
-                    m = pair_workers[k].first;
-                }
-            } else {
-                if (pair_workers[k].first > m) {
-                    indx_best_in_pair_workers = k;
-                    m = pair_workers[k].first;
-                }
-            }
-        }
-        return std::pair<return_type, int>(
-          pair_workers[indx_best_in_pair_workers].first, pair_workers[indx_best_in_pair_workers].second);
-    }
-
-    // TODO: reduce sum e product
-    //  ogni body function f(int i) ridà un return_type, metodo restituisce somma di tutti con logica di reduce come in
-    //  parallel_for_reduce_min
-    template <typename F>
-        requires(!std::is_same_v<std::invoke_result_t<F, int>, void>)
-    auto parallel_for_reduce_sum(int start, int end, F&& f, int granularity)
-      -> std::invoke_result_t<F, int> {   // TODO cambiare granularity on
-        using return_type = std::invoke_result_t<F, int>;
-        int range = (end - start);
-        int n = range / granularity;   
-        if (granularity == -1) {
-            granularity = range / n_worker_;
-            if (granularity < 1) {   // less iteration than worker, so granularity = 1
-                granularity = 1;
-            }
-            n = range / granularity;
-        }
-        std::vector<std::future<void>> ret_fut;   // no optinal<future> perché se nullopt non pushato quindi solo future
-        ret_fut.reserve(n + 1);   // per evitare riallocameto memoria, +1 per eventuale ultimo job fatto da ultime
-                                  // (end-start)%granularity iterazioni
-
-        // min_curr,index_in_loop_associato di ogni worker (bodyFunction F(k)=value, ci salviamo min(value) e k=argmin
-        // F(j) )
-        std::vector<return_type> sum_workers(n_worker_);
-
-        int j = 0;
-        while (j < n) {
-            std::optional<std::future<void>> opt_fut = this->send(
-              [granularity, j, start, map_thread_worker_ = this->map_thread_worker_, fun = f, &sum_workers]() mutable {
-                  int stop = (j + 1) * granularity + start;
-                  int indx_worker_from_thread =
-                    map_thread_worker_[std::this_thread::get_id()];   // per chiarezza non serve fare variabile
-                  for (int k = j * granularity + start; k < stop; k++) {
-                      sum_workers[indx_worker_from_thread] += fun(k);
-                  }
-              });
-            if (opt_fut) {
-                // se send andato a buon push di fut in ret_fut e incrementa j
-                ret_fut.push_back(std::move(opt_fut.value()));   // move perche future non copiabili
-                j++;
-            }
-        }
-        if (range % granularity > 0) {   // inviamo ultimo job con iterazioni rimanenti
-            j = 0;
-            while (j < 1) {
-                std::optional<std::future<void>> opt_fut =
-                  this->send([granularity, n, start, end, j, map_thread_worker_ = this->map_thread_worker_,
-                                         fun = f, &sum_workers]() mutable {   // j gia catturata in & credo non serve
-                      int indx_worker_from_thread =
-                        map_thread_worker_[std::this_thread::get_id()];   // per chiarezza non serve fare variabile
-                      for (int k = n * granularity + start; k < end; k++) {
-                          sum_workers[indx_worker_from_thread] += fun(k);
-                      }
-                  });
-                if (opt_fut) {
-                    // se send andato a buon push di fut in ret_fut e incrementa j
-                    ret_fut.push_back(std::move(opt_fut.value()));   // move perche future non copiabili
-                    j++;
-                }
-            }
-        }
-        // get dei future void per assicurarsi che tutti i job siano stati eseguiti dopo uso parallel_for in main
-        for (std::future<void>& fut : ret_fut) { fut.get(); }
-        // reduce sum finale tra sum dei workers
-        return_type sum = sum_workers[0];
-        for (size_t k = 1; k < n_worker_; k++) { sum += sum_workers[k]; }
-        return sum;
-    }
-
-    template <typename F>
-        requires(!std::is_same_v<std::invoke_result_t<F, int>, void>)
-    auto parallel_for_reduce_dot(int start, int end, F&& f, int granularity)
-      -> std::invoke_result_t<F, int> {   // TODO cambiare granularity on
-        using return_type = std::invoke_result_t<F, int>;
-        // range va da start a end-1--> end-start= dimensione range
-        int range = (end - start);
-        int n = range / granularity;   // numero job con granularity iterazioni, se poi c'è resto le ultime iterazioni
-                                       // messe in ultimo job
-        if (granularity == -1) {
-            granularity = range / n_worker_;
-            if (granularity < 1) {   // less iteration than worker, so granularity = 1
-                granularity = 1;
-            }
-            n = range / granularity;
-        }
-        std::vector<std::future<void>> ret_fut;   // no optinal<future> perché se nullopt non pushato quindi solo future
-        ret_fut.reserve(n + 1);   // per evitare riallocameto memoria, +1 per eventuale ultimo job fatto da ultime
-                                  // (end-start)%granularity iterazioni
-
-        // min_curr,index_in_loop_associato di ogni worker (bodyFunction F(k)=value, ci salviamo min(value) e k=argmin
-        // F(j) )
-        std::vector<return_type> dot_workers(n_worker_, 1.0);   // inizializzato ad elemento nullo per moltiplicazione
-
-        int j = 0;
-        while (j < n) {
-            std::optional<std::future<void>> opt_fut = this->send(
-              [granularity, j, start, map_thread_worker_ = this->map_thread_worker_, fun = f, &dot_workers]() mutable {
-                  int stop = (j + 1) * granularity + start;
-                  int indx_worker_from_thread =
-                    map_thread_worker_[std::this_thread::get_id()];   // per chiarezza non serve fare variabile
-                  for (int k = j * granularity + start; k < stop; k++) {
-                      dot_workers[indx_worker_from_thread] *= fun(k);
-                  }
-              });
-            if (opt_fut) {
-                // se send andato a buon push di fut in ret_fut e incrementa j
-                ret_fut.push_back(std::move(opt_fut.value()));   // move perche future non copiabili
-                j++;
-            }
-        }
-        if (range % granularity > 0) {   // inviamo ultimo job con iterazioni rimanenti
-            j = 0;
-            while (j < 1) {
-                std::optional<std::future<void>> opt_fut =
-                  this->send([granularity, n, start, end, j, map_thread_worker_ = this->map_thread_worker_,
-                                         fun = f, &dot_workers]() mutable {   // j gia catturata in & credo non serve
-                      int indx_worker_from_thread =
-                        map_thread_worker_[std::this_thread::get_id()];   // per chiarezza non serve fare variabile
-                      for (int k = n * granularity + start; k < end; k++) {
-                          dot_workers[indx_worker_from_thread] *= fun(k);
-                      }
-                  });
-                if (opt_fut) {
-                    // se send andato a buon push di fut in ret_fut e incrementa j
-                    ret_fut.push_back(std::move(opt_fut.value()));   // move perche future non copiabili
-                    j++;
-                }
-            }
-        }
-        // get dei future void per assicurarsi che tutti i job siano stati eseguiti dopo uso parallel_for in main
-        for (std::future<void>& fut : ret_fut) { fut.get(); }
-        // reduce sum finale tra sum dei workers
-        return_type dot = dot_workers[0];
-        for (size_t k = 1; k < n_worker_; k++) { dot *= dot_workers[k]; }
-        return dot;
-    }
 };
 }   // namespace fdapde
 #endif
