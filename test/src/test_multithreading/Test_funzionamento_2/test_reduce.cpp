@@ -18,19 +18,52 @@
 
 int main(int argc,char** argv){
     int granularity = std::stoi(argv[1]);
+    int size_v = std::stoi(argv[2]);
     fdapde::threadpool tp(1024,8);
 
 {
 std::cout<<"================ reduce sum  ================"<<std::endl; 
-    std::vector<double> v (16000,2);
-    int sum = 0;
+    double a = 2;
+    std::vector<double> v (size_v,a);
+    double sum = 0;
     sum = tp.reduce(v.begin(),v.end(),[](double a, double b){
         return a+b;
     }, granularity); 
-    std::cout<< sum<<std::endl;
+    std::cout<<"atteso: "<<a*size_v<<" , ottenuto: "<< sum<<std::endl;
 }
- 
-
+{
+std::cout<<"================ reduce dot  ================"<<std::endl; 
+    std::vector<double> v (size_v,1);
+    double a = 13;
+    v[0]=a;
+    double dot = 0;
+    dot = tp.reduce(v.begin(),v.end(),[](double a, double b){
+        return a*b;
+    }, granularity); 
+    std::cout<<"atteso: "<<a<<" , ottenuto: "<< dot<<std::endl;
+}
+{
+std::cout<<"================ reduce min  ================"<<std::endl; 
+    double a = 1;
+    std::vector<double> v (size_v,a+1);
+    v[size_v/2]=a;
+    double min = 0;
+    min = tp.reduce(v.begin(),v.end(),[](double a, double b){
+        return (a<=b)? a : b;
+    }, granularity); 
+    std::cout<<"atteso: "<<a<<" , ottenuto: "<< min<<std::endl;
+}
+{
+std::cout<<"================ reduce max  ================"<<std::endl; 
+    double a = 3;
+    std::vector<double> v (size_v,a-1);
+    v[size_v/2]=a;
+    double max = 0;
+    max = tp.reduce(v.begin(),v.end(),[](double a, double b){
+        return (a>=b)? a : b;
+    }, granularity); 
+    std::cout<<"atteso: "<<a<<" , ottenuto: "<< max<<std::endl;
+}
 
 
     return 0; //
