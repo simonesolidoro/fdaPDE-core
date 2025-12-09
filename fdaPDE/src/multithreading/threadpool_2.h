@@ -302,13 +302,14 @@ template <typename SchedulingStrategy = round_robin_scheduling,typename Stealing
 
     
     // OVERLOAD:
-    //  parallel_for(int,int,F&&) --> granularity = 1
+    //  parallel_for(Index,Index,F&&) --> gran1: granularity = 1
+    //  parallel_for(Index,Index,F&&,granularity) --> gran_input: parallel_for whit granularity in input. if granularuty <= 0 use defaul-granularity. default-granularity is s.t. every worker receives about 1 job
+
     //  parallel_for(int,int,F&&,function<int(int)> incr) --> custom increment to scroll range, granularity = 1
-    //  parallel_for(int,int,F&&,granularity) --> parallel_for whit granularity in input. if granularuty <= 0 use
-    //  defaul-granularity. default-granularity is s.t. every worker receives about 1 job
+
     //  parallel_for(int,int,F&&,vector<int>) --> divide range in vect.size() block, granularity of block j = vect[j]
 
-
+    //  parallel_for(Iterator,Iterator,F&&,granularity) --> parallel_for con input granularity ma iterator non parallel_iterator
 
 
     // F = body_function, firm of F: void (int/iterator i)
