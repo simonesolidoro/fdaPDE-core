@@ -101,11 +101,11 @@ class fe_bilinear_form_assembly_loop :
         Eigen::SparseMatrix<double> assembled_mat(test_dof_handler()->n_dofs(), trial_dof_handler()->n_dofs());
         std::vector<Eigen::Triplet<double>> triplet_list;
 
-        //riserva spazio per evitare riallocamento vettore
-        int n_cell = this->Base::dof_handler_->triangulation()->n_cells();
-        int triple_per_cella = n_trial_basis * n_test_basis; //9 qui;
-        int tot_triple = n_cell * triple_per_cella;
-        triplet_list.reserve(tot_triple);
+        // // reserve space to avoid reallocation
+        // int n_cell = this->Base::dof_handler_->triangulation()->n_cells();
+        // int triple_per_cella = n_trial_basis * n_test_basis; //9 qui;
+        // int tot_triple = n_cell * triple_per_cella;
+        // triplet_list.reserve(tot_triple);
 
 	assemble(triplet_list);
 
@@ -220,14 +220,13 @@ class fe_bilinear_form_assembly_loop :
         return;
     }
 
-//assemble parallelo con unico vettore di triple preallocato
-//assemble()
-template<typename Threadpool>
+// Parallel assembly into a single preallocated shared vector of triples, so that each worker can write concurrently in a thread-safe manner without synchronization
+template<typename Threadpool>// Template to allow receiving a threadpool with any scheduling and stealing policy as a parameter
 Eigen::SparseMatrix<double> assemble(execution::execution_parallel, Threadpool& Tp, int granularity = -1) const {
         Eigen::SparseMatrix<double> assembled_mat(test_dof_handler()->n_dofs(), trial_dof_handler()->n_dofs());
         
         int n_cell = this->Base::dof_handler_->triangulation()->n_cells();
-        int triple_per_cella = n_trial_basis * n_test_basis; //9 qui;
+        int triple_per_cella = n_trial_basis * n_test_basis; 
         int tot_triple = n_cell * triple_per_cella;
         std::vector<Eigen::Triplet<double>> triplet_list(tot_triple);
 
@@ -240,13 +239,12 @@ Eigen::SparseMatrix<double> assemble(execution::execution_parallel, Threadpool& 
         return assembled_mat;
     }
 
-    //overload che crea threadpool al posto di averla in input
+    // Overload that creates a thread pool instead of receiving one as input
     Eigen::SparseMatrix<double> assemble(execution::execution_parallel,int n_thread = std::thread::hardware_concurrency(),int size_queue = 1024, int granularity = -1) const { //int kk per il momento in input per fare test piu comodamente. OSS: per ora visto che kk=1 fino a kk=10 non c'è differenza. se troppo alto invece peggioramento evidente (es kk=100)
         fdapde::threadpool Tp(size_queue,n_thread);//default steal and schedule
         return assemble(execution::par,Tp,granularity);
     }
     
- //assemble(...) parallelo   
     template<typename Threadpool>
     void assemble(std::vector<Eigen::Triplet<double>>& triplet_list, Threadpool &Tp, int granularity) const {
         using iterator = typename Base::fe_traits::dof_iterator;
@@ -280,22 +278,22 @@ Eigen::SparseMatrix<double> assemble(execution::execution_parallel, Threadpool& 
             std::fill_n(fe_packet.trial_hess.data(), fe_packet.trial_hess.size(), 0.0);
         }
 
-        //paralleliziamo con parallel_for con defaul granularity = 1 e creiamo da qui i mini_for (cosi ogni iterazione è minifor e quindi anche se un job= 1 iterazione ogni ojob sara un minifor)
+        // Manual division of the range into jobs and use parallel_for with granularity = 1
         int num_worker = Tp.n_workers();
-        //numero celle
+        //number of cells (number of total iterations in for-loop)
         int count = this->Base::dof_handler_->triangulation()->n_cells();
-        //se defaul (input -1) allora messa granularity s.t. 1 job per worker (+1 job di resto ma con iterazioni < min(n_threads,granularity) quindi trascurabile)
+        // If input granularity < 0, use the default granularity so that each worker receives approximately one job
         if(granularity == -1){
             granularity = (count/num_worker > 0) ? count/num_worker : 1;
         }
         int granularity_last_job = count % granularity;
         int n_job = (granularity_last_job == 0) ? count/granularity : count/granularity +1 ;
         
-        Tp.parallel_for(0,n_job,[=,this,&Tp,&triplet_list](int ii)mutable{ //passare tutto come copia o reference ? ogni iterazione deve avere suo fe_packet ecc quindi copia. 
-            int local_cell_id = ii*granularity; 
-            iterator it = begin; //non serve copiare begin perché tanto è gia copia di begin esterno dentro lambda, poi sostituire a tutti it begin(solo per formalità non cambia niente ovviamente)
-            it += (ii*granularity);
-            //se ultimo job iterazioni sono resto 
+        Tp.parallel_for(0,n_job,[=,this,&Tp,&triplet_list](int ii)mutable{ 
+            int local_cell_id = ii*granularity; //compute id of the first cell in the job
+            iterator it = begin;
+            it += (ii*granularity); // compute iterator of the first cell in the job
+            // The last job may have granularity_last_job iterations instead of granularity iterations 
             int granularity_job = (granularity_last_job != 0 && ii == n_job-1)? granularity_last_job : granularity; 
             int triple_per_cella = n_trial_basis * n_test_basis; 
             
@@ -361,7 +359,7 @@ Eigen::SparseMatrix<double> assemble(execution::execution_parallel, Threadpool& 
                             }
                             value += Quadrature::weights[q_k] * form_(fe_packet);
                         }
-                        //threadsafe perché ogni worker scrive su suo [index_worker] e vettore esterno non si rialloca
+                        // thread-safe upload of triplet in triplet_list
                         Eigen::Triplet<double> tripla(test_active_dofs[j], is_galerkin ? test_active_dofs[i] : trial_active_dofs[i],value * fe_packet.measure);
                         triplet_list[index_global_triplet_list] = std::move(tripla);
                         index_global_triplet_list ++;
