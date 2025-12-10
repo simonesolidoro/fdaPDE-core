@@ -97,7 +97,7 @@ template <int N> class GridSearch {
     }
     
 
-// parallel_for e divisione in job fatta a mano. (gran1)
+// Parallel optimize overload: each worker of the threadpool searches in a fraction of the grid, then a final sequential reduction is performed on the workers' optimal results
     template <typename ObjectiveT, typename GridT, typename Threadpool>
         requires((internals::is_vector_like_v<GridT> || internals::is_matrix_like_v<GridT>))
     vector_t optimize(ObjectiveT&& objective, const GridT& grid, execution::execution_parallel,Threadpool& Tp, int granularity = -1) { // per ora int job_per_worker in input perche piu comodo fare i test poi sostituire valore scelto
@@ -125,37 +125,38 @@ template <int N> class GridSearch {
             grid_ = grid_t(grid.data(), grid.rows(), size_);
         }
         
-        // per evitare false sharing e rendere piu veloce (il mio computer ha 64 byte in cacheline credo tutti ormai, nel caso da verificare su linux con $ cat /sys/devices/system/cpu/cpu0/cache/index0/coherency_line_size  )
+        // to avoid false-sharing
         struct alignas(64) AlignedPair {
             double first = std::numeric_limits<double>::max();// inizializzato a massimo erch ein problema cerchiamo minimo
             vector_t second;
         };
         int n_threads = Tp.n_workers();
-        // vettore di (value,optimum) per ogni worker, alla fine ci saranno min,argmin trovati da ogni worker e poi reduce di questo vettore darà min argmin finali
-        std::vector<AlignedPair> value_optimum_workers(n_threads); //inizializzato con n_thread elementi vuoti cosi da non riallocare ed essere threadsafe
+        // Vector of (value, optimum) for each worker. At the end, it contains the min/argmin found by each worker, and reducing this vector yields the final min/argmin.
+        // Initialized with n_threads empty elements to avoid reallocations and ensure thread safety
+        std::vector<AlignedPair> value_optimum_workers(n_threads); 
         
-        //se defaul (input -1) allora messa granularity s.t. 1 job per worker (+1 job di resto ma con iterazioni <n_threads quindi trascurabile)
+        // If default (input = -1), set granularity so that each worker receives 1 job (+1 extra job for the remainder, but with fewer than n_threads iterations, so negligible)
         if(granularity == -1){
             granularity = (grid_.rows()/n_threads > 0) ? grid_.rows()/n_threads : 1;
         }
         int granularity_last_job = grid_.rows()% granularity;
         int n_job = (granularity_last_job == 0) ? grid_.rows()/granularity : grid_.rows()/granularity +1 ;
         
-        Tp.parallel_for(0,n_job, [&, this](int i){ //tutto tramite ref per occupare meno memoria ma piu lento
-            int index_worker = Tp.index_worker(); //index di worker che esegue il job
+        Tp.parallel_for(0,n_job, [&, this](int i){ 
+            int index_worker = Tp.index_worker(); // ID of the worker that executes the job
             vector_t x_curr;
             double obj_curr =std::numeric_limits<double>::max();
             vector_t x;
             double obj = std::numeric_limits<double>::max();
-            int start = i*granularity;
+            int start = i*granularity; //compute local start 
             int end = 0;
-            //se ultimo job ha granularity diverso allora verifico se è ultimo job (i==n_job-1) e nel caso metto granularity = gran_last_job
+            // last job could have granularity = granularity_last_job
             if(granularity_last_job != 0){
                 end = (i != (n_job-1))? (i+1)*granularity : start+granularity_last_job;
             }else{
                 end = (i+1)*granularity;
             }
-
+            // search in sub-grid
             for(int j = start; j<end; j++){
                 grid_.row(j).assign_to(x_curr.transpose()); 
                 obj_curr = objective(x_curr);
@@ -165,15 +166,14 @@ template <int N> class GridSearch {
                     x = x_curr;
                 }
             }
-            // eventuale insert worker's optimum in Aligned vector a fine job. accesso a vettore commune solo una volta per job quindi meno senso fare alignedvector, lo lasciamo comunqeu ? (per me si tanto pochi worker spazio in piu occupato da vettore allineato rispetto a vettore normale non è tanto)
+            // Optionally insert the worker's optimum into the Aligned vector at the end of the job
             if(obj < value_optimum_workers[index_worker].first){
                 value_optimum_workers[index_worker].first = obj;
                 value_optimum_workers[index_worker].second = x;
             }
-            //OSS: in realta anche diretamente value_optimum_workers al posto di obj e x, scrivere in vettore comune è peggio che in variabili in stack però da test visto che cambia poco, l'importante è evitare false-sharing. (lascia così che è più bruttino ma più efficiente il commento è solo per ricordo)
         });
 
-        // reduce di value_optimum_workers[], minimo in value_ argmin in optimum_
+        // reduce of value_optimum_workers[], min in value_ argmin in optimum_
         value_ = value_optimum_workers[0].first;
         optimum_ = value_optimum_workers[0].second;
         for (int i = 1; i<n_threads; i++){
@@ -186,13 +186,11 @@ template <int N> class GridSearch {
         return optimum_;
     }
 
+    // overload that create threadpool
     template <typename ObjectiveT, typename GridT>
     requires((internals::is_vector_like_v<GridT> || internals::is_matrix_like_v<GridT>))
     vector_t optimize(ObjectiveT&& objective, const GridT& grid, execution::execution_parallel,int n_threads = std::thread::hardware_concurrency(), int granularity = -1) { // per ora int job_per_worker in input perche piu comodo fare i test poi sostituire valore scelto
-
-        //creazione threadpool
-        fdapde::threadpool<fdapde::round_robin_scheduling, fdapde::max_load_stealing> Tp(1024, n_threads); //n_worker = hardwer_thread di defaul, size queue 1024 hardcoded tanto visto job per worker da 1 a 10
-
+        fdapde::threadpool Tp(1024, n_threads); 
         return optimize(std::forward<ObjectiveT>(objective),grid,execution::par,Tp,granularity);
     }
 

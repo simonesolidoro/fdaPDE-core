@@ -116,7 +116,7 @@ template <typename IteratorType, typename ValueType> class index_iterator {
 
     /*errore in uso di derived().operator()(index_): ../../../../fdaPDE/src/geometry/utility.h:108:48: error: 'fdapde::internals::fe_dof_handler_base<LocalDim, EmbedDim, Derived>::cell_iterator& fdapde::internals::fe_dof_handler_base<LocalDim, EmbedDim, Derived>::cell_iterator::operator()(int) [with int LocalDim = 2; int EmbedDim = 2; Derived = fdapde::DofHandler<2, 2, fdapde::finite_element_tag>]' is private within this context
   108 |         if (index_ < end_) derived().operator()(index_);
-  momemntanea amicizia tra index_iterator e cell_iterator in dof_handler.h riga 80
+  momemntanea amicizia tra index_iterator e cell_iterator in finite_elements/dof_handler.h riga 80
   */
     //aggiunti per random access completo (ancora comunque non soddisfa std::random_access<>)
     friend int 
