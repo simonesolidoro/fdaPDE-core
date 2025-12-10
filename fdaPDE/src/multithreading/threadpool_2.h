@@ -147,19 +147,19 @@ struct least_loaded_scheduling{
 template <typename SchedulingStrategy = round_robin_scheduling,typename StealingStrategy = random_stealing> class threadpool {
     using job = std::function<void()>;
    public:
+    // worker in threadpool. wrap a synchro_queue and a std::thread
     class worker {
        private:
-        int indx_;
+        int indx_; // Index of the worker in the threadpool's vector of workers. Uniquely identifies the worker within the threadpool.
         fdapde::synchro_queue<job, fdapde::relaxed> sync_queue_;
         std::thread t_;
-        bool stop_ = false;
-        mutable std::mutex m_;
-        mutable std::condition_variable cv_;
+        bool stop_ = false; // Set to true when the worker should stop working (finish workerLoop()).
+        mutable std::mutex m_; //worker's mutex
+        mutable std::condition_variable cv_; // Condition variable to suspend the thread when there are no jobs to execute, avoiding wasted CPU resources.
        public:
         friend class threadpool;
         worker(int n, void (threadpool::*worker_loop)(int), threadpool* Th, int idx) :
-            indx_(idx), sync_queue_(n), t_(worker_loop, Th, idx) {};
-
+            indx_(idx), sync_queue_(n), t_(worker_loop, Th, idx) {}; // Starts the std::thread t_ with the member function workerLoop() of the threadpool.
         //wraps
         std::unique_lock<std::mutex> get_lock() const {
             std::unique_lock<std::mutex> loc(m_);
@@ -181,17 +181,16 @@ template <typename SchedulingStrategy = round_robin_scheduling,typename Stealing
     std::deque<std::atomic<int>> count_job_;         // deque because atomic<int> not movable
     int n_worker_;
     int queue_size_;
-    mutable std::shared_mutex m_threadpool_;   
-    std::condition_variable_any cv_threadpool_;
-    bool active_ = false;
-    
+    mutable std::shared_mutex m_threadpool_; // Thread pool's mutex. Shared because only the threadpool writes to active_, and workers read it before starting the main while-loop in workerLoop().
+    std::condition_variable_any cv_threadpool_;// Condition variable used to ensure that all workers have been initialized before starting workerLoop().
+    bool active_ = false; // Set to true after the threadpool has initialized all workers.
     std::unordered_map<std::thread::id, int>
       map_thread_worker_;   // map of : thread_ID of worker's thread, index of worker in workers_
-    mutable std::shared_mutex m_map_;
+    mutable std::shared_mutex m_map_; // Mutex to protect access to map_thread_worker_. Shared because each worker writes only once during registration at the beginning of workerLoop(), and is only read afterwards during task execution.
     StealingStrategy steal_policy_;
     SchedulingStrategy schedule_policy_;
 
-    //helper function uses in workerloop. indx = index of the worker from whom the job j was taken
+    // Helper function used in workerLoop(). indx = index of the worker from whom the job j was taken. Returns true if the job was executed, false if j is std::nullopt.
     bool try_do_(std::optional<job> j, int indx) {
         if (j) {
             (j.value())();
@@ -202,18 +201,19 @@ template <typename SchedulingStrategy = round_robin_scheduling,typename Stealing
     }
    public:
     friend class worker;
-    // n = size_synchro_queue, k = number of workers
+    // n = size of synchro_queue, k = number of workers
     threadpool(int size_queue, int n_worker) :
         n_worker_(n_worker), queue_size_(size_queue) {
         std::unique_lock<std::shared_mutex> loc(m_threadpool_);
         workers_.reserve(n_worker);
+        // Initializes workers_ and count_job_.
         for (int i = 0; i < n_worker; i++) {
             workers_.emplace_back(std::make_shared<worker>(size_queue, &threadpool::worker_loop, this, i));
             count_job_.emplace_back(0);
         }
         active_ = true;
         loc.unlock();
-        cv_threadpool_.notify_all();
+        cv_threadpool_.notify_all(); //notify waiting workers
     };
 
     // constructor default number of worker
@@ -223,7 +223,9 @@ template <typename SchedulingStrategy = round_robin_scheduling,typename Stealing
     threadpool() : threadpool(256) { }
 
     ~threadpool() {
-        while (n_jobs() > 0) { std::this_thread::yield(); };
+        // Non-blocking but unreliable waiting
+        while (n_jobs() > 0) { std::this_thread::yield(); }
+        // Blocking but reliable waiting
         for (int i = 0; i < n_worker_; i++) {
             while (!workers_[i]->sync_queue_.empty()) { }
         }
@@ -238,37 +240,34 @@ template <typename SchedulingStrategy = round_robin_scheduling,typename Stealing
 
     // getter
     int n_workers() const { return n_worker_; };
+    // Returns the index of the worker in workers_ that executed it.
     int index_worker() const {
         std::shared_lock<std::shared_mutex> loc(
-          m_map_);   // lock to avoid data race causes by write at the beginning of workerloop() 
+          m_map_);   // lock to avoid data_race causes by write at the beginning of workerloop() 
         return map_thread_worker_.at(std::this_thread::get_id());
     }
 
-
     void worker_loop(int i) {   // i = index of worker in workers_
-
+        // Wait until all workers have been initialized.
         std::shared_lock<std::shared_mutex> lock_shared(m_threadpool_);
         cv_threadpool_.wait(lock_shared, [this]() { return active_; });
         lock_shared.unlock();
 
-        // upload map_thread_worker thread-safe. //shared mutex in modalità scrittura, così in metodo che deve solo
-        // leggere usato in modalità lettura tra tutti i worker che quindi una volta superata questa fase di
-        // inizializzazione della mappa hanno comportamento non-blocking (ovviamente intendo solo per lettura mappa )
+        // Worker registers itself in map_thread_worker in a thread-safe manner. 
         std::unique_lock<std::shared_mutex> loc_map(m_map_);
         map_thread_worker_[std::this_thread::get_id()] = i;
         loc_map.unlock();
 
         int indx_steal = -1;   // index to steal from
         while (!workers_[i]->stop_) {
-
             if (try_do_(workers_[i]->pop_front(), i)) {
-                continue;   // avoid lock mutex in the end
+                continue;   // Non-blocking behavior when a job is found in its queue.
             }
             // try steal
             indx_steal = steal_policy_.pick(count_job_,n_worker_); 
             if (indx_steal != -1) {
                 try_do_(workers_[indx_steal]->pop_back(), indx_steal);
-                continue;
+                continue; // Non-blocking behavior when a job is found in other queue.
             }
             // chek for job whit mutex lock, eventualy go to sleep
             std::unique_lock<std::mutex> loc(workers_[i]->m_);
@@ -277,7 +276,7 @@ template <typename SchedulingStrategy = round_robin_scheduling,typename Stealing
                        workers_[i]->stop_;
             });
             loc.unlock();
-            if (workers_[i]->stop_) { return; }
+            if (workers_[i]->stop_) { return; } 
         }
     };
 
