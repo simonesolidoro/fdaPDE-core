@@ -279,6 +279,7 @@ template <typename SchedulingStrategy = round_robin_scheduling,typename Stealing
         }
     };
 
+    // return count of all jobs in threadpool
     int n_jobs() const {
         int somma = 0;
         for (int i = 0; i < n_worker_; i++) somma += count_job_[i].load(std::memory_order_acquire);
@@ -286,7 +287,7 @@ template <typename SchedulingStrategy = round_robin_scheduling,typename Stealing
     }
 
    
-    // send 
+    // Wraps a generic function in a job and submits it to the thread pool. Returns a future associated with the return value of the function. 
     template <typename F, typename... Args>
     auto send(F&& f, Args&&... args) -> std::future<decltype(f(args...))> {
         // wrap
@@ -297,69 +298,65 @@ template <typename SchedulingStrategy = round_robin_scheduling,typename Stealing
         std::future<return_type> fut = ptr_task->get_future();
         job j = [ptr_task]() { (*ptr_task)(); };
 
-        int indx_worker = schedule_policy_.pick(count_job_,n_worker_);
-        std::unique_lock<std::mutex> lock(workers_[indx_worker]->get_lock());
+        int indx_worker = schedule_policy_.pick(count_job_,n_worker_);// Selects the index of the worker to which the job should be sent.
+        std::unique_lock<std::mutex> lock(workers_[indx_worker]->get_lock()); // lock worker's mutex
         bool flag = workers_[indx_worker]->push_back(j);
-        while (!flag) { flag = workers_[indx_worker]->push_back(j); }
-        count_job_[indx_worker].fetch_add(1, std::memory_order_release);
-        lock.unlock();
-        workers_[indx_worker]->cv_.notify_one();
+        while (!flag) { flag = workers_[indx_worker]->push_back(j); } // Ensures the job is sent.
+        count_job_[indx_worker].fetch_add(1, std::memory_order_release); // Increments the job counter for the worker.
+        lock.unlock();// unlock worker's mutex
+        workers_[indx_worker]->cv_.notify_one(); // Notifies the waiting workers to whom the job was sent.
         return fut;
     };
 
 
-    
-    // OVERLOAD:
-    //  parallel_for(Index,Index,F&&) --> gran1: granularity = 1
-    //  parallel_for(Index,Index,F&&,granularity) --> gran_input: parallel_for whit granularity in input. if granularuty <= 0 use defaul-granularity. default-granularity is s.t. every worker receives about 1 job
-
-    //  parallel_for(int,int,F&&,function<int(int)> incr) --> custom increment to scroll range, granularity = 1
-
-    //  parallel_for(int,int,F&&,vector<int>) --> divide range in vect.size() block, granularity of block j = vect[j]
-
-    //  parallel_for(Iterator,Iterator,F&&,granularity) --> parallel_for con input granularity ma iterator non parallel_iterator
+// Definition of granularity:= number of iterations of the for-loop in a single job
+// Parallel_for overloads:
+// parallel_for(Index, Index, F&&) --> F represents a single job (granularity = 1). Index can be int or an iterator type
+// parallel_for(Index, Index, F&&, granularity) --> F is the body function of the for-loop. Granularity is provided as input; if granularity <= 0, default granularity is used. Default granularity is set so that each worker receives max one job. Index can be int or an iterator satisfying the parallel_iterator concept
+// parallel_for(int, int, F&&, function<int(int)> incr) --> Uses a custom increment function to traverse the range. F represents a single job (granularity = 1)
+// parallel_for(int, int, F&&, vector<int>) --> F is the body function of the for-loop. The range is divided into vect.size() jobs, with the granularity of job j given by vect[j]
+// parallel_for(Iterator, Iterator, F&&, granularity) --> F is the body function of the for-loop. Granularity is provided as input. Iterator does not satisfy the parallel_iterator concept
 
 
-    // gran1 int/iterator
     template <typename F, typename Index>
         requires std::is_same_v<std::invoke_result_t<F, Index>, void>
     void parallel_for(Index start, Index end, F&& f) {
         using return_type = void;
-        std::vector<std::future<return_type>> ret_fut;
-        if constexpr(std::is_integral_v<Index>) {ret_fut.reserve(end - start);}//evita dare errore se Index è iterator senza metod -
-        for (Index j = start; j != end; ++j) { ret_fut.emplace_back(this->send(f, j)); }
-        for (std::future<void>& fut : ret_fut) { fut.get(); }
+        std::vector<std::future<return_type>> ret_fut; // Vector of futures for the jobs submitted to the threadpool
+        if constexpr(std::is_integral_v<Index>) { ret_fut.reserve(end - start); } // Reserve space if Index is an integer (not if Index is an iterator type, because the iterator may not support operator-)
+        for (Index j = start; j != end; ++j) { ret_fut.emplace_back(this->send(f, j)); } // Send function f with input j to the threadpool
+        for (std::future<void>& fut : ret_fut) { fut.get(); } // Wait for all futures to ensure the entire for-loop has executed
         return;
     }
 
-    //gran_input int/iterator_parallel
+
+
     template <typename F,typename Index, typename... Args>
         requires std::is_same_v<std::invoke_result_t<F, Index, int, Args&...>, void> && (std::is_integral_v<Index> || internals::parallel_iterator<Index>)
     void parallel_for(Index start, Index end, F&& f, int granularity, Args... args) {
         using return_type = void;
         int range = (end - start);
-        if (granularity > range) {
+        if (granularity > range) { // set granularity = range (all for-loop in single job)
             granularity = range;
         }    
         int n_job = range / std::max(1, granularity);   
-        if (granularity <= 0) {
+        if (granularity <= 0) { //set default value of granularity
             if (range < n_worker_) {
                 granularity = 1;
                 n_job = range;
             } else {
                 granularity = range / n_worker_;
-                n_job = n_worker_;
+                n_job = n_worker_; // ensures max 1 job per worker
             }
         }
-        std::vector<int> it_add;   // vettore di iterazioni aggiuntive al primo job di ogni worker
-        int resto = range % granularity;
+        std::vector<int> it_add; // Vector of additional iterations for the first job of each worker
+        int resto = range % granularity; // number of extra iteartions
         if (resto > 0) {
-            if ((n_job % n_worker_) != 0) {
+            if ((n_job % n_worker_) != 0) { // At least one worker has fewer jobs than worker0, so do not redistribute extra iterations; assign as a single job
                 n_job++;
-            } else {   // spalma perché fare un ultimo job con iterazioni di resto sbilancia
+            } else {// All workers have the same number of jobs. Distribute extra iterations to the first job of each worker
                 int iter_add = resto / n_worker_;
-                int resto_di_resto = resto % n_worker_;   // tutti i worker si prendono iter_add iterazioni extra e
-                                                          // quello che rimane dato +1 ai primi resto_di_resto worker
+                int resto_di_resto = resto % n_worker_;  // All workers take iter_add extra iterations, and the remaining ones are distributed (+1) to the first resto_di_resto workers
                 for (int w = 0; w < resto_di_resto; w++) { it_add.push_back(iter_add + 1); }
                 for (int w = resto_di_resto; w < n_worker_; w++) { it_add.push_back(iter_add); }
             }
@@ -368,6 +365,7 @@ template <typename SchedulingStrategy = round_robin_scheduling,typename Stealing
         ret_fut.reserve(n_job);
 
         Index stop_local = start;
+        // Send the first jobs with extra iterations. if it_add.size() == 0 skip this for
         for (int j = 0; j < it_add.size(); j++) {
             stop_local += (granularity + it_add[j]);
             ret_fut.emplace_back(this->send(
@@ -377,14 +375,13 @@ template <typename SchedulingStrategy = round_robin_scheduling,typename Stealing
                       fun(k, index_worker, args...);
                   }
               }));
-            start = stop_local;   // manda avanti start
+            start = stop_local;
         }
-        if (it_add.size() == n_job) {
-            // get futures
-            for (std::future<void>& fut : ret_fut) { fut.get(); }
+        if (it_add.size() == n_job) { // Avoid reaching the last send, which would submit an empty job
+            for (std::future<void>& fut : ret_fut) { fut.get(); }// get futures
             return;
         }
-
+        // Send the remaining jobs, except for the last one
         for (int j = it_add.size(); j < n_job - 1; j++) {
             stop_local = granularity + start;
             ret_fut.emplace_back(this->send(
@@ -394,18 +391,18 @@ template <typename SchedulingStrategy = round_robin_scheduling,typename Stealing
                       fun(k, index_worker, args...);
                   }
               }));
-            start = stop_local;   // manda avanti start
+            start = stop_local;
         }
+        // Send the last job separately to avoid branching in the previous loop, because the last job may have a different granularity
         ret_fut.emplace_back(this->send([start, end, fun = f, ... args = args, this]() mutable {
             int index_worker = this->index_worker();
             for (Index it = start; it != end; ++it) { fun(it, index_worker, args...); }
         }));
-        for (std::future<void>& fut : ret_fut) { fut.get(); }
+        for (std::future<void>& fut : ret_fut) { fut.get(); }// get futures
         return;
     }
 
 
-    //gran1 incrmento personalizzato
    template <typename F>
         requires std::is_same_v<std::invoke_result_t<F, int>, void>
     void parallel_for(int start, int end, F&& f, std::function<int(int)> incr) {
@@ -417,21 +414,18 @@ template <typename SchedulingStrategy = round_robin_scheduling,typename Stealing
         return;
     }
     
-    //vettroe di granularity
     template <typename F, typename... Args>
         requires std::is_same_v<std::invoke_result_t<F, int, int, Args&...>, void>
     void parallel_for(
       int start, int end, F&& f, std::vector<int> granularities,
-      Args... args) {   // copia di vettore gran è più sicuro in multithreading
+      Args... args) {   // Copy of the granularity vector; safer in multithreading
         using return_type = void;
         if (std::reduce(granularities.cbegin(), granularities.cend(), 0) != (end - start)) {
-            std::cerr << "somma di elem in granularities deve essere uguale a range (end-start)" << std::endl;
+            std::cerr << "The sum of elements in granularities must equal the range (end - start)" << std::endl;
             return;
         }
-        
         int stop_local = start;
         size_t vect_size = granularities.size();
-        
         std::vector<std::future<return_type>> ret_fut;
         ret_fut.reserve(vect_size);
         for (size_t j = 0; j < vect_size; j++) {
@@ -485,10 +479,12 @@ template <typename SchedulingStrategy = round_robin_scheduling,typename Stealing
 
 
 
-    //reduce parallel: wrap di std::reduce ogni worker applica std::reduce in proprio sotto range e poi reduce finale dei risultati parziali dei worker
-    template<typename Iterator,typename Value_type, typename F> //F operazione binaria (sum,min,max,dot)
+    // Parallel reduce: wrap std::reduce so that each worker applies std::reduce on its sub‑range, then the partial results from all workers are combined with a final reduction.
+    // Input: begin and end delimit the range, init is the initial value for the accumulator (sum -> 0, dot -> 1, min -> inf, max -> -inf), operation is a binary operation.
+    // Output: the reduced value. 
+    template<typename Iterator,typename Value_type, typename F> 
     Value_type reduce(Iterator begin, Iterator end, Value_type init, F&& operation){
-        
+        // Aligned to avoid false sharing. Each worker loads only its own AlignedValue into the cache line and does not see modifications to adjacent AlignedValues made by other workers.
         struct alignas(64) AlignedValue_type {
             AlignedValue_type(Value_type v):value(v){};
             Value_type value;
@@ -496,12 +492,10 @@ template <typename SchedulingStrategy = round_robin_scheduling,typename Stealing
         std::vector<AlignedValue_type> worker_partial_result(n_worker_,init);
 
         int range = (end - begin);
-        int granularity = range / n_worker_;
-        int plusone = range % n_worker_;
-        
+        int granularity = range / n_worker_; // Base granularity value for all workers
+        int plusone = range % n_worker_; // Number of workers that should reduce granularity + 1 values
         std::vector<std::future<void>> ret_fut;
         ret_fut.reserve(n_worker_);
-
         for(int i = 0; i<plusone; i++){
             ret_fut.emplace_back(
                 this -> send([&worker_partial_result,init,operation,i, granularity = granularity+1](Iterator begin_local){
@@ -520,9 +514,8 @@ template <typename SchedulingStrategy = round_robin_scheduling,typename Stealing
             );
             begin += granularity;    
         }
-
-        for (std::future<void>& fut : ret_fut) { fut.get(); }
-        // final reduce
+        for (std::future<void>& fut : ret_fut) { fut.get(); }// Ensures that the reduce operation of all workers has been completed
+        // Final reduce
         Value_type ret = worker_partial_result[0].value;
         for (int i = 1; i<n_worker_; i++){
             ret = operation(ret,worker_partial_result[i].value);
