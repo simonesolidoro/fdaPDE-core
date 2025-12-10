@@ -276,7 +276,6 @@ template <typename SchedulingStrategy = round_robin_scheduling,typename Stealing
                        workers_[i]->stop_;
             });
             loc.unlock();
-            if (workers_[i]->stop_) { return; } 
         }
     };
 
