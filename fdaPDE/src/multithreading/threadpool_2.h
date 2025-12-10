@@ -21,7 +21,7 @@
 namespace fdapde {
 
 namespace internals {
-// concept per parallel_for con iteratore che scorre il range (rilassa richiesta rispetto a random access iterator)
+// concept for parallel_for with an iterator that traverses the range (relaxes the requirement compared to a random access iterator)
 template <typename It>
 concept parallel_iterator = requires(It a, It b, int n) {
     { a += n } -> std::same_as<It&>;
@@ -29,11 +29,16 @@ concept parallel_iterator = requires(It a, It b, int n) {
 };
 }   // namespace internals
 
+//Template parameter for threadpool:
+//-struct per StealingStrategy: max_load_stealing, random_stealing, top_half_random_stealing
+//-struct per SchedulingStrategy: round_robin_scheduling, least_loaded_scheduling
 
 struct max_load_stealing{   
+    // Returns the index of the worker with the largest job count.
+    // If all counts are zero, returns -1 to indicate that no work can be stolen.
     int pick(std::deque<std::atomic<int>>& count_job, int n_worker)const{
         int worker_indx = 0;
-        int max_elem = count_job[0].load(std::memory_order_acquire);   // numero elementi in primo worker
+        int max_elem = count_job[0].load(std::memory_order_acquire); 
         int current_el = 0;
         for (int j = 1; j < n_worker; j++) {
             current_el = count_job[j].load(std::memory_order_acquire);
@@ -42,7 +47,7 @@ struct max_load_stealing{
                 max_elem = current_el;
             }
         }
-        if (max_elem == 0) { return -1; }   // avoid steal of nullopt
+        if (max_elem == 0) { return -1; }  
         return worker_indx;
     };
 };
@@ -56,6 +61,8 @@ struct random_stealing{
         std::uniform_int_distribution<> distrib(0, size - 1);
         return distrib(gen_);
     };
+    // Returns a random index among the workers that have at least one job.
+    // If no worker has jobs, returns -1.
     int pick(std::deque<std::atomic<int>>& count_job, int n_worker)const{
         std::vector<int> indxs;   // vector of index of worker busy
         for (int k = 0; k < n_worker; k++) {
@@ -84,6 +91,8 @@ struct top_half_random_stealing{
         std::uniform_int_distribution<> distrib(0, size - 1);
         return distrib(gen_);
     };
+    // Returns a random index among the workers in the top half of the busiest ones.
+    // If no worker has jobs, returns -1.
     int pick(std::deque<std::atomic<int>>& count_job, int n_worker)const{
         std::vector<std::pair<int, int>> indxs;   // vector of pair: (index worker busy, number of job its queue)
         int tmp_count_job = 0;
@@ -97,7 +106,7 @@ struct top_half_random_stealing{
         std::sort(indxs.begin(), indxs.end(), [](std::pair<int, int>& a, std::pair<int, int>& b) {
             return a.second > b.second;
         });
-        if(size < 4){
+        if(size < 4){ // avoid random generation if not need it
             return indxs[0].first;
         }else{
             return indxs[random_int(size / 2)].first;
@@ -107,15 +116,19 @@ struct top_half_random_stealing{
 
 struct round_robin_scheduling{
     int indx_ = 0;
-    int pick(std::deque<std::atomic<int>>& count_job, int n_worker){//qui non serve count_job_ solo n_worker, però per avere firma uguale a tutti altri lasciato
+    // Returns the next worker index in round-robin order.
+    // After reaching the last worker, wraps around to the first worker (index 0).
+    int pick(std::deque<std::atomic<int>>& count_job, int n_worker){
         int index = indx_;
-        (indx_ == n_worker - 1) ? (indx_ = 0) : (indx_++);//manda avanti indice circolarmente
+        (indx_ == n_worker - 1) ? (indx_ = 0) : (indx_++);//index_++ 
         return index;
     }
 };
 
 struct least_loaded_scheduling{
-    int pick(std::deque<std::atomic<int>>& count_job, int n_worker)const{//non serve n_worker ma lasciato per aver firma identicia ad altri
+    // Returns the index of the worker with the smallest job count.
+    // If all counts are zero, returns 0
+    int pick(std::deque<std::atomic<int>>& count_job, int n_worker)const{
         int worker_indx = 0;
         int min_elem = count_job[0].load(std::memory_order_acquire);
         int current_el = 0;
@@ -130,9 +143,6 @@ struct least_loaded_scheduling{
     };
 };
 
-
-    
-    
 
 template <typename SchedulingStrategy = round_robin_scheduling,typename StealingStrategy = random_stealing> class threadpool {
     using job = std::function<void()>;
