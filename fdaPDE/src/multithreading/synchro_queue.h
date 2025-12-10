@@ -192,11 +192,12 @@ template <typename value_type> class synchro_queue<value_type, deferred> {
     struct elem {
         int state_ = Empty;
         std::optional<value_type> v_;
-        mutable std::mutex m_el_; 
-        std::condition_variable cv_ready_to_push_; //CV usata per verificare che push method possano procedere
-        std::condition_variable cv_ready_to_pop_; //CV usata per verificare che pop method possano procedere
-        int count_pop_ = 0; //contatore di pop in corso su elem. usato in empty() method
+        mutable std::mutex m_el_;
+        std::condition_variable cv_ready_to_push_; // CV used to ensure that push methods can proceed
+        std::condition_variable cv_ready_to_pop_;  // CV used to ensure that pop methods can proceed
+        int count_pop_ = 0; // counter of pops currently in progress on this element, used in the empty() method
     };
+
    private:
     typedef std::vector<elem> container;
     container queue_;
@@ -371,9 +372,9 @@ template <typename value_type> class synchro_queue<value_type, blocking> {
         int state_ = Empty;   
         std::optional<value_type> v_;
         mutable std::mutex m_el_;
-        std::condition_variable cv_ready_to_push_;
-        std::condition_variable cv_ready_to_pop_;
-        int count_pop_ = 0;
+        std::condition_variable cv_ready_to_push_; // CV used to ensure that push methods can proceed after lock elem's mutex
+        std::condition_variable cv_ready_to_pop_; // CV used to ensure that pop methods can proceed
+        int count_pop_ = 0;// counter of pops currently in progress on this element, used in the empty() method
     };
    private:
     typedef std::vector<elem> container;
@@ -383,16 +384,17 @@ template <typename value_type> class synchro_queue<value_type, blocking> {
     int size_ = 0;
     bool empty_queue_ = true;
     mutable std::mutex m_;
-    std::condition_variable cv_can_pop_;
-    std::condition_variable cv_can_push_;
+    std::condition_variable cv_can_push_; // CV used to ensure that push methods can proceed after lock queue's mutex (used in push*_wait*() method)
+    std::condition_variable cv_can_pop_; // CV used to ensure that pop methods can proceed after lock queue's mutex (used in pop*_wait*() method)
 
-    // metodi privati per refactoring (evitano riscrivere stesso codice per metodi wait(). oss: unica differenza è in wait() iniziale dei metodi, poi uguali perché tutti devono notificare quando tolgono o inseriscono)
-    bool push_front_(value_type& val, std::unique_lock<std::mutex>& loc) {
+    // private auxiliary methods to avoid rewriting the same code 
+    // note: notifica a cv_can_*_ unica differenza con deferred, quindi commenti codice non duplicati
+    bool push_front_(value_type& val, std::unique_lock<std::mutex>& loc) {//unique_lock of queue's mutex in input already lock. reference a val because in only an intermediet staep, in queue store a copy of original val 
         empty_queue_ = false;
         int new_head = (head_ == 0) ? (size_ - 1) : (head_ - 1);
         head_ = new_head;
         loc.unlock();
-        cv_can_pop_.notify_one();   // for pop_or_wait
+        cv_can_pop_.notify_one();   // notify any waiting pop_*_or_wait*
         std::unique_lock<std::mutex> loc_el(queue_[new_head].m_el_);
         queue_[new_head].cv_ready_to_push_.wait(
           loc_el, [this, new_head]() { return queue_[new_head].state_ == Empty; });
@@ -409,7 +411,7 @@ template <typename value_type> class synchro_queue<value_type, blocking> {
         if (head_ == tail_) { empty_queue_ = true; }
         queue_[h].count_pop_++;
         loc.unlock();
-        cv_can_push_.notify_one();
+        cv_can_push_.notify_one(); // notify any waiting push_*_or_wait*
         std::unique_lock<std::mutex> loc_el(queue_[h].m_el_);
         queue_[h].cv_ready_to_pop_.wait(loc_el, [this, h]() { return queue_[h].state_ == Full; });
         value_type ret = std::move(queue_[h].v_.value());
@@ -422,13 +424,11 @@ template <typename value_type> class synchro_queue<value_type, blocking> {
     }
 
     bool push_back_(value_type& val, std::unique_lock<std::mutex>& loc) {
-        empty_queue_ = false;   // maybe already false, so redundant, but avoids if(empty_queue_) {empty_queue_ =
-                                // false;}
-        int t = tail_;                                      // index to return
-        tail_ = (tail_ == size_ - 1) ? (0) : (tail_ + 1);   // tail_++
+        empty_queue_ = false;   
+        int t = tail_;                                      
+        tail_ = (tail_ == size_ - 1) ? (0) : (tail_ + 1);  
         loc.unlock();
-
-        cv_can_pop_.notify_one();
+        cv_can_pop_.notify_one(); // notify any waiting pop_*_or_wait*
         std::unique_lock<std::mutex> loc_el(queue_[t].m_el_);
         queue_[t].cv_ready_to_push_.wait(loc_el, [this, t]() { return queue_[t].state_ == Empty; });
         queue_[t].v_ = std::move(val);
@@ -444,8 +444,7 @@ template <typename value_type> class synchro_queue<value_type, blocking> {
         if (head_ == tail_) { empty_queue_ = true; }
         queue_[new_tail].count_pop_++;
         loc.unlock();
-
-        cv_can_push_.notify_one();
+        cv_can_push_.notify_one(); // notify any pending push_*_or_wait*
         std::unique_lock<std::mutex> loc_el(queue_[new_tail].m_el_);
         queue_[new_tail].cv_ready_to_pop_.wait(loc_el, [this, new_tail]() { return queue_[new_tail].state_ == Full; });
         value_type ret = std::move(queue_[new_tail].v_.value());
@@ -458,8 +457,8 @@ template <typename value_type> class synchro_queue<value_type, blocking> {
     }
    public:
     // enumerator state of elem.
-    static constexpr int Empty = 1;   // true 1
-    static constexpr int Full = 0;    // false 0
+    static constexpr int Empty = 1;   
+    static constexpr int Full = 0;    
     // default constructor
     synchro_queue() = default;
     // construct whit size of queue_=n;
@@ -514,59 +513,56 @@ template <typename value_type> class synchro_queue<value_type, blocking> {
         }
         std::cout << std::endl;
     }
-    // oss: il check se la coda è piena o vuota una volta bloccatto il mutex della coda non viene fatto nei metodi
-    // wait() perché sarebbe superflua
 
     bool push_front(value_type val) {
         std::unique_lock<std::mutex> loc(m_);
-        if (head_ == tail_ && !empty_queue_) { return false; }
+        if (head_ == tail_ && !empty_queue_) { return false; } // if the queue is full, abort
 
-        return push_front_(val, loc);//loc per riferimento, unlock() chiamato dentro push_front
+        return push_front_(val, loc);
     }
 
     bool push_front_or_wait_for(value_type val, int s) {
         std::unique_lock<std::mutex> loc(m_);
         bool flag = cv_can_push_.wait_for(loc, std::chrono::seconds(s), [this]() {
             return this->head_ != this->tail_ || this->empty_queue_;
-        });   // head != tail implica sicuro non pieno, poi empty_queue perche head==tail magari per vuoto
-        if (!flag) { return false; }
+        });// wait up to s seconds for the queue to become non-full
+        if (!flag) { return false; } // abort if the timer expires
 
         return push_front_(val, loc);
     }
 
     bool push_front_or_wait(value_type val) {
         std::unique_lock<std::mutex> loc(m_);
-        cv_can_push_.wait(loc, [this]() { return this->head_ != this->tail_ || this->empty_queue_; });
+        cv_can_push_.wait(loc, [this]() { return this->head_ != this->tail_ || this->empty_queue_; });// wait until the queue becomes non-full
 
         return push_front_(val, loc);
     }
 
     std::optional<value_type> pop_front() {
         std::unique_lock<std::mutex> loc(m_);
-        if (empty_queue_) { return std::nullopt; }
+        if (empty_queue_) { return std::nullopt; }// if the queue is empty, abort
 
         return pop_front_(loc);
     }
 
     std::optional<value_type> pop_front_or_wait_for(int s) {
         std::unique_lock<std::mutex> loc(m_);
-        bool flag = cv_can_pop_.wait_for(loc, std::chrono::seconds(s), [this]() { return !this->empty_queue_; });
-        if (!flag) { return std::nullopt; }
+        bool flag = cv_can_pop_.wait_for(loc, std::chrono::seconds(s), [this]() { return !this->empty_queue_; });// wait up to s seconds for the queue to become non-empty
+        if (!flag) { return std::nullopt; } // abort if the timer expires
 
         return pop_front_(loc);
     }
 
     value_type pop_front_or_wait() {
         std::unique_lock<std::mutex> loc(m_);
-        cv_can_pop_.wait(loc, [this]() { return !this->empty_queue_; });
+        cv_can_pop_.wait(loc, [this]() { return !this->empty_queue_; });// wait until the queue becomes non-empty
 
         return pop_front_(loc);
     }
 
     bool push_back(value_type val) {
         std::unique_lock<std::mutex> loc(m_);
-        if (head_ == tail_ && !empty_queue_) { return false; }
-
+        if (head_ == tail_ && !empty_queue_) { return false; }// if the queue is full, abort
 
         return push_back_(val, loc);
     }
@@ -574,41 +570,42 @@ template <typename value_type> class synchro_queue<value_type, blocking> {
     bool push_back_or_wait_for(value_type val, int s) {
         std::unique_lock<std::mutex> loc(m_);
         bool flag = cv_can_push_.wait_for(
-          loc, std::chrono::seconds(s), [this]() { return this->head_ != this->tail_ || this->empty_queue_; });
-        if (!flag) { return false; }
+        loc, std::chrono::seconds(s), [this]() { return this->head_ != this->tail_ || this->empty_queue_; });// wait up to s seconds for the queue to become non-full
+        if (!flag) { return false; }// abort if the timer expires
 
         return push_back_(val, loc);
     }
 
     bool push_back_or_wait(value_type val) {
         std::unique_lock<std::mutex> loc(m_);
-        cv_can_push_.wait(loc, [this]() { return this->head_ != this->tail_ || this->empty_queue_; });
+        cv_can_push_.wait(loc, [this]() { return this->head_ != this->tail_ || this->empty_queue_; });// wait until the queue becomes non-full
 
         return push_back_(val,loc);
     }
 
     std::optional<value_type> pop_back() {
         std::unique_lock<std::mutex> loc(m_);
-        if (empty_queue_) { return std::nullopt; }
+        if (empty_queue_) { return std::nullopt; }// if the queue is empty, abort
 
         return pop_back_(loc);
     }
 
     std::optional<value_type> pop_back_or_wait_for(int s) {
         std::unique_lock<std::mutex> loc(m_);
-        bool flag = cv_can_pop_.wait_for(loc, std::chrono::seconds(s), [this]() { return !this->empty_queue_; });
-        if (!flag) { return std::nullopt; }
+        bool flag = cv_can_pop_.wait_for(loc, std::chrono::seconds(s), [this]() { return !this->empty_queue_; });// wait up to s seconds for the queue to become non-empty
+        if (!flag) { return std::nullopt; }// abort if the timer expires
 
         return pop_back_(loc);
     }
 
     value_type pop_back_or_wait() {
         std::unique_lock<std::mutex> loc(m_);
-        cv_can_pop_.wait(loc, [this]() { return !this->empty_queue_; });
+        cv_can_pop_.wait(loc, [this]() { return !this->empty_queue_; });// wait until the queue becomes non-empty
 
         return pop_back_(loc);
     }
 
+    // return true if the queue is empty, false otherwise. (see deferred for comments)
     bool empty() const {
         std::lock_guard<std::mutex> loc(m_);
         if (empty_queue_) {
