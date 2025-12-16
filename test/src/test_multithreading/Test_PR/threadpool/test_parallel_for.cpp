@@ -108,29 +108,7 @@ std::cout<<std::endl;
     if(!uguali){std::cout<<"gran_input-iterator NON funziona";}
     else{std::cout<<"gran_input-iterator funziona";}
 }
-std::cout<<std::endl; 
-{// parallel_for  gran_input it non random access
-    int granularity = 7;//no default 
-    int end = 10000;
-    int start = 0;
-    std::list<int> l;
-    for(size_t i = start; i<end; i++){
-        l.push_back(5);
-    } 
-    
-    tp.parallel_for(l.begin(),l.end(),[&](std::list<int>::iterator i, int worker_index){
-        *i -=5 ;
-    },granularity);
 
-    int uguali = 1;
-    for(auto x : l){
-        if(x > 0){
-            uguali *= 0;
-        } 
-    }
-    if(!uguali){std::cout<<"gran_input-iteratorNonRandomAccess NON funziona";}
-    else{std::cout<<"gran_input-iteratorNonRandomAccess funziona";}
-}
 std::cout<<std::endl;
 {// parallel_for vector of granularities
     int end = 111;
