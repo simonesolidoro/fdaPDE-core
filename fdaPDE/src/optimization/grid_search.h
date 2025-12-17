@@ -18,7 +18,7 @@
 #define __FDAPDE_GRID_SEARCH_H__
 
 #include "header_check.h"
-
+//#include "../fdaPDE-cpp/fdaPDE/src/singleton_threadpool.h"
 namespace fdapde {
 
 template <int N> class GridSearch {
@@ -130,6 +130,7 @@ template <int N> class GridSearch {
             double first = std::numeric_limits<double>::max();// inizializzato a massimo erch ein problema cerchiamo minimo
             vector_t second;
         };
+
         int n_threads = Tp.n_workers();
         // Vector of (value, optimum) for each worker. At the end, it contains the min/argmin found by each worker, and reducing this vector yields the final min/argmin.
         // Initialized with n_threads empty elements to avoid reallocations and ensure thread safety
@@ -141,8 +142,7 @@ template <int N> class GridSearch {
         }
         int granularity_last_job = grid_.rows()% granularity;
         int n_job = (granularity_last_job == 0) ? grid_.rows()/granularity : grid_.rows()/granularity +1 ;
-        
-        Tp.parallel_for(0,n_job, [&, this](int i){ 
+        Tp.parallel_for(0,n_job, [&, this, objective](int i)mutable{ //objective catturato per copia perché più sicuro in multithreading. (in GCV parallelizzazione voglio che ogni thread chiami il suo objective e quindi non reference ma copia)
             int index_worker = Tp.index_worker(); // ID of the worker that executes the job
             vector_t x_curr;
             double obj_curr =std::numeric_limits<double>::max();
@@ -189,9 +189,9 @@ template <int N> class GridSearch {
     // overload that create threadpool
     template <typename ObjectiveT, typename GridT>
     requires((internals::is_vector_like_v<GridT> || internals::is_matrix_like_v<GridT>))
-    vector_t optimize(ObjectiveT&& objective, const GridT& grid, execution::execution_parallel,int n_threads = std::thread::hardware_concurrency(), int granularity = -1) { // per ora int job_per_worker in input perche piu comodo fare i test poi sostituire valore scelto
-        fdapde::threadpool Tp(1024, n_threads); 
-        return optimize(std::forward<ObjectiveT>(objective),grid,execution::par,Tp,granularity);
+    vector_t optimize(ObjectiveT&& objective, const GridT& grid, execution::execution_parallel, int granularity = -1) { // per ora int job_per_worker in input perche piu comodo fare i test poi sostituire valore scelto
+        //fdapde::threadpool Tp(1024, 8);
+        return optimize(std::forward<ObjectiveT>(objective),grid,execution::par,singleton_threadpool::instance(),granularity);//singleton_threadpool::instance()
     }
 
     //paralle_for con granularity e variadic tmp_obj, cosi da far divisione con granularity in input e non a mano con gran1 e minifor

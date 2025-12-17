@@ -43,6 +43,7 @@
 #include "src/multithreading/synchro_queue.h"
 #include "src/multithreading/threadpool.h"
 #include "src/multithreading/execution_type.h"
+#include "src/multithreading/singleton_threadpool.h"
 // clang-format on
 
 #endif
