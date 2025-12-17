@@ -191,7 +191,10 @@ template <int N> class GridSearch {
     requires((internals::is_vector_like_v<GridT> || internals::is_matrix_like_v<GridT>))
     vector_t optimize(ObjectiveT&& objective, const GridT& grid, execution::execution_parallel, int granularity = -1) { // per ora int job_per_worker in input perche piu comodo fare i test poi sostituire valore scelto
         //fdapde::threadpool Tp(1024, 8);
-        return optimize(std::forward<ObjectiveT>(objective),grid,execution::par,singleton_threadpool::instance(),granularity);//singleton_threadpool::instance()
+        singleton_threadpool::set_status_true(); //segnala che si vuole lavorare in parallelo, cosi obj che viene eseguita vede che deve essere eseguita in parallelo ed agisce di conseguenza
+        vector_t ret = optimize(std::forward<ObjectiveT>(objective),grid,execution::par,singleton_threadpool::instance(),granularity);//singleton_threadpool::instance() 
+        singleton_threadpool::set_status_false(); // fine lavoro in parallelo
+        return ret;
     }
 
     //versione alternativa di optimize che usa versione gran_input di parallel_for. 

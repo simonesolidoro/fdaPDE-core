@@ -29,7 +29,8 @@ public:
     }
 
     static bool status() { return status_; }
-    static void set_status() { status_ = true; }
+    static void set_status_true() { status_ = true; }
+    static void set_status_false() { status_ = false; }
 
 };
 

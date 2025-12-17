@@ -459,45 +459,6 @@ class threadpool {
         return;
     }
 
-<<<<<<< HEAD
-    // non parallel_iterator
-    // template <typename F, typename It, typename... Args>
-    //     requires std::is_same_v<std::invoke_result_t<F, It, int, Args&...>, void> && (!internals::parallel_iterator<It>)
-    // void parallel_for(It start, It end, F&& f, int granularity, Args... args) {
-    //     using return_type = void;
-    //     if (granularity <= 0) {
-    //         std::cerr << "granularity must be positive";
-    //         return;
-    //     }
-    //     // Let's first scroll through the entire range so that we can copy iterators at each start + k * granularity
-    //     // into the vector its
-    //     int range = 0;
-    //     std::vector<It> its;
-    //     its.push_back(start);
-    //     for (It it = start; it != end; ++it) {
-    //         range++;
-    //         if (range % granularity == 0) { its.push_back(it); }
-    //     }
-    //     int n_job = its.size();
-    //     std::vector<std::future<return_type>> ret_fut;
-    //     ret_fut.reserve(n_job);
-    //     for (int j = 0; j < n_job - 1; j++) {
-    //         ret_fut.emplace_back(
-    //           this->send([start = its[j], stop = its[j + 1], fun = f, ... args = args, this]() mutable {
-    //               int index_worker = this->index_worker();
-    //               for (auto it = start; it != stop; ++it) { fun(it, index_worker, args...); }
-    //           }));
-    //     }
-    //     ret_fut.emplace_back(this->send([start = its[n_job - 1], end, fun = f, ... args = args, this]() mutable {
-    //         int index_worker = this->index_worker();
-    //         for (auto it = start; it != end; ++it) { fun(it, index_worker, args...); }
-    //     }));
-    //     for (std::future<void>& fut : ret_fut) { fut.get(); }
-    //     return;
-    // }
-
-=======
->>>>>>> b99fd49a95ecb654a91a0620ef41dda844e5a164
     // Parallel reduce: wrap std::reduce so that each worker applies std::reduce on its sub‑range, then the partial
     // results from all workers are combined with a final reduction. Input: begin and end delimit the range, init is the
     // initial value for the accumulator (sum -> 0, dot -> 1, min -> inf, max -> -inf), operation is a binary operation.
