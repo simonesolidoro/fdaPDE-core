@@ -310,7 +310,7 @@ class threadpool {
 
         int indx_worker = schedule_policy_.pick(
           count_job_, n_worker_);   // Selects the index of the worker to which the job should be sent.
-        std::unique_lock<std::mutex> lock(workers_[indx_worker]->get_lock());   // lock worker's mutexstd::cout<<"lock mutex in send"<<std::endl;
+        std::unique_lock<std::mutex> lock(workers_[indx_worker]->get_lock());   // lock worker's mutex
         bool flag = workers_[indx_worker]->push_back(j);
         while (!flag) { flag = workers_[indx_worker]->push_back(j); }      // Ensures the job is sent.
         count_job_[indx_worker].fetch_add(1, std::memory_order_release);   // Increments the job counter for the worker.
