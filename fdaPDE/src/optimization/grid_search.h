@@ -194,7 +194,8 @@ template <int N> class GridSearch {
         return optimize(std::forward<ObjectiveT>(objective),grid,execution::par,singleton_threadpool::instance(),granularity);//singleton_threadpool::instance()
     }
 
-    //paralle_for con granularity e variadic tmp_obj, cosi da far divisione con granularity in input e non a mano con gran1 e minifor
+    //versione alternativa di optimize che usa versione gran_input di parallel_for. 
+    /*
     template <typename ObjectiveT, typename GridT, typename Threadpool>
         requires((internals::is_vector_like_v<GridT> || internals::is_matrix_like_v<GridT>))
     vector_t optimize_variadic(ObjectiveT&& objective, const GridT& grid, execution::execution_parallel, Threadpool& Tp, int granularity = -1) { // per ora int job_per_worker in input perche piu comodo fare i test poi sostituire valore scelto
@@ -228,21 +229,20 @@ template <int N> class GridSearch {
             value_ = obj_curr;
             optimum_ = x_curr;
         }
-        // per evitare false sharing e rendere piu veloce (il mio computer ha 64 byte in cacheline credo tutti ormai, nel caso da verificare su linux con $ cat /sys/devices/system/cpu/cpu0/cache/index0/coherency_line_size  )
+        // per evitare false sharing
         struct alignas(64) AlignedPair {
-            double first = std::numeric_limits<double>::max();// inizializzato a massimo erch ein problema cerchiamo minimo
+            double first = std::numeric_limits<double>::max();
             vector_t second;
         };
         // vettore di (value,optimum) per ogni worker, alla fine ci saranno min,argmin trovati da ogni worker e poi reduce di questo vettore darà min argmin finali
-        std::vector<AlignedPair> value_optimum_workers(Tp.n_workers()); //inizializzato con n_thread elementi vuoti cosi da non riallocare ed essere threadsafe
+        std::vector<AlignedPair> value_optimum_workers(Tp.n_workers()); //inizializzato con n_workers elementi vuoti cosi da non riallocare ed essere threadsafe
 
         long unsigned int start = 1;
-        Tp.parallel_for(start,grid_.rows(),[&Tp, &grid_,&value_optimum_workers,&objective](long unsigned int i,int index_w, vector_t& x_curr, double & obj_curr){ //tutto tramite ref per occupare meno memoria ma piu lento
-            //int index_worker = Tp.get_index_worker_from_thread(); //problema è qui !!!!!!!!!!!!!!! perché chiama ad ogni iterazione il metodo che però è blocking quindi se aumento thread non scala (ora metto shared mutex e sistemo la scirttura in map e la lettura di map che avevo fatto veloce per test in cluster che faceva data race)
+        Tp.parallel_for(start,grid_.rows(),[&Tp, &grid_,&value_optimum_workers,&objective](long unsigned int i,int index_w, vector_t& x_curr, double & obj_curr){ 
             grid_.row(i).assign_to(x_curr.transpose()); 
             obj_curr = objective(x_curr);
             // update minimum of worker if better optimum found
-            if(obj_curr < value_optimum_workers[index_w].first){//! anche se tmp una per job è meglio ancora altra implementazione perché la scirttura nel vettore comune avviene solo eventualmente alla fine di ogni job, qui eventualmente ad ogni iterazione e anche se evitato false sharing è comunque più costoso che avere value e optimum nello stack
+            if(obj_curr < value_optimum_workers[index_w].first){
                 value_optimum_workers[index_w].first = obj_curr;
                 value_optimum_workers[index_w].second = x_curr; 
             }
@@ -260,7 +260,7 @@ template <int N> class GridSearch {
 
         return optimum_;
     }
-
+    */
 
     // observers
     const vector_t& optimum() const { return optimum_; }
@@ -273,42 +273,3 @@ template <int N> class GridSearch {
 #endif   // __FDAPDE_GRID_SEARCH_H__
 
 
-/* tolto perché anche se lasciato reduce non parallel_for_reduce ma reduce di container
-// parallel_for_reduce 
-    //paralle_for con granularity e variadic tmp_obj, cosi da far divisione con granularity in input e non a mano con gran1 e minifor
-    template <typename ObjectiveT, typename GridT, typename Threadpool>
-        requires((internals::is_vector_like_v<GridT> || internals::is_matrix_like_v<GridT>))
-    vector_t optimize_reduce(ObjectiveT&& objective, const GridT& grid, execution::execution_parallel, Threadpool& Tp, int granularity = -1) { // per ora int job_per_worker in input perche piu comodo fare i test poi sostituire valore scelto
-        fdapde_static_assert(
-          std::is_same<decltype(std::declval<ObjectiveT>().operator()(vector_t())) FDAPDE_COMMA double>::value,
-          INVALID_CALL_TO_OPTIMIZE__OBJECTIVE_FUNCTOR_NOT_CALLABLE_AT_VECTOR_TYPE);
-        using layout_policy = decltype([]() {
-            if constexpr (internals::is_eigen_dense_xpr_v<GridT>) {
-                return std::conditional_t<GridT::IsRowMajor, internals::layout_right, internals::layout_left> {};
-            } else {
-                return internals::layout_right {};
-            }
-        }());
-        using grid_t = MdMap<const double, MdExtents<Dynamic, Dynamic>, layout_policy>;
-        
-        constexpr double NaN = std::numeric_limits<double>::quiet_NaN();
-        
-        grid_t grid_;
-        value_ = std::numeric_limits<double>::max();
-        if constexpr (internals::is_vector_like_v<GridT>) {
-            fdapde_assert(grid.size() % size_ == 0);
-            grid_ = grid_t(grid.data(), grid.size() / size_, size_);
-        } else {
-            fdapde_assert(grid.cols() == size_);
-            grid_ = grid_t(grid.data(), grid.rows(), size_);
-        }       
-        std::pair<double,int> opt = Tp.parallel_for_reduce<fdapde::threadpool<fdapde::steal::random>::reduceOp::min>(0,grid_.rows(),[&Tp, &grid_,&objective](int i, vector_t& x_curr){
-            grid_.row(i).assign_to(x_curr.transpose()); 
-            return objective(x_curr);            
-        },granularity,x_curr);
-        value_ = opt.first;
-        grid_.row(opt.second).assign_to(optimum_.transpose());
-        return optimum_;
-    }
-
-*/

@@ -1,2 +1,0 @@
-confronto tra utilizzo threadpool per parallelizare A+B, ed utilizzo diretto di std::thread,
-oss: uso diretto di thread implica costo di ijizializzazione thread in piu. e qui non viene considerato che questo costo èpagato per ogni for che si vuoe parallelizzare (qui solo uno, poi magari testare script con piu for es A+B; A-B; A+B...)

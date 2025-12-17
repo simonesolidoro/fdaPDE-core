@@ -88,21 +88,22 @@ int main(int argc, char** argv){
     std::cout<<"optimum: "<<opt3.optimum()<<std::endl;
     std::cout<<std::endl;
 
-        //---------------------- parallel_variadic : optimize (parallel_for_granularity_variadic)---------------------- ---------------------- ---------------------- ---------------------- 
-    std::cout<<"========================parallel_for_granularity_variadic, gran:"<<granularity<<", threads: "<<n_threads<<"========================"<<std::endl;
-    // definizione dell'ottimizzatore 
-    fdapde::GridSearch<2> opt4;
+    // //prima scommentare in grid_search.h il metodo optimize_variadic
+    // //---------------------- parallel_variadic : optimize (parallel_for_granularity_variadic)---------------------- ---------------------- ---------------------- ---------------------- 
+    // std::cout<<"========================parallel_for_granularity_variadic, gran:"<<granularity<<", threads: "<<n_threads<<"========================"<<std::endl;
+    // // definizione dell'ottimizzatore 
+    // fdapde::GridSearch<2> opt4;
 
-    auto start5 = std::chrono::high_resolution_clock::now();
+    // auto start5 = std::chrono::high_resolution_clock::now();
 
-    opt4.optimize_variadic(rastrigin, grid, execution::par,Tp,granularity);  
+    // opt4.optimize_variadic(rastrigin, grid, execution::par,Tp,granularity);  
 
-    auto end5 = std::chrono::high_resolution_clock::now();
-    auto duration5 = std::chrono::duration_cast<std::chrono::microseconds>(end5 - start5);  
-    std::cout<<"tempo impiegato: "<<duration5.count()<<","<<std::endl;
-    std::cout<<"value: "<<opt4.value()<<std::endl; 
-    std::cout<<"optimum: "<<opt4.optimum()<<std::endl;
-    std::cout<<std::endl;
+    // auto end5 = std::chrono::high_resolution_clock::now();
+    // auto duration5 = std::chrono::duration_cast<std::chrono::microseconds>(end5 - start5);  
+    // std::cout<<"tempo impiegato: "<<duration5.count()<<","<<std::endl;
+    // std::cout<<"value: "<<opt4.value()<<std::endl; 
+    // std::cout<<"optimum: "<<opt4.optimum()<<std::endl;
+    // std::cout<<std::endl;
 
  }
 

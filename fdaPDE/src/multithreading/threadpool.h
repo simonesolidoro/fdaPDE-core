@@ -459,6 +459,7 @@ class threadpool {
         return;
     }
 
+<<<<<<< HEAD
     // non parallel_iterator
     // template <typename F, typename It, typename... Args>
     //     requires std::is_same_v<std::invoke_result_t<F, It, int, Args&...>, void> && (!internals::parallel_iterator<It>)
@@ -495,6 +496,8 @@ class threadpool {
     //     return;
     // }
 
+=======
+>>>>>>> b99fd49a95ecb654a91a0620ef41dda844e5a164
     // Parallel reduce: wrap std::reduce so that each worker applies std::reduce on its sub‑range, then the partial
     // results from all workers are combined with a final reduction. Input: begin and end delimit the range, init is the
     // initial value for the accumulator (sum -> 0, dot -> 1, min -> inf, max -> -inf), operation is a binary operation.
