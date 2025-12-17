@@ -310,7 +310,7 @@ class threadpool {
 
         int indx_worker = schedule_policy_.pick(
           count_job_, n_worker_);   // Selects the index of the worker to which the job should be sent.
-        std::unique_lock<std::mutex> lock(workers_[indx_worker]->get_lock());   // lock worker's mutex
+        std::unique_lock<std::mutex> lock(workers_[indx_worker]->get_lock());   // lock worker's mutexstd::cout<<"lock mutex in send"<<std::endl;
         bool flag = workers_[indx_worker]->push_back(j);
         while (!flag) { flag = workers_[indx_worker]->push_back(j); }      // Ensures the job is sent.
         count_job_[indx_worker].fetch_add(1, std::memory_order_release);   // Increments the job counter for the worker.
@@ -320,16 +320,18 @@ class threadpool {
     };
 
     // Definition of granularity:= number of iterations of the for-loop in a single job
+    
     // Parallel_for overloads:
     // parallel_for(Index, Index, F&&) --> F represents a single job (granularity = 1). Index can be int or an iterator
-    // type parallel_for(Index, Index, F&&, granularity) --> F is the body function of the for-loop. Granularity is
-    // provided as input; if granularity <= 0, default granularity is used. Default granularity is set so that each
-    // worker receives max one job. Index can be int or an iterator satisfying the parallel_iterator concept
+    //      type parallel_for(Index, Index, F&&, granularity) --> F is the body function of the for-loop. Granularity is
+    //      provided as input; if granularity <= 0, default granularity is used. Default granularity is set so that each
+    //      worker receives max one job. Index can be int or an iterator satisfying the parallel_iterator concept
     // parallel_for(int, int, F&&, function<int(int)> incr) --> Uses a custom increment function to traverse the range.
-    // F represents a single job (granularity = 1) parallel_for(int, int, F&&, vector<int>) --> F is the body function
-    // of the for-loop. The range is divided into vect.size() jobs, with the granularity of job j given by vect[j]
+    //      F represents a single job (granularity = 1)
+    // parallel_for(int, int, F&&, vector<int>) --> F is the body function of the for-loop.
+    //      The range is divided into vect.size() jobs, with the granularity of job j given by vect[j]
     // parallel_for(Iterator, Iterator, F&&, granularity) --> F is the body function of the for-loop. Granularity is
-    // provided as input. Iterator does not satisfy the parallel_iterator concept
+    //      provided as input. Iterator does not satisfy the parallel_iterator concept
 
     template <typename F, typename Index>
         requires std::is_same_v<std::invoke_result_t<F, Index>, void>
@@ -458,40 +460,40 @@ class threadpool {
     }
 
     // non parallel_iterator
-    template <typename F, typename It, typename... Args>
-        requires std::is_same_v<std::invoke_result_t<F, It, int, Args&...>, void> && (!internals::parallel_iterator<It>)
-    void parallel_for(It start, It end, F&& f, int granularity, Args... args) {
-        using return_type = void;
-        if (granularity <= 0) {
-            std::cerr << "granularity must be positive";
-            return;
-        }
-        // Let's first scroll through the entire range so that we can copy iterators at each start + k * granularity
-        // into the vector its
-        int range = 0;
-        std::vector<It> its;
-        its.push_back(start);
-        for (It it = start; it != end; ++it) {
-            range++;
-            if (range % granularity == 0) { its.push_back(it); }
-        }
-        int n_job = its.size();
-        std::vector<std::future<return_type>> ret_fut;
-        ret_fut.reserve(n_job);
-        for (int j = 0; j < n_job - 1; j++) {
-            ret_fut.emplace_back(
-              this->send([start = its[j], stop = its[j + 1], fun = f, ... args = args, this]() mutable {
-                  int index_worker = this->index_worker();
-                  for (auto it = start; it != stop; ++it) { fun(it, index_worker, args...); }
-              }));
-        }
-        ret_fut.emplace_back(this->send([start = its[n_job - 1], end, fun = f, ... args = args, this]() mutable {
-            int index_worker = this->index_worker();
-            for (auto it = start; it != end; ++it) { fun(it, index_worker, args...); }
-        }));
-        for (std::future<void>& fut : ret_fut) { fut.get(); }
-        return;
-    }
+    // template <typename F, typename It, typename... Args>
+    //     requires std::is_same_v<std::invoke_result_t<F, It, int, Args&...>, void> && (!internals::parallel_iterator<It>)
+    // void parallel_for(It start, It end, F&& f, int granularity, Args... args) {
+    //     using return_type = void;
+    //     if (granularity <= 0) {
+    //         std::cerr << "granularity must be positive";
+    //         return;
+    //     }
+    //     // Let's first scroll through the entire range so that we can copy iterators at each start + k * granularity
+    //     // into the vector its
+    //     int range = 0;
+    //     std::vector<It> its;
+    //     its.push_back(start);
+    //     for (It it = start; it != end; ++it) {
+    //         range++;
+    //         if (range % granularity == 0) { its.push_back(it); }
+    //     }
+    //     int n_job = its.size();
+    //     std::vector<std::future<return_type>> ret_fut;
+    //     ret_fut.reserve(n_job);
+    //     for (int j = 0; j < n_job - 1; j++) {
+    //         ret_fut.emplace_back(
+    //           this->send([start = its[j], stop = its[j + 1], fun = f, ... args = args, this]() mutable {
+    //               int index_worker = this->index_worker();
+    //               for (auto it = start; it != stop; ++it) { fun(it, index_worker, args...); }
+    //           }));
+    //     }
+    //     ret_fut.emplace_back(this->send([start = its[n_job - 1], end, fun = f, ... args = args, this]() mutable {
+    //         int index_worker = this->index_worker();
+    //         for (auto it = start; it != end; ++it) { fun(it, index_worker, args...); }
+    //     }));
+    //     for (std::future<void>& fut : ret_fut) { fut.get(); }
+    //     return;
+    // }
 
     // Parallel reduce: wrap std::reduce so that each worker applies std::reduce on its sub‑range, then the partial
     // results from all workers are combined with a final reduction. Input: begin and end delimit the range, init is the
