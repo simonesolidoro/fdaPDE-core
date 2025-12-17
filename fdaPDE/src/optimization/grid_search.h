@@ -142,7 +142,7 @@ template <int N> class GridSearch {
         }
         int granularity_last_job = grid_.rows()% granularity;
         int n_job = (granularity_last_job == 0) ? grid_.rows()/granularity : grid_.rows()/granularity +1 ;
-        Tp.parallel_for(0,n_job, [&, this, objective](int i)mutable{ //objective catturato per copia perché più sicuro in multithreading. (in GCV parallelizzazione voglio che ogni thread chiami il suo objective e quindi non reference ma copia)
+        Tp.parallel_for(0,n_job, [&, this](int i)mutable{ //objective catturato per copia perché più sicuro in multithreading. (in GCV parallelizzazione voglio che ogni thread chiami il suo objective e quindi non reference ma copia)
             int index_worker = Tp.index_worker(); // ID of the worker that executes the job
             vector_t x_curr;
             double obj_curr =std::numeric_limits<double>::max();
