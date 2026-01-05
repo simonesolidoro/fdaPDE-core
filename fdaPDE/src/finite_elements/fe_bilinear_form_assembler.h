@@ -101,14 +101,35 @@ class fe_bilinear_form_assembly_loop :
         Eigen::SparseMatrix<double> assembled_mat(test_dof_handler()->n_dofs(), trial_dof_handler()->n_dofs());
         std::vector<Eigen::Triplet<double>> triplet_list;
 
-        // // reserve space to avoid reallocation
-        // int n_cell = this->Base::dof_handler_->triangulation()->n_cells();
-        // int triple_per_cella = n_trial_basis * n_test_basis; //9 qui;
-        // int tot_triple = n_cell * triple_per_cella;
-        // triplet_list.reserve(tot_triple);
+        // reserve space to avoid reallocation
+        int n_cell = this->Base::dof_handler_->triangulation()->n_cells();
+        int triple_per_cella = n_trial_basis * n_test_basis; //9 qui;
+        int tot_triple = n_cell * triple_per_cella;
+        triplet_list.reserve(tot_triple);
 
 	assemble(triplet_list);
 
+	// linearity of the integral is implicitly used here, as duplicated triplets are summed up (see Eigen docs)
+        assembled_mat.setFromTriplets(triplet_list.begin(), triplet_list.end());
+        assembled_mat.makeCompressed();
+
+        return assembled_mat;
+    }
+
+Eigen::SparseMatrix<double> assemble_tempotriple() const {
+        Eigen::SparseMatrix<double> assembled_mat(test_dof_handler()->n_dofs(), trial_dof_handler()->n_dofs());
+        std::vector<Eigen::Triplet<double>> triplet_list;
+    
+        // reserve space to avoid reallocation
+        int n_cell = this->Base::dof_handler_->triangulation()->n_cells();
+        int triple_per_cella = n_trial_basis * n_test_basis; //9 qui;
+        int tot_triple = n_cell * triple_per_cella;
+        triplet_list.reserve(tot_triple);
+auto start = std::chrono::high_resolution_clock::now();
+	assemble(triplet_list);
+auto end = std::chrono::high_resolution_clock::now();
+auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
+std::cout<<duration.count()<<" ";
 	// linearity of the integral is implicitly used here, as duplicated triplets are summed up (see Eigen docs)
         assembled_mat.setFromTriplets(triplet_list.begin(), triplet_list.end());
         assembled_mat.makeCompressed();
@@ -239,6 +260,26 @@ Eigen::SparseMatrix<double> assemble(execution::execution_parallel, Threadpool& 
         return assembled_mat;
     }
 
+    
+template<typename Threadpool>// Template to allow receiving a threadpool with any scheduling and stealing policy as a parameter
+Eigen::SparseMatrix<double> assemble_tempotriple(execution::execution_parallel, Threadpool& Tp, int granularity = -1) const {
+        Eigen::SparseMatrix<double> assembled_mat(test_dof_handler()->n_dofs(), trial_dof_handler()->n_dofs());
+        
+        int n_cell = this->Base::dof_handler_->triangulation()->n_cells();
+        int triple_per_cella = n_trial_basis * n_test_basis; 
+        int tot_triple = n_cell * triple_per_cella;
+        std::vector<Eigen::Triplet<double>> triplet_list(tot_triple);
+auto start = std::chrono::high_resolution_clock::now();
+	assemble(triplet_list,Tp,granularity);
+auto end = std::chrono::high_resolution_clock::now();
+auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
+std::cout<<duration.count()<<" ";
+	// linearity of the integral is implicitly used here, as duplicated triplets are summed up (see Eigen docs)
+        assembled_mat.setFromTriplets(triplet_list.begin(), triplet_list.end());
+        assembled_mat.makeCompressed();
+
+        return assembled_mat;
+    }
     // Overload that creates a thread pool instead of receiving one as input
     Eigen::SparseMatrix<double> assemble(execution::execution_parallel,int n_thread = std::thread::hardware_concurrency(),int size_queue = 1024, int granularity = -1) const { //int kk per il momento in input per fare test piu comodamente. OSS: per ora visto che kk=1 fino a kk=10 non c'è differenza. se troppo alto invece peggioramento evidente (es kk=100)
         fdapde::threadpool Tp(size_queue,n_thread);//default steal and schedule

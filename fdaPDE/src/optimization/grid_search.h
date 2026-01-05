@@ -82,14 +82,14 @@ template <int N> class GridSearch {
         for (std::size_t i = 1; i < grid_.rows() && !stop; ++i) {
             grid_.row(i).assign_to(x_curr.transpose());
             obj_curr = objective(x_curr);
-            stop |= internals::exec_eval_hooks(*this, objective, callbacks_);
-            values_.push_back(obj_curr);
+            // /*commentato per confronto fair con parallel*/ stop |= internals::exec_eval_hooks(*this, objective, callbacks_);
+            // /*commentato per confronto fair con parallel*/ values_.push_back(obj_curr);
             // update minimum if better optimum found
             if (obj_curr < value_) {
                 value_ = obj_curr;
                 optimum_ = x_curr;
             }
-            stop |= internals::exec_stop_if(*this, objective);
+            ///*commentato per confronto fair con parallel*/ stop |= internals::exec_stop_if(*this, objective);
 
         }
 
@@ -100,7 +100,7 @@ template <int N> class GridSearch {
 // Parallel optimize overload: each worker of the threadpool searches in a fraction of the grid, then a final sequential reduction is performed on the workers' optimal results
     template <typename ObjectiveT, typename GridT, typename Threadpool>
         requires((internals::is_vector_like_v<GridT> || internals::is_matrix_like_v<GridT>))
-    vector_t optimize(ObjectiveT&& objective, const GridT& grid, execution::execution_parallel,Threadpool& Tp, int granularity = -1) { // per ora int job_per_worker in input perche piu comodo fare i test poi sostituire valore scelto
+    vector_t optimize(ObjectiveT&& objective, const GridT& grid, execution::execution_parallel,Threadpool& Tp, int granularity = -1) { 
         fdapde_static_assert(
           std::is_same<decltype(std::declval<ObjectiveT>().operator()(vector_t())) FDAPDE_COMMA double>::value,
           INVALID_CALL_TO_OPTIMIZE__OBJECTIVE_FUNCTOR_NOT_CALLABLE_AT_VECTOR_TYPE);
@@ -195,7 +195,6 @@ template <int N> class GridSearch {
     }
 
     //versione alternativa di optimize che usa versione gran_input di parallel_for. 
-    /*
     template <typename ObjectiveT, typename GridT, typename Threadpool>
         requires((internals::is_vector_like_v<GridT> || internals::is_matrix_like_v<GridT>))
     vector_t optimize_variadic(ObjectiveT&& objective, const GridT& grid, execution::execution_parallel, Threadpool& Tp, int granularity = -1) { // per ora int job_per_worker in input perche piu comodo fare i test poi sostituire valore scelto
@@ -260,7 +259,7 @@ template <int N> class GridSearch {
 
         return optimum_;
     }
-    */
+    
 
     // observers
     const vector_t& optimum() const { return optimum_; }
