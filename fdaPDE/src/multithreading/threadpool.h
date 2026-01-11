@@ -371,7 +371,7 @@ class threadpool {
             }
         }
         std::vector<int> it_add;           // Vector of additional iterations for the first job of each worker
-        int resto = range % granularity;   // number of extra iteartions
+        int resto = range - (granularity*n_job);// number of extra iteartions
         if (resto > 0) {
             if ((n_job % n_worker_) != 0) {   // At least one worker has fewer jobs than worker0, so do not redistribute
                                               // extra iterations; assign as a single job
@@ -399,7 +399,7 @@ class threadpool {
             }));
             start = stop_local;
         }
-        if (it_add.size() == n_job) {   // Avoid reaching the last send, which would submit an empty job
+        if (start == end) {   // Avoid reaching the last send, which would submit an empty job
             for (std::future<void>& fut : ret_fut) { fut.get(); }   // get futures
             return;
         }
