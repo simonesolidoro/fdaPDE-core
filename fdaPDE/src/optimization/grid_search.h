@@ -144,7 +144,8 @@ template <int N> class GridSearch {
         // parallel optimize objective over grid
         auto local_optimize = [&](int i) {
             const int w_id = this_thread_id();
-            vector_t local_x_curr = grid.row(i);
+            vector_t local_x_curr;
+            grid_.row(i).assign_to(local_x_curr.transpose());
             double local_obj_curr = objective(local_x_curr);
         //    stop |= internals::exec_eval_hooks(*this, objective, callbacks_);
             values_[i] = local_obj_curr;
@@ -155,7 +156,7 @@ template <int N> class GridSearch {
             }
         //    stop |= internals::exec_stop_if(*this, objective);
         };
-        parallel_for(0, grid.rows(), local_optimize);
+        parallel_for(0, grid_.rows(), local_optimize);
 
         // sequential minimum reduction
         int j = 0;
@@ -166,7 +167,7 @@ template <int N> class GridSearch {
                 j = i;
             }
         }
-        optimum_ = grid.row(local_optimum[j]);
+        grid_.row(local_optimum[j]).assign_to(optimum_.transpose());
         return optimum_;
         
     }
