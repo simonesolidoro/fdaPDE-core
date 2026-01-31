@@ -25,14 +25,17 @@ int main(int argc, char** argv){
     
     int grid_size = 0;
     int n_threads = 1;
-    int granularity = -1; 
-    std::cout<<"numero elementi in griglia: ";
+    
+    std::cout<<"numero elementi in griglia (almeno 32): ";
     std::cin>>grid_size;
     // std::cout<<"numero worker in threadpool: ";
     // std::cin>>n_threads;
     // std::cout<<"granularity: ";
     // std::cin>>granularity;
     std::cout<<std::endl;
+
+    int granularity = static_cast<int>(grid_size/32); 
+
 
     //rastrigin function min in (0,0)
     fdapde::ScalarField<2, decltype([](const Eigen::Matrix<double, 2, 1>& p) { return 20 + p[0]*p[0] + p[1]*p[1] - 10*std::cos(2*M_PI*p[0]) - 10*std::cos(2*M_PI*p[1]); })> rastrigin;
@@ -80,7 +83,7 @@ int main(int argc, char** argv){
     auto start4 = std::chrono::high_resolution_clock::now();
 
     //opt3.optimize(rastrigin, grid, execution::par,Tp,granularity);  
-    opt3.optimize(fdapde::execution_par,rastrigin, grid);  
+    opt3.optimize(fdapde::execution_par,rastrigin, grid, granularity);  
 
     auto end4 = std::chrono::high_resolution_clock::now();
     auto duration4 = std::chrono::duration_cast<std::chrono::microseconds>(end4 - start4);  

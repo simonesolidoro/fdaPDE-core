@@ -109,7 +109,7 @@ template <int N> class GridSearch {
 
     template <typename ObjectiveT, typename GridT, typename... Callbacks>
         requires((internals::is_vector_like_v<GridT> || internals::is_matrix_like_v<GridT>) && std::is_invocable_v<ObjectiveT, vector_t>)
-    vector_t optimize(fdapde::execution_par_t, ObjectiveT&& objective, const GridT& grid,  Callbacks&&... callbacks) {
+    vector_t optimize(fdapde::execution_par_t, ObjectiveT&& objective, const GridT& grid, int granularity, Callbacks&&... callbacks) {
         fdapde_static_assert(
           std::is_same<decltype(std::declval<ObjectiveT>().operator()(vector_t())) FDAPDE_COMMA double>::value,
           INVALID_CALL_TO_OPTIMIZE__OBJECTIVE_FUNCTOR_NOT_CALLABLE_AT_VECTOR_TYPE);
@@ -156,7 +156,7 @@ template <int N> class GridSearch {
             }
         //    stop |= internals::exec_stop_if(*this, objective);
         };
-        parallel_for(0, grid_.rows(), local_optimize);
+        parallel_for(0, grid_.rows(),granularity, local_optimize);
 
         // sequential minimum reduction
         int j = 0;
