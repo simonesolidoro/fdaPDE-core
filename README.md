@@ -21,7 +21,7 @@ fdaPDE-core is an header-only library, therefore it does not require any install
 
 ## Run instructions
 
-The functionalities added in the context of the APSC project are located in the `develop` branch of the repository. 
+The functionalities added in the context of the APSC project are located in the `develop` branch of the repository. In particular, a custom threadpool has been implemented in fdaPDE/src/multithreading to support shared-memory parallelization. 
 
 The related tests are found in `test/src/test_multithreading`. Each of the tests in the subfolders contains a Makefile used to compile all the source files: the code can be compiled by running `make all`. 
 
